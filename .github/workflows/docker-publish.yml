@@ -22,7 +22,7 @@ jobs:
       - uses: docker/build-push-action@v6.19.2
         with:
           context: .
-          file: .devcontainer/default/Dockerfile
+          file: .devcontainer/build/Dockerfile
           push: true
           tags: |
             ghcr.io/akihitomamiya-del/l3rseq:${{ github.ref_name }}

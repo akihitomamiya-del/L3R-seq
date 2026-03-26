@@ -1,0 +1,5 @@
+# Production BLAST databases are large binaries.
+# Use setup_blast_db.sh or Docker build to regenerate.
+# Mock test databases (mock_chrm/, mock_cdna/) are small and tracked.
+TAIR10_*/
+makeblastdb_*.log

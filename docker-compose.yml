@@ -13,7 +13,7 @@ services:
   l3rseq:
     build:
       context: .
-      dockerfile: .devcontainer/default/Dockerfile
+      dockerfile: .devcontainer/build/Dockerfile
     image: ghcr.io/akihitomamiya-del/l3rseq:latest
     user: "${L3RSEQ_UID}:${L3RSEQ_GID}"
     volumes:

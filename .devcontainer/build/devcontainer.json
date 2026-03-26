@@ -1,8 +1,12 @@
 {
-  "name": "L3Rseq Pipeline",
-  "image": "ghcr.io/akihitomamiya-del/l3rseq:latest",
+  "name": "L3Rseq Pipeline (build)",
+  "build": {
+    "dockerfile": "Dockerfile",
+    "context": "../.."
+  },
   "features": {
-    "ghcr.io/devcontainers/features/github-cli:1": {}
+    "ghcr.io/devcontainers/features/github-cli:1": {},
+    "ghcr.io/devcontainers/features/node:1": { "version": "20" }
   },
   "customizations": {
     "vscode": {

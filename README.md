@@ -35,7 +35,9 @@ Before running, you need:
 
 ### Using GitHub Codespaces (recommended for beginners)
 
-Click "Code" > "Codespaces" > "Create codespace" on this repository. This gives you a fully configured Linux environment in your browser — no Docker installation, no command-line setup, and no compatibility issues. All bioinformatics tools, conda environments, and the IGV alignment viewer are pre-installed and ready to use.
+Click "Code" > "Codespaces" > "Create codespace" on this repository. When prompted, select **L3Rseq Pipeline** (the default). This pulls a pre-built image (~1 min) and gives you a fully configured Linux environment in your browser — no Docker installation, no command-line setup, and no compatibility issues. All bioinformatics tools, conda environments, and the IGV alignment viewer are pre-installed and ready to use.
+
+If you need to modify the Docker image itself, select **L3Rseq Pipeline (build)** instead — this builds from the Dockerfile (~10 min).
 
 ### Using Docker
 
@@ -82,7 +84,7 @@ Clone the repository and build the Docker image:
 ```bash
 git clone https://github.com/akihitomamiya-del/L3R-seq.git
 cd L3R-seq
-docker build -f .devcontainer/default/Dockerfile -t l3rseq .
+docker build -f .devcontainer/build/Dockerfile -t l3rseq .
 ```
 
 ### Verify your installation

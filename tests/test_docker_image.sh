@@ -52,7 +52,7 @@ echo ""
 
 if [ "$SKIP_BUILD" -eq 0 ]; then
     echo "[1/5] Building Docker image ..."
-    if docker build -f .devcontainer/default/Dockerfile -t "$IMAGE" "$CONTEXT_DIR" > /tmp/docker_build.log 2>&1; then
+    if docker build -f .devcontainer/build/Dockerfile -t "$IMAGE" "$CONTEXT_DIR" > /tmp/docker_build.log 2>&1; then
         pass "Docker build succeeded"
     else
         fail "Docker build failed (see /tmp/docker_build.log)"
