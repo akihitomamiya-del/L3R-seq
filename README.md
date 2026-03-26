@@ -2,17 +2,40 @@
 
 L3Rseq is the bioinformatics pipeline for **L3R-seq** (Long-read 3' RACE-seq), a targeted nanopore sequencing method that uses unique molecular identifiers (UMIs) to build one high-accuracy consensus sequence per original RNA molecule.
 
-It lets you quantify — within each single molecule — RNA editing, splicing, 3' end cleavage position, and poly(A) tail status, starting from raw Oxford Nanopore FASTQ files. Results are exported as per-molecule CSV tables for downstream analysis and can be explored visually through a built-in [alignment viewer](#alignment-viewer) that sorts and colors reads by their biological annotations.
+It lets you quantify — within each single molecule — RNA editing, splicing, 3' end cleavage position, and poly(A) tail status, starting from raw Oxford Nanopore FASTQ files. Results are exported as per-molecule CSV tables for downstream analysis and can be explored visually through a built-in [alignment viewer](#8-alignment-viewer) that sorts and colors reads by their biological annotations.
 
-L3Rseq was developed for analyzing the *Arabidopsis thaliana* mitochondrial *ccmC* mRNA — a transcript with extensive C-to-U editing and short poly(A) tails — but is adaptable to any target RNA on nanopore platforms. See [Adapting to your experiment](#adapting-to-your-experiment) for how to configure it for your gene and organism.
+L3Rseq was developed for analyzing the *Arabidopsis thaliana* mitochondrial *ccmC* mRNA — a transcript with extensive C-to-U editing and short poly(A) tails — but is adaptable to any target RNA on nanopore platforms. See [Adapting to your experiment](#7-adapting-to-your-experiment) for how to configure it for your gene and organism.
 
-## Quick start
+## Contents
+
+1. [Quick start](#1-quick-start)
+2. [Pipeline overview](#2-pipeline-overview)
+3. [Key features](#3-key-features)
+4. [Running on real data](#4-running-on-real-data)
+5. [Output](#5-output)
+6. [SAM tags](#6-sam-tags)
+7. [Adapting to your experiment](#7-adapting-to-your-experiment)
+8. [Alignment viewer](#8-alignment-viewer)
+9. [How CIGAR-walk works](#9-how-cigar-walk-works)
+10. [Intron splicing support](#10-intron-splicing-support)
+11. [Testing](#11-testing)
+12. [UMI bin size analysis](#12-umi-bin-size-analysis)
+13. [Requirements](#13-requirements)
+14. [License](#14-license)
+15. [Citation](#15-citation)
+16. [Acknowledgments](#16-acknowledgments)
+
+## 1. Quick start
 
 Before running, you need:
 
 1. **Demultiplexed FASTQ files** — basecalled and native-barcode-demultiplexed by dorado (see the manuscript for the wet-lab and basecalling protocol)
 2. **A reference FASTA** — the genomic sequence of your target gene
-3. **Sample barcode FASTA** (if starting from [step 01](#pipeline-overview)) — one entry per sample-specific index primer (called "RPI" in our protocol; see the manuscript for details)
+3. **Sample barcode FASTA** (if starting from [step 01](#2-pipeline-overview)) — one entry per sample-specific index primer (called "RPI" in our protocol; see the manuscript for details)
+
+### Using GitHub Codespaces (recommended for beginners)
+
+Click "Code" > "Codespaces" > "Create codespace" on this repository. This gives you a fully configured Linux environment in your browser — no Docker installation, no command-line setup, and no compatibility issues. All bioinformatics tools, conda environments, and the IGV alignment viewer are pre-installed and ready to use.
 
 ### Using Docker
 
@@ -52,10 +75,6 @@ The `:ro` flag on `/data/input` is enforced by the kernel — the pipeline canno
 
 Using `--user "$(id -u):$(id -g)"` ensures output files are owned by your host user (Linux). On macOS/WSL2, file ownership is handled automatically by Docker Desktop.
 
-### Using GitHub Codespaces (recommended for beginners)
-
-Click "Code" > "Codespaces" > "Create codespace" on this repository. This gives you a fully configured Linux environment in your browser — no Docker installation, no command-line setup, and no compatibility issues. All bioinformatics tools, conda environments, and the IGV alignment viewer are pre-installed and ready to use.
-
 ### Local installation
 
 Clone the repository and build the Docker image:
@@ -73,120 +92,7 @@ docker build -f .devcontainer/default/Dockerfile -t l3rseq .
 bash tests/run_tests.sh --skip-preprocess
 ```
 
-## Running on real data
-
-Once your installation is verified, here is how to run L3Rseq on your own nanopore data. See also `examples/run_pipeline.sh` for a copy-and-edit template script.
-
-### 1. Prepare your inputs
-
-You need three files:
-
-| File | Example | Notes |
-|---|---|---|
-| Raw FASTQs | `data/barcode48/` | Per-barcode directory of `.fastq.gz` files from dorado demux |
-| Reference FASTA | `refs/my_gene.fasta` | Genomic sequence covering your target + downstream region |
-| Sample barcode FASTA | `refs/rpi_barcodes.fasta` | One entry per sample-specific index primer (20 nt; see manuscript for primer design) |
-
-Optional: a probe FASTA (only needed for `--method umic-seq`).
-
-### 2. Full pipeline
-
-```bash
-L3Rseq run \
-  --input  data/             \  # directory containing barcode subdirs
-  --outdir results/          \
-  --ref    refs/my_gene.fasta \
-  --rpi-fasta refs/rpi_barcodes.fasta \
-  --pattern CT               \  # C-to-U RNA editing (default)
-  --threads 8
-```
-
-This runs all 10 steps. Output lands in `results/01_concat/` through `results/10_csv/`.
-
-### 3. Common options
-
-```bash
-# Splicing: classify reads as spliced/unspliced
-L3Rseq run ... --introns "847-2891"
-
-# UMIC-seq method (instead of default longread-umi)
-L3Rseq run ... --method umic-seq --probe refs/probe.fasta
-
-# Custom BLAST databases for translocation/chimera detection
-L3Rseq run ... \
-  --blast-db  refs/blast/organelle_db \
-  --blast-db2 refs/blast/transcriptome_db
-
-# Pre-filter reads by rough mapping (reduces noise from off-target reads)
-L3Rseq run ... --prefilter
-
-# SLAM-seq: track 4sU T-to-C conversions alongside C-to-U editing
-L3Rseq run ... --pattern CT --count-pattern TC
-```
-
-### 4. Processing specific samples
-
-After demultiplexing (step 03), you may want to process only certain RPIs. Run steps 1-3 first, then filter and continue:
-
-```bash
-# Steps 1-3: preprocess all RPIs
-L3Rseq run --input data/ --outdir results/ --ref refs/gene.fasta \
-  --rpi-fasta refs/barcodes.fasta --stop-at 3
-
-# Check which RPIs have reads (most with <30 are barcode crosstalk)
-wc -l results/03_demux/barcode*/*.fastq | sort -rn | head
-
-# Keep only the RPIs you want (e.g., RPI 3 and 4)
-mv results/03_demux results/03_demux_all
-mkdir -p results/03_demux/barcode48
-for rpi in 3 4; do
-  ln -s "$(pwd)/results/03_demux_all/barcode48/barcode48_RPI_${rpi}.fastq" \
-        results/03_demux/barcode48/
-done
-
-# Steps 4-10: process only selected RPIs
-L3Rseq run --input results/ --outdir results/ --ref refs/gene.fasta \
-  --rpi-fasta refs/barcodes.fasta --pattern CT --start-at 4
-```
-
-### 5. Inspect results
-
-```bash
-# Per-molecule CSV (main output for downstream analysis)
-head results/10_csv/barcode48_barcode48_RPI_3.csv
-
-# Quality report
-cat results/10_csv/barcode48_barcode48_RPI_3_quality_report.txt
-
-# Pipeline summary (read counts at each step)
-column -t results/pipeline_summary.tsv
-
-# UMI bin analysis: plot consensus quality vs. min reads per bin
-# (helps you decide whether to adjust the bin size threshold for your data)
-python3 scripts/plot_umi_bins.py results/ --quality --outdir runs/figures/
-
-# View alignments in browser
-L3Rseq viewer
-# Open http://localhost:8080, select your dataset
-```
-
-### 6. Build BLAST databases (optional)
-
-BLAST databases enable translocation detection and chimera filtering in step 09. If you're working with a non-*Arabidopsis* organism:
-
-```bash
-bash scripts/setup_blast_db.sh \
-  --organelle-fasta refs/my_mitochondrial_genome.fasta \
-  --transcriptome-fasta refs/my_cDNA.fasta
-
-L3Rseq run ... \
-  --blast-db  resources/blast/organelle/organelle_db \
-  --blast-db2 resources/blast/transcriptome/transcriptome_db
-```
-
-Without BLAST databases, step 09 still runs — it just skips the translocation check and reports all right-clips as non-chimeric.
-
-## Pipeline overview
+## 2. Pipeline overview
 
 Raw nanopore reads are preprocessed and demultiplexed (steps 01-03), then grouped by their UMI to identify reads originating from the same RNA molecule (step 04). Each group is polished into a single consensus sequence (step 05), removing random sequencing errors and PCR-duplicate bias. The consensus is trimmed to the target region (step 06), mapped to a reference (step 07), and scanned for RNA editing variants (step 08). A CIGAR-walk algorithm then corrects 3' soft-clip boundaries that were mis-assigned due to editing near the transcript end (step 09). Finally, per-molecule annotations are exported to CSV for downstream analysis in R, Python, or spreadsheets (step 10).
 
@@ -264,28 +170,137 @@ L3Rseq run --input demuxed/ --outdir out/ --ref ref.fa --start-at 4
 L3Rseq run --input consensus/ --outdir out/ --ref ref.fa --start-at 6
 ```
 
-## Key features
+## 3. Key features
 
 **Analysis capabilities**
 
 - **UMI consensus** — groups reads sharing the same UMI into clusters and polishes each cluster into a single high-accuracy consensus sequence
 - **RNA editing quantification** — counts editing events per read (C-to-U by default; configurable via `--pattern` for other editing types such as A-to-G)
-- **3' tail correction** — CIGAR-walk algorithm corrects 3' soft-clip boundaries that are mis-assigned when edited bases near the transcript end look like mismatches (see [How CIGAR-walk works](#how-cigar-walk-works) below)
+- **3' tail correction** — CIGAR-walk algorithm corrects 3' soft-clip boundaries that are mis-assigned when edited bases near the transcript end look like mismatches (see [How CIGAR-walk works](#9-how-cigar-walk-works) below)
 - **Splicing detection** — `--introns` classifies reads as spliced/unspliced with per-intron resolution; `discover-introns` can automatically detect intron coordinates from your data without prior annotation
 - **Noise separation** — per-read noise count (NC tag) distinguishes biological editing from residual sequencing errors in the consensus
 - **Secondary pattern** — `--count-pattern TC` for SLAM-seq T-to-C counting alongside primary editing
-- **Built-in alignment viewer** — browser-based [IGV.js viewer](#alignment-viewer) with custom SAM tag support: sort and color reads by editing count, splice status, 3' tail length, noise, and more. Lets you visually inspect per-molecule annotations directly on the alignment without leaving the pipeline
+- **Built-in alignment viewer** — browser-based [IGV.js viewer](#8-alignment-viewer) with custom SAM tag support: sort and color reads by editing count, splice status, 3' tail length, noise, and more. Lets you visually inspect per-molecule annotations directly on the alignment without leaving the pipeline
 
 **Workflow**
 
 - **Flexible entry point** — enter at any step with `--start-at` / `--stop-at`
 - **Resume on re-run** — if a run is interrupted, re-running the same command skips already-completed samples automatically
 
-## How CIGAR-walk works
+## 4. Running on real data
 
-When the aligner encounters an RNA editing site near the 3' end of a read, it sees a mismatch against the genomic reference and prematurely soft-clips the rest of the sequence. The CIGAR-walk correction tolerates C-to-T mismatches at known editing positions, extending the aligned region to find the true 3' boundary. Right-clips are further classified by BLAST against organellar and transcriptome databases to separate real poly(A) tails from chimeric artifacts. This is critical for accurate 3' end and poly(A) tail measurements.
+Once your installation is verified, here is how to run L3Rseq on your own nanopore data. See also `examples/run_pipeline.sh` for a copy-and-edit template script.
 
-## Output
+### 4.1 Prepare your inputs
+
+You need three files:
+
+| File | Example | Notes |
+|---|---|---|
+| Raw FASTQs | `data/barcode48/` | Per-barcode directory of `.fastq.gz` files from dorado demux |
+| Reference FASTA | `refs/my_gene.fasta` | Genomic sequence covering your target + downstream region |
+| Sample barcode FASTA | `refs/rpi_barcodes.fasta` | One entry per sample-specific index primer (20 nt; see manuscript for primer design) |
+
+Optional: a probe FASTA (only needed for `--method umic-seq`).
+
+### 4.2 Full pipeline
+
+```bash
+L3Rseq run \
+  --input  data/             \  # directory containing barcode subdirs
+  --outdir results/          \
+  --ref    refs/my_gene.fasta \
+  --rpi-fasta refs/rpi_barcodes.fasta \
+  --pattern CT               \  # C-to-U RNA editing (default)
+  --threads 8
+```
+
+This runs all 10 steps. Output lands in `results/01_concat/` through `results/10_csv/`.
+
+### 4.3 Common options
+
+```bash
+# Splicing: classify reads as spliced/unspliced
+L3Rseq run ... --introns "847-2891"
+
+# UMIC-seq method (instead of default longread-umi)
+L3Rseq run ... --method umic-seq --probe refs/probe.fasta
+
+# Custom BLAST databases for translocation/chimera detection
+L3Rseq run ... \
+  --blast-db  refs/blast/organelle_db \
+  --blast-db2 refs/blast/transcriptome_db
+
+# Pre-filter reads by rough mapping (reduces noise from off-target reads)
+L3Rseq run ... --prefilter
+
+# SLAM-seq: track 4sU T-to-C conversions alongside C-to-U editing
+L3Rseq run ... --pattern CT --count-pattern TC
+```
+
+### 4.4 Processing specific samples
+
+After demultiplexing (step 03), you may want to process only certain samples. Run steps 1-3 first, then filter and continue:
+
+```bash
+# Steps 1-3: preprocess all samples
+L3Rseq run --input data/ --outdir results/ --ref refs/gene.fasta \
+  --rpi-fasta refs/barcodes.fasta --stop-at 3
+
+# Check which samples have reads (most with <30 are barcode crosstalk)
+wc -l results/03_demux/barcode*/*.fastq | sort -rn | head
+
+# Keep only the samples you want (e.g., RPI 3 and 4)
+mv results/03_demux results/03_demux_all
+mkdir -p results/03_demux/barcode48
+for rpi in 3 4; do
+  ln -s "$(pwd)/results/03_demux_all/barcode48/barcode48_RPI_${rpi}.fastq" \
+        results/03_demux/barcode48/
+done
+
+# Steps 4-10: process only selected samples
+L3Rseq run --input results/ --outdir results/ --ref refs/gene.fasta \
+  --rpi-fasta refs/barcodes.fasta --pattern CT --start-at 4
+```
+
+### 4.5 Inspect results
+
+```bash
+# Per-molecule CSV (main output for downstream analysis)
+head results/10_csv/barcode48_barcode48_RPI_3.csv
+
+# Quality report
+cat results/10_csv/barcode48_barcode48_RPI_3_quality_report.txt
+
+# Pipeline summary (read counts at each step)
+column -t results/pipeline_summary.tsv
+
+# UMI bin analysis: plot consensus quality vs. min reads per bin
+# (helps you decide whether to adjust the bin size threshold for your data)
+python3 scripts/plot_umi_bins.py results/ --quality --outdir runs/figures/
+
+# View alignments in browser
+L3Rseq viewer
+# Open http://localhost:8080, select your dataset
+```
+
+### 4.6 Build BLAST databases (optional)
+
+BLAST databases enable translocation detection and chimera filtering in step 09. If you're working with a non-*Arabidopsis* organism:
+
+```bash
+bash scripts/setup_blast_db.sh \
+  --organelle-fasta refs/my_mitochondrial_genome.fasta \
+  --transcriptome-fasta refs/my_cDNA.fasta
+
+L3Rseq run ... \
+  --blast-db  resources/blast/organelle/organelle_db \
+  --blast-db2 resources/blast/transcriptome/transcriptome_db
+```
+
+Without BLAST databases, step 09 still runs — it just skips the translocation check and reports all right-clips as non-chimeric.
+
+## 5. Output
 
 The main outputs are in `10_csv/`:
 
@@ -302,9 +317,9 @@ The main outputs are in `10_csv/`:
 - **`{barcode}_{RPI}_quality_report.txt`** — aggregate quality metrics including Q scores, substitution types, indel analysis, and splicing efficiency (if `--introns` used)
 - **`pipeline_summary.tsv`** — timestamped per-step metrics for QC
 
-## SAM tags
+## 6. SAM tags
 
-Step 09 (tail correction) annotates each read with custom SAM tags. These are visible when clicking a read in the IGV viewer and are exported to CSV by step 10.
+Step 09 (tail correction) annotates each read with custom SAM tags. These are visible when clicking a read in the [alignment viewer](#8-alignment-viewer) and are exported to CSV by step 10.
 
 **Editing & quality**
 
@@ -334,7 +349,7 @@ Step 09 (tail correction) annotates each read with custom SAM tags. These are vi
 | SI | i | Number of introns detected as spliced |
 | IR | i | Number of introns detected as retained |
 
-## Adapting to your experiment
+## 7. Adapting to your experiment
 
 L3Rseq ships with default adapter sequences and reference files for the *Arabidopsis* ccmC gene. To use with a different organism or library:
 
@@ -348,39 +363,7 @@ L3Rseq ships with default adapter sequences and reference files for the *Arabido
 | Target extraction primers | Edit `config.sh` or use `L3Rseq extract --target-fwd ...` |
 | Editing pattern | `--pattern AG` (for A-to-G editing) |
 
-## Intron splicing support
-
-For genes with introns, L3Rseq can classify reads as spliced or unspliced:
-
-```bash
-# If you know the intron coordinates
-L3Rseq run --introns "847-2891" ...
-
-# Using a BED file (multiple introns)
-L3Rseq run --introns introns.bed ...
-
-# Using a GFF3 annotation
-L3Rseq run --introns gene_annotation.gff3 ...
-
-# Discover introns from the data
-L3Rseq discover-introns --input out/07_map --outdir out/
-# Review the report, then use the candidate BED file
-L3Rseq run --introns out/candidate_introns.bed ...
-```
-
-## Requirements
-
-When running inside the Docker container, all dependencies are pre-installed. The conda environments listed below are managed automatically — no manual activation is needed.
-
-| Environment | Tools | Used by |
-|---|---|---|
-| longread_umi | vsearch, racon, minimap2, bwa, samtools, cutadapt | Steps 04, 05 |
-| cutadaptenv | cutadapt | Steps 02, 03, 06 |
-| NanoporeMap | minimap2, samtools, BLAST+ | Steps 07, 09, filter |
-| LoFreq | lofreq, bcftools | Step 08 |
-| UMIC-seq | Python, UMIC-seq scripts | Step 04 (with `--method umic-seq`) |
-
-## Alignment viewer
+## 8. Alignment viewer
 
 L3Rseq includes a built-in [IGV.js](https://github.com/igvteam/igv.js) alignment viewer that runs in your browser. It auto-discovers BAM files from any pipeline output directory — no file upload or manual configuration needed.
 
@@ -389,7 +372,7 @@ L3Rseq includes a built-in [IGV.js](https://github.com/igvteam/igv.js) alignment
 - **Before/after tracks** — raw mapping (step 07) and tail-corrected reads (step 09) displayed side by side so you can see the effect of CIGAR-walk correction
 - **Sort reads by SAM tag** — sort by editing count (EC), noise (NC), 3' end position (3E), splice status (SJ), tail length (TL), and more, with ascending/descending toggle
 - **Color reads by SAM tag** — color by splice status (green = spliced, red = retained, gray = unknown), editing count, noise, strand, or tail length, with auto-generated legend
-- **Click any read** to inspect all [SAM tags](#sam-tags) (editing counts, 3' tail sequence, splice junctions, etc.)
+- **Click any read** to inspect all [SAM tags](#6-sam-tags) (editing counts, 3' tail sequence, splice junctions, etc.)
 
 **Starting the viewer:**
 
@@ -413,7 +396,31 @@ docker run --rm -p 8080:8080 \
 
 Then open `http://localhost:8080` in your browser.
 
-## Testing
+## 9. How CIGAR-walk works
+
+When the aligner encounters an RNA editing site near the 3' end of a read, it sees a mismatch against the genomic reference and prematurely soft-clips the rest of the sequence. The CIGAR-walk correction tolerates C-to-T mismatches at known editing positions, extending the aligned region to find the true 3' boundary. Right-clips are further classified by BLAST against organellar and transcriptome databases to separate real poly(A) tails from chimeric artifacts. This is critical for accurate 3' end and poly(A) tail measurements.
+
+## 10. Intron splicing support
+
+For genes with introns, L3Rseq can classify reads as spliced or unspliced:
+
+```bash
+# If you know the intron coordinates
+L3Rseq run --introns "847-2891" ...
+
+# Using a BED file (multiple introns)
+L3Rseq run --introns introns.bed ...
+
+# Using a GFF3 annotation
+L3Rseq run --introns gene_annotation.gff3 ...
+
+# Discover introns from the data
+L3Rseq discover-introns --input out/07_map --outdir out/
+# Review the report, then use the candidate BED file
+L3Rseq run --introns out/candidate_introns.bed ...
+```
+
+## 11. Testing
 
 ```bash
 bash tests/run_tests.sh                    # full suite (109 checks, ~30 sec)
@@ -456,7 +463,7 @@ python3 tests/generators/generate_splice_test_data.py  # splice fixtures
 python3 tests/generators/generate_demo_data.py tests/output/demo  # IGV demo
 ```
 
-## UMI bin size analysis
+## 12. UMI bin size analysis
 
 Consensus quality depends on reads per UMI bin. Analysis on real data (*Arabidopsis* ccmC gene) shows quality plateaus at n>=3:
 
@@ -475,17 +482,29 @@ python3 scripts/plot_umi_bins.py results/ --quality
 python3 scripts/plot_umi_bins.py results/ --compare results_umic/ --quality  # compare methods
 ```
 
-## License
+## 13. Requirements
+
+When running inside the Docker container, all dependencies are pre-installed. The conda environments listed below are managed automatically — no manual activation is needed.
+
+| Environment | Tools | Used by |
+|---|---|---|
+| longread_umi | vsearch, racon, minimap2, bwa, samtools, cutadapt | Steps 04, 05 |
+| cutadaptenv | cutadapt | Steps 02, 03, 06 |
+| NanoporeMap | minimap2, samtools, BLAST+ | Steps 07, 09, filter |
+| LoFreq | lofreq, bcftools | Step 08 |
+| UMIC-seq | Python, UMIC-seq scripts | Step 04 (with `--method umic-seq`) |
+
+## 14. License
 
 GPL-3.0 (required by UMIC-seq and longread_umi dependencies). See [LICENSE](LICENSE).
 
-## Citation
+## 15. Citation
 
 If you use L3Rseq in your research, please cite:
 
 > [Citation details to be added upon publication]
 
-## Acknowledgments
+## 16. Acknowledgments
 
 L3Rseq bundles and builds on two open-source projects, both licensed under GPL-3.0. Please cite the original authors when using these components:
 

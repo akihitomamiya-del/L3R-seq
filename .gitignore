@@ -20,6 +20,7 @@
 !scripts/
 !scripts/**
 !resources/
+!resources/references/
 !resources/references/test_gene*.fasta
 !resources/references/test_gene*.fasta.fai
 !resources/rpi_barcodes/
