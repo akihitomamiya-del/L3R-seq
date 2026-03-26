@@ -40,6 +40,8 @@
 !examples/**
 !runs/
 !runs/README.md
+!docs/
+!docs/**
 !igv_viewer/
 !igv_viewer/**
 igv_viewer/node_modules/

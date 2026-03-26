@@ -1,0 +1,35 @@
+# ── Site metadata ──────────────────────────────────────────────
+# jekyll-seo-tag uses these to generate <title>, <meta description>,
+# Open Graph / Twitter Card tags, canonical URL, and JSON-LD.
+title: "L3R-seq"
+tagline: "Long-read 3' RACE-seq bioinformatics pipeline"
+description: >-
+  Open-source nanopore bioinformatics pipeline for single-molecule
+  RNA analysis. L3Rseq uses UMI consensus sequencing to quantify
+  RNA editing, alternative splicing, 3-prime end cleavage, and
+  poly(A) tail status from Oxford Nanopore FASTQ files.
+
+url: "https://akihitomamiya-del.github.io"
+baseurl: "/L3R-seq"
+
+# ── Theme ─────────────────────────────────────────────────────
+# cayman is a built-in GitHub Pages theme — no gem install needed.
+theme: jekyll-theme-cayman
+
+# ── Plugins (all whitelisted on GitHub Pages) ─────────────────
+plugins:
+  - jekyll-seo-tag          # <title>, Open Graph, Twitter Card, JSON-LD
+  - jekyll-sitemap           # auto-generates /sitemap.xml and /robots.txt
+
+# ── Author (used by jekyll-seo-tag for JSON-LD) ──────────────
+author:
+  name: "Akihito Mamiya"
+
+# ── Social / sharing ─────────────────────────────────────────
+twitter:
+  card: summary
+
+# ── Repository link (shown in the cayman header) ─────────────
+github:
+  is_project_page: true
+  repository_url: "https://github.com/akihitomamiya-del/L3R-seq"
