@@ -2,7 +2,7 @@
 
 L3Rseq is the bioinformatics pipeline for **L3R-seq** (Long-read 3' RACE-seq), a targeted nanopore sequencing method that uses unique molecular identifiers (UMIs) to build one high-accuracy consensus sequence per original RNA molecule.
 
-It lets you quantify — within each single molecule — RNA editing, 3' end cleavage position, and poly(A) tail status, starting from raw Oxford Nanopore FASTQ files.
+It lets you quantify — within each single molecule — RNA editing, splicing, 3' end cleavage position, and poly(A) tail status, starting from raw Oxford Nanopore FASTQ files. Results are exported as per-molecule CSV tables for downstream analysis and can be explored visually through a built-in [alignment viewer](#alignment-viewer) that sorts and colors reads by their biological annotations.
 
 L3Rseq was developed for analyzing the *Arabidopsis thaliana* mitochondrial *ccmC* mRNA — a transcript with extensive C-to-U editing and short poly(A) tails — but is adaptable to any target RNA on nanopore platforms. See [Adapting to your experiment](#adapting-to-your-experiment) for how to configure it for your gene and organism.
 
@@ -12,7 +12,7 @@ Before running, you need:
 
 1. **Demultiplexed FASTQ files** — basecalled and native-barcode-demultiplexed by dorado (see the manuscript for the wet-lab and basecalling protocol)
 2. **A reference FASTA** — the genomic sequence of your target gene
-3. **RPI barcode FASTA** (if starting from step 01) — one entry per sample-specific reverse PCR index (RPI)
+3. **Sample barcode FASTA** (if starting from [step 01](#pipeline-overview)) — one entry per sample-specific index primer (called "RPI" in our protocol; see the manuscript for details)
 
 ### Using Docker
 
@@ -52,9 +52,9 @@ The `:ro` flag on `/data/input` is enforced by the kernel — the pipeline canno
 
 Using `--user "$(id -u):$(id -g)"` ensures output files are owned by your host user (Linux). On macOS/WSL2, file ownership is handled automatically by Docker Desktop.
 
-### Using GitHub Codespaces
+### Using GitHub Codespaces (recommended for beginners)
 
-Click "Code" > "Codespaces" > "Create codespace" on this repository. The environment is pre-configured with all dependencies.
+Click "Code" > "Codespaces" > "Create codespace" on this repository. This gives you a fully configured Linux environment in your browser — no Docker installation, no command-line setup, and no compatibility issues. All bioinformatics tools, conda environments, and the IGV alignment viewer are pre-installed and ready to use.
 
 ### Local installation
 
@@ -85,11 +85,11 @@ You need three files:
 |---|---|---|
 | Raw FASTQs | `data/barcode48/` | Per-barcode directory of `.fastq.gz` files from dorado demux |
 | Reference FASTA | `refs/my_gene.fasta` | Genomic sequence covering your target + downstream region |
-| RPI barcode FASTA | `refs/rpi_barcodes.fasta` | One entry per sample index (20 nt RPI sequences) |
+| Sample barcode FASTA | `refs/rpi_barcodes.fasta` | One entry per sample-specific index primer (20 nt; see manuscript for primer design) |
 
 Optional: a probe FASTA (only needed for `--method umic-seq`).
 
-### 2. Full pipeline (recommended)
+### 2. Full pipeline
 
 ```bash
 L3Rseq run \
@@ -106,9 +106,6 @@ This runs all 10 steps. Output lands in `results/01_concat/` through `results/10
 ### 3. Common options
 
 ```bash
-# SLAM-seq: track 4sU T-to-C conversions alongside C-to-U editing
-L3Rseq run ... --pattern CT --count-pattern TC
-
 # Splicing: classify reads as spliced/unspliced
 L3Rseq run ... --introns "847-2891"
 
@@ -122,6 +119,9 @@ L3Rseq run ... \
 
 # Pre-filter reads by rough mapping (reduces noise from off-target reads)
 L3Rseq run ... --prefilter
+
+# SLAM-seq: track 4sU T-to-C conversions alongside C-to-U editing
+L3Rseq run ... --pattern CT --count-pattern TC
 ```
 
 ### 4. Processing specific samples
@@ -161,7 +161,8 @@ cat results/10_csv/barcode48_barcode48_RPI_3_quality_report.txt
 # Pipeline summary (read counts at each step)
 column -t results/pipeline_summary.tsv
 
-# UMI bin analysis plot
+# UMI bin analysis: plot consensus quality vs. min reads per bin
+# (helps you decide whether to adjust the bin size threshold for your data)
 python3 scripts/plot_umi_bins.py results/ --quality --outdir runs/figures/
 
 # View alignments in browser
@@ -270,9 +271,10 @@ L3Rseq run --input consensus/ --outdir out/ --ref ref.fa --start-at 6
 - **UMI consensus** — groups reads sharing the same UMI into clusters and polishes each cluster into a single high-accuracy consensus sequence
 - **RNA editing quantification** — counts editing events per read (C-to-U by default; configurable via `--pattern` for other editing types such as A-to-G)
 - **3' tail correction** — CIGAR-walk algorithm corrects 3' soft-clip boundaries that are mis-assigned when edited bases near the transcript end look like mismatches (see [How CIGAR-walk works](#how-cigar-walk-works) below)
-- **Splicing detection** — `--introns` classifies reads as spliced/unspliced with per-intron resolution
+- **Splicing detection** — `--introns` classifies reads as spliced/unspliced with per-intron resolution; `discover-introns` can automatically detect intron coordinates from your data without prior annotation
 - **Noise separation** — per-read noise count (NC tag) distinguishes biological editing from residual sequencing errors in the consensus
 - **Secondary pattern** — `--count-pattern TC` for SLAM-seq T-to-C counting alongside primary editing
+- **Built-in alignment viewer** — browser-based [IGV.js viewer](#alignment-viewer) with custom SAM tag support: sort and color reads by editing count, splice status, 3' tail length, noise, and more. Lets you visually inspect per-molecule annotations directly on the alignment without leaving the pipeline
 
 **Workflow**
 
@@ -334,12 +336,12 @@ Step 09 (tail correction) annotates each read with custom SAM tags. These are vi
 
 ## Adapting to your experiment
 
-L3Rseq ships with default adapter sequences and reference files for the *Arabidopsis* ccb3 gene. To use with a different organism or library:
+L3Rseq ships with default adapter sequences and reference files for the *Arabidopsis* ccmC gene. To use with a different organism or library:
 
 | What to change | How |
 |---|---|
 | Reference sequence | `--ref your_gene.fa` |
-| RPI barcodes | `--rpi-fasta your_barcodes.fa` |
+| Sample barcodes (RPI) | `--rpi-fasta your_barcodes.fa` |
 | UMI flanking sequences | `--umi-flank5 NNNNN --umi-flank3 NNNNN` |
 | BLAST databases | `bash scripts/setup_blast_db.sh --organelle-fasta your_mtDNA.fa --transcriptome-fasta your_cDNA.fa` then `--blast-db` / `--blast-db2` |
 | Adapter sequences | Edit `config.sh` or use `L3Rseq trim --adapter-fwd ...` |
@@ -380,11 +382,16 @@ When running inside the Docker container, all dependencies are pre-installed. Th
 
 ## Alignment viewer
 
-L3Rseq includes a built-in IGV.js alignment viewer that runs in your browser. It auto-discovers sorted BAM (Binary Alignment Map) files from any pipeline output directory.
+L3Rseq includes a built-in [IGV.js](https://github.com/igvteam/igv.js) alignment viewer that runs in your browser. It auto-discovers BAM files from any pipeline output directory — no file upload or manual configuration needed.
 
-**In Codespaces / devcontainer** — the viewer starts automatically at `http://localhost:8080`. Check the **Ports** tab in VS Code to open it.
+**Features:**
+- **Dataset selector** — dropdown lists all samples; any directory containing `07_map/` or `09_correct/` is detected automatically
+- **Before/after tracks** — raw mapping (step 07) and tail-corrected reads (step 09) displayed side by side so you can see the effect of CIGAR-walk correction
+- **Sort reads by SAM tag** — sort by editing count (EC), noise (NC), 3' end position (3E), splice status (SJ), tail length (TL), and more, with ascending/descending toggle
+- **Color reads by SAM tag** — color by splice status (green = spliced, red = retained, gray = unknown), editing count, noise, strand, or tail length, with auto-generated legend
+- **Click any read** to inspect all [SAM tags](#sam-tags) (editing counts, 3' tail sequence, splice junctions, etc.)
 
-**Manual start:**
+**Starting the viewer:**
 
 ```bash
 L3Rseq viewer              # start on default port 8080
@@ -392,7 +399,9 @@ L3Rseq viewer --port 9090  # use a different port
 L3Rseq viewer --stop       # stop the viewer
 ```
 
-**With Docker** — view pipeline output from a standalone container:
+In **Codespaces**, the viewer starts automatically — check the **Ports** tab in VS Code for the URL.
+
+**With Docker** (view pipeline output without entering the container):
 
 ```bash
 docker run --rm -p 8080:8080 \
@@ -403,8 +412,6 @@ docker run --rm -p 8080:8080 \
 ```
 
 Then open `http://localhost:8080` in your browser.
-
-The viewer shows raw mapping (step 07, gray) and tail-corrected reads (step 09, tan) in squished mode with soft-clipped bases visible. Click any read to inspect [SAM tags](#sam-tags). Select your dataset from the dropdown — any directory containing `07_map/` or `09_correct/` is detected automatically.
 
 ## Testing
 
@@ -453,7 +460,7 @@ python3 tests/generators/generate_demo_data.py tests/output/demo  # IGV demo
 
 Consensus quality depends on reads per UMI bin. Analysis on real data (*Arabidopsis* ccmC gene) shows quality plateaus at n>=3:
 
-| Threshold | Error-free | Noise (/1000bp) | Reads (longread-umi) |
+| Min reads per bin | Error-free consensus | Noise (/1000 bp) | Consensus reads retained |
 |---|---|---|---|
 | n>=1 | 48-80% | 0.5-4.4 | 4,727 |
 | n>=2 | 78-80% | 0.5-0.7 | 4,727 |
