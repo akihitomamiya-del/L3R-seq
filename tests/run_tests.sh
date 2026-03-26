@@ -12,17 +12,16 @@
 #                           implies --skip-preprocess
 #   With --no-viewer:       skip IGV viewer after tests complete
 #
-# Timing (AMD EPYC 7763, 4 vCPU / 16 GB RAM, Codespaces):
-#   Full run (default):       ~2 min  (108 checks)
-#     Test 1  steps 01-03       ~5s
-#     Test 1b filter            ~1s
-#     Test 1c negative tests    ~3s
-#     Test 2  steps 04-10      ~88s  (dominant — UMI clustering + racon consensus)
-#     Demo    viewer data        ~8s
+# Timing (AMD EPYC 7763, 4 vCPU / 32 GB RAM, Codespaces):
+#   Full run (default):       ~90s   (108 checks)
+#     Test 1+1b steps 01-03     ~7s
+#     Test 1c negative tests    ~2s
+#     Test 2  steps 04-10      ~67s  (dominant — UMI clustering + racon consensus)
+#     Demo    viewer data        ~5s
 #     Test 3  SLAM-seq           ~3s
-#     Test 4  splice + discover  ~4s
+#     Test 4  splice + discover  ~3s
 #     Test 5  BLAST + walk       ~3s
-#   --skip-preprocess:        ~110s
+#   --skip-preprocess:        ~83s
 #   --quick:                  ~13s
 #
 # Requirements: all conda environments must be available (longread_umi,
@@ -111,6 +110,15 @@ echo "L3Rseq Pipeline Tests"
 echo "========================================"
 echo ""
 
+# System specs
+echo "System: $(lscpu | grep 'Model name' | sed 's/.*: *//')"
+echo "CPUs:   $(nproc) vCPU ($(lscpu | grep 'Core(s) per socket' | awk '{print $NF}') cores × $(lscpu | grep 'Thread(s) per core' | awk '{print $NF}') threads)"
+echo "RAM:    $(free -h | awk '/Mem:/{print $2}')"
+echo "Disk:   $(df -h / | awk 'NR==2{print $2 " total, " $4 " avail"}')"
+echo ""
+
+SUITE_START=$SECONDS
+
 # Clean previous output
 rm -rf "$OUTPUT_DIR"
 mkdir -p "$OUTPUT_DIR"
@@ -120,6 +128,7 @@ mkdir -p "$OUTPUT_DIR"
 # ---------------------------------------------------------------------------
 
 if [ "$SKIP_PREPROCESS" -eq 0 ]; then
+    T_START=$SECONDS
     echo "[TEST 1] Steps 01-03: concat, trim, demux"
     echo ""
 
@@ -191,6 +200,7 @@ if [ "$SKIP_PREPROCESS" -eq 0 ]; then
             fail "Filter output missing for $bc"
         fi
     done
+    echo "  ⏱ Test 1+1b: $(( SECONDS - T_START ))s"
     echo ""
 fi
 
@@ -198,6 +208,7 @@ fi
 # Test 1c: Negative tests (error handling)
 # ---------------------------------------------------------------------------
 
+T_START=$SECONDS
 echo "[TEST 1c] Negative tests (error handling)"
 echo ""
 
@@ -251,12 +262,14 @@ if "$PIPELINE_DIR/L3Rseq" run \
 else
     pass "UMIC-seq without --probe errors correctly"
 fi
+echo "  ⏱ Test 1c: $(( SECONDS - T_START ))s"
 echo ""
 
 # ---------------------------------------------------------------------------
 # Test 2: Steps 04-10 with CT pattern
 # ---------------------------------------------------------------------------
 
+T_START=$SECONDS
 echo "[TEST 2] Steps 04-10: longread-umi, CT pattern"
 echo ""
 
@@ -415,6 +428,7 @@ if [ -f "$OUT/pipeline_summary.tsv" ]; then
 else
     fail "pipeline_summary.tsv missing"
 fi
+echo "  ⏱ Test 2: $(( SECONDS - T_START ))s"
 echo ""
 
 # ---------------------------------------------------------------------------
@@ -423,6 +437,7 @@ echo ""
 # track of walk-corrected + long edited reads showing C→T at position 606.
 # ---------------------------------------------------------------------------
 
+T_START=$SECONDS
 DEMO_DIR="$OUTPUT_DIR/demo"
 mkdir -p "$DEMO_DIR"
 
@@ -493,6 +508,7 @@ if [ -n "$LARGEST_BIN" ] && [ "$MAX_READS" -gt 0 ]; then
 
     conda deactivate 2>/dev/null
 fi
+echo "  ⏱ Demo: $(( SECONDS - T_START ))s"
 echo ""
 
 # ---------------------------------------------------------------------------
@@ -503,6 +519,7 @@ echo ""
 #   Pattern: CT, count-pattern: TC
 # Expected: 40 reads, EC=96, SC=590, NC=101
 
+T_START=$SECONDS
 echo "[TEST 3] Synthetic SLAM-seq validation (steps 09-10)"
 echo ""
 
@@ -554,12 +571,14 @@ else
     fail "SLAM quality report missing"
 fi
 
+echo "  ⏱ Test 3: $(( SECONDS - T_START ))s"
 echo ""
 
 # ---------------------------------------------------------------------------
 # Test 5: Intron splicing support (--introns flag)
 # ---------------------------------------------------------------------------
 
+T_START=$SECONDS
 echo "[TEST 4] Splicing annotation + discovery"
 echo ""
 
@@ -620,12 +639,14 @@ if [ -f "$DISCOVER_BED" ] && [ -s "$DISCOVER_BED" ]; then
 else
     fail "Discovery BED file missing or empty"
 fi
+echo "  ⏱ Test 4: $(( SECONDS - T_START ))s"
 echo ""
 
 # ---------------------------------------------------------------------------
 # Test 6: BLAST + Walk Correction
 # ---------------------------------------------------------------------------
 
+T_START=$SECONDS
 echo "========================================"
 echo "[TEST 5] BLAST + walk correction"
 echo "========================================"
@@ -722,14 +743,17 @@ fi
 control_count=$(grep -c 'control_' "$BLAST_SAM")
 check_exact "Control reads in corrected" "$control_count" "8"
 
+echo "  ⏱ Test 5: $(( SECONDS - T_START ))s"
 echo ""
 
 # ---------------------------------------------------------------------------
 # Summary
 # ---------------------------------------------------------------------------
 
+SUITE_ELAPSED=$(( SECONDS - SUITE_START ))
 echo "========================================"
 echo "Results: $PASS passed, $FAIL failed, $WARN warnings"
+echo "Total time: ${SUITE_ELAPSED}s"
 echo "========================================"
 
 if [ "$FAIL" -gt 0 ]; then
