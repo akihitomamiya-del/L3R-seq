@@ -1,0 +1,14 @@
+stage	metric	value
+extract	total_reads	216
+extract	umis_extracted	216
+dedup	unique_umis	60
+dedup	singleton_umis	19
+dedup	non_singleton_umis	41
+dedup	max_cluster_size	15
+dedup	mean_cluster_size	3.6
+bins	total_bins	41
+bins	kept_bins	29
+bins	small_bins	12
+bins	reads_in_kept_bins	169
+bins	reads_assigned	197
+bins	min_bin_size	4

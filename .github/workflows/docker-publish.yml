@@ -1,0 +1,29 @@
+name: Publish Docker image
+on:
+  push:
+    tags: ['v*']
+
+jobs:
+  build-and-push:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+
+    steps:
+      - uses: actions/checkout@v4.3.1
+
+      - uses: docker/login-action@v3.7.0
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - uses: docker/build-push-action@v6.19.2
+        with:
+          context: .
+          file: .devcontainer/default/Dockerfile
+          push: true
+          tags: |
+            ghcr.io/akihitomamiya-del/l3rseq:${{ github.ref_name }}
+            ghcr.io/akihitomamiya-del/l3rseq:latest

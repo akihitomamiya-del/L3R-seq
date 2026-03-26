@@ -1,0 +1,956 @@
+#!/bin/bash
+# L3Rseq -- Main dispatcher for the L3R-seq bioinformatic pipeline
+# Usage: L3Rseq <subcommand> [options]
+# See: L3Rseq --help
+
+set -euo pipefail
+
+# ---------------------------------------------------------------------------
+# Resolve script locations
+# ---------------------------------------------------------------------------
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+source "$SCRIPT_DIR/config.sh"
+
+# Resolve resource paths relative to the script directory
+RESOURCES_DIR="$SCRIPT_DIR/resources"
+DEFAULT_BLAST_DB_PATH="$RESOURCES_DIR/blast/TAIR10_ChrM/TAIR10_ChrM_db"
+DEFAULT_BLAST_DB2_PATH="$RESOURCES_DIR/blast/TAIR10_cDNA/TAIR10_cdna_db"
+
+# ---------------------------------------------------------------------------
+# Initialize conda (required for tool activation)
+# ---------------------------------------------------------------------------
+if ! eval "$(conda shell.bash hook)" 2>/dev/null; then
+    echo "ERROR: conda is not installed or not in PATH." >&2
+    echo "       L3Rseq requires conda to manage tool environments." >&2
+    echo "       Install Miniforge: https://github.com/conda-forge/miniforge" >&2
+    exit 1
+fi
+
+# ---------------------------------------------------------------------------
+# Help text
+VERSION="1.0.3"
+
+# ---------------------------------------------------------------------------
+show_help() {
+    cat <<'HELP'
+L3Rseq -- Bioinformatic pipeline for nanopore UMI consensus sequencing
+
+Usage: L3Rseq <subcommand> [options]
+
+Subcommands (preprocessing -- optional):
+  concat       Concatenate per-barcode fastq.gz files
+  trim         3-pass adapter trimming
+  demux        RPI barcode demultiplexing
+
+Subcommand (optional utility):
+  filter       Pre-filter reads by rough mapping
+
+Subcommands (core pipeline):
+  umi          UMI extraction and clustering
+  consensus    Racon-based consensus calling
+  extract      Target region extraction
+  map          Mapping to reference
+  variants     Variant calling
+  correct      3' tail correction
+  export       CSV export
+
+Utility:
+  discover-introns  Discover candidate intron positions from mapped reads
+  viewer            Start the IGV.js alignment viewer (http://localhost:8080)
+
+Full pipeline:
+  run          Run all steps (or a subset with --start-at / --stop-at)
+
+Options:
+  --help       Show this help message
+
+For subcommand-specific help: L3Rseq <subcommand> --help
+HELP
+}
+
+# ---------------------------------------------------------------------------
+# Argument parsing helpers
+# ---------------------------------------------------------------------------
+require_arg() {
+    if [ -z "${2:-}" ] || [[ "${2:-}" == --* ]]; then
+        echo "ERROR: $1 requires a value" >&2
+        exit 1
+    fi
+}
+
+# Append a row to the pipeline summary TSV. Creates the file with header if missing.
+# Usage: _summary_append <output_dir> <barcode> <rpi> <step> <metric> <value>
+_summary_append() {
+    local _f="$1/pipeline_summary.tsv"
+    if [ ! -f "$_f" ]; then
+        printf "timestamp\tbarcode\trpi\tstep\tmetric\tvalue\n" > "$_f"
+    fi
+    printf "%s\t%s\t%s\t%s\t%s\t%s\n" "$(date +%Y-%m-%dT%H:%M:%S)" "$2" "$3" "$4" "$5" "$6" >> "$_f"
+}
+
+# Validate that a conda environment exists before activation.
+# Usage: require_conda_env <env_name>
+require_conda_env() {
+    local env="$1"
+    if ! conda env list 2>/dev/null | grep -qE "^${env}\s"; then
+        echo "ERROR: conda environment '$env' not found." >&2
+        echo "       Required environments are created by the Dockerfile." >&2
+        echo "       Run inside the L3Rseq Docker container or create the env manually." >&2
+        return 1
+    fi
+}
+
+# Validate --introns format before passing to step 09.
+# Accepts: "start-end", "s1-e1,s2-e2", file.bed, file.gff3, file.gtf
+# Returns 0 if valid, 1 with error message if not.
+validate_introns() {
+    local spec="$1"
+    [ -z "$spec" ] && return 0  # empty = no introns, valid
+
+    if [ -f "$spec" ]; then
+        local ext="${spec##*.}"
+        case "$ext" in
+            bed|gff|gff3|gtf)
+                # Check file is not empty
+                if [ ! -s "$spec" ]; then
+                    echo "ERROR: --introns file is empty: $spec" >&2
+                    return 1
+                fi
+                return 0
+                ;;
+            *)
+                echo "ERROR: --introns file has unrecognized extension '.$ext'" >&2
+                echo "       Supported formats: .bed, .gff3, .gtf" >&2
+                echo "       Or use coordinate format: --introns '500-2100'" >&2
+                return 1
+                ;;
+        esac
+    fi
+
+    # Not a file — must be coordinate format (start-end or start-end,start-end)
+    if ! echo "$spec" | grep -qP '^\d+-\d+(,\d+-\d+)*$'; then
+        echo "ERROR: --introns '$spec' is not a valid format." >&2
+        echo "       Expected: coordinate (e.g., '847-2891'), BED file, or GFF3 file." >&2
+        echo "       Coordinate format: 'start-end' or 'start-end,start-end'" >&2
+        return 1
+    fi
+
+    # Validate that start < end for each coordinate
+    local IFS=','
+    for entry in $spec; do
+        local start="${entry%-*}"
+        local end="${entry#*-}"
+        if [ "$start" -ge "$end" ]; then
+            echo "ERROR: --introns '$entry' has start >= end ($start >= $end)" >&2
+            return 1
+        fi
+    done
+    return 0
+}
+
+# vsearch is always used (usearch support removed).
+# These exports are set before longread_umi's dependencies.sh runs so its
+# auto-detect doesn't overwrite them.  The USEARCH variable name is kept
+# for compatibility with upstream longread_umi scripts that reference it.
+_init_vsearch() {
+    export USEARCH=vsearch
+    export USEARCH_SORTOUT_FLAG="--output"
+    export USEARCH_MINSIZE_FLAG=""
+    export USEARCH_MINSEQLENGTH_FLAG="--minseqlength 1"
+}
+_init_vsearch
+
+# ---------------------------------------------------------------------------
+# Subcommand: concat
+# ---------------------------------------------------------------------------
+cmd_concat() {
+    local input_dir="" output_dir="" prefix=""
+
+    while [ $# -gt 0 ]; do
+        case "$1" in
+            --input)   require_arg "$1" "${2:-}"; input_dir="$2"; shift 2 ;;
+            --outdir)  require_arg "$1" "${2:-}"; output_dir="$2"; shift 2 ;;
+            --prefix)  require_arg "$1" "${2:-}"; prefix="$2"; shift 2 ;;
+            --help)    echo "Usage: L3Rseq concat --input <dir> --outdir <dir> [--prefix <str>]"; return 0 ;;
+            *)         echo "Unknown option: $1" >&2; return 1 ;;
+        esac
+    done
+
+    [ -z "$input_dir" ] && { echo "ERROR: --input is required" >&2; return 1; }
+    [ -z "$output_dir" ] && { echo "ERROR: --outdir is required" >&2; return 1; }
+
+    source "$SCRIPT_DIR/scripts/01_concat.sh"
+    run_step_01 "$input_dir" "$output_dir" "$prefix"
+}
+
+# ---------------------------------------------------------------------------
+# Subcommand: trim
+# ---------------------------------------------------------------------------
+cmd_trim() {
+    local input_dir="" output_dir=""
+    local adapter_fwd="$DEFAULT_ADAPTER_FWD"
+    local adapter_rev="$DEFAULT_ADAPTER_REV"
+    local adapter_trim3="$DEFAULT_ADAPTER_TRIM3"
+    local error_rate="$DEFAULT_ERROR_RATE"
+
+    while [ $# -gt 0 ]; do
+        case "$1" in
+            --input)         require_arg "$1" "${2:-}"; input_dir="$2"; shift 2 ;;
+            --outdir)        require_arg "$1" "${2:-}"; output_dir="$2"; shift 2 ;;
+            --adapter-fwd)   require_arg "$1" "${2:-}"; adapter_fwd="$2"; shift 2 ;;
+            --adapter-rev)   require_arg "$1" "${2:-}"; adapter_rev="$2"; shift 2 ;;
+            --adapter-trim3) require_arg "$1" "${2:-}"; adapter_trim3="$2"; shift 2 ;;
+            --error-rate)    require_arg "$1" "${2:-}"; error_rate="$2"; shift 2 ;;
+            --help)          echo "Usage: L3Rseq trim --input <dir> --outdir <dir> [--adapter-fwd <seq>] [--adapter-rev <seq>] [--adapter-trim3 <seq>] [--error-rate <float>]"; return 0 ;;
+            *)               echo "Unknown option: $1" >&2; return 1 ;;
+        esac
+    done
+
+    [ -z "$input_dir" ] && { echo "ERROR: --input is required" >&2; return 1; }
+    [ -z "$output_dir" ] && { echo "ERROR: --outdir is required" >&2; return 1; }
+
+    source "$SCRIPT_DIR/scripts/02_trim.sh"
+    conda activate "$ENV_CUTADAPT"
+    run_step_02 "$input_dir" "$output_dir" "$adapter_fwd" "$adapter_rev" "$adapter_trim3" "$error_rate"
+    conda deactivate
+}
+
+# ---------------------------------------------------------------------------
+# Subcommand: demux
+# ---------------------------------------------------------------------------
+cmd_demux() {
+    local input_dir="" output_dir="" rpi_fasta=""
+    local error_rate="$DEFAULT_DEMUX_ERROR_RATE"
+    local min_overlap="$DEFAULT_DEMUX_MIN_OVERLAP"
+
+    while [ $# -gt 0 ]; do
+        case "$1" in
+            --input)       require_arg "$1" "${2:-}"; input_dir="$2"; shift 2 ;;
+            --outdir)      require_arg "$1" "${2:-}"; output_dir="$2"; shift 2 ;;
+            --rpi-fasta)   require_arg "$1" "${2:-}"; rpi_fasta="$2"; shift 2 ;;
+            --error-rate)  require_arg "$1" "${2:-}"; error_rate="$2"; shift 2 ;;
+            --min-overlap) require_arg "$1" "${2:-}"; min_overlap="$2"; shift 2 ;;
+            --help)        echo "Usage: L3Rseq demux --input <dir> --outdir <dir> --rpi-fasta <file> [--error-rate <float>] [--min-overlap <int>]"; return 0 ;;
+            *)             echo "Unknown option: $1" >&2; return 1 ;;
+        esac
+    done
+
+    [ -z "$input_dir" ] && { echo "ERROR: --input is required" >&2; return 1; }
+    [ -z "$output_dir" ] && { echo "ERROR: --outdir is required" >&2; return 1; }
+    [ -z "$rpi_fasta" ] && { echo "ERROR: --rpi-fasta is required" >&2; return 1; }
+
+    source "$SCRIPT_DIR/scripts/03_demultiplex.sh"
+    conda activate "$ENV_CUTADAPT"
+    run_step_03 "$input_dir" "$output_dir" "$rpi_fasta" "$error_rate" "$min_overlap"
+    conda deactivate
+}
+
+# ---------------------------------------------------------------------------
+# Subcommand: filter
+# ---------------------------------------------------------------------------
+cmd_filter() {
+    local input_dir="" output_dir="" ref_file=""
+    local preset="$DEFAULT_MAP_PRESET"
+
+    while [ $# -gt 0 ]; do
+        case "$1" in
+            --input)   require_arg "$1" "${2:-}"; input_dir="$2"; shift 2 ;;
+            --outdir)  require_arg "$1" "${2:-}"; output_dir="$2"; shift 2 ;;
+            --ref)     require_arg "$1" "${2:-}"; ref_file="$2"; shift 2 ;;
+            --preset)  require_arg "$1" "${2:-}"; preset="$2"; shift 2 ;;
+            --help)    echo "Usage: L3Rseq filter --input <dir> --outdir <dir> --ref <file> [--preset <str>]"; return 0 ;;
+            *)         echo "Unknown option: $1" >&2; return 1 ;;
+        esac
+    done
+
+    [ -z "$input_dir" ] && { echo "ERROR: --input is required" >&2; return 1; }
+    [ -z "$output_dir" ] && { echo "ERROR: --outdir is required" >&2; return 1; }
+    [ -z "$ref_file" ] && { echo "ERROR: --ref is required" >&2; return 1; }
+
+    source "$SCRIPT_DIR/scripts/filter.sh"
+    conda activate "$ENV_MAP"
+    run_step_filter "$input_dir" "$output_dir" "$ref_file" "$preset"
+    conda deactivate
+}
+
+# ---------------------------------------------------------------------------
+# Subcommand: umi
+# ---------------------------------------------------------------------------
+cmd_umi() {
+    local input_dir="" output_dir="" probe_file=""
+    local method="longread-umi"
+    local umi_len="$DEFAULT_UMI_LEN"
+    local umi_loc="$DEFAULT_UMI_LOC"
+    local min_probe_score="$DEFAULT_MIN_PROBE_SCORE"
+    local aln_thresh="$DEFAULT_ALN_THRESH"
+    local size_thresh="$DEFAULT_SIZE_THRESH"
+    local cluster_steps="$DEFAULT_CLUSTER_STEPS"
+    local sample_size="$DEFAULT_SAMPLE_SIZE"
+    local umi_flank5="$DEFAULT_UMI_FLANK5"
+    local umi_flank3="$DEFAULT_UMI_FLANK3"
+
+    while [ $# -gt 0 ]; do
+        case "$1" in
+            --input)           require_arg "$1" "${2:-}"; input_dir="$2"; shift 2 ;;
+            --outdir)          require_arg "$1" "${2:-}"; output_dir="$2"; shift 2 ;;
+            --probe)           require_arg "$1" "${2:-}"; probe_file="$2"; shift 2 ;;
+            --method)          require_arg "$1" "${2:-}"; method="$2"; shift 2 ;;
+            --umi-len)         require_arg "$1" "${2:-}"; umi_len="$2"; shift 2 ;;
+            --umi-loc)         require_arg "$1" "${2:-}"; umi_loc="$2"; shift 2 ;;
+            --umi-flank5)      require_arg "$1" "${2:-}"; umi_flank5="$2"; shift 2 ;;
+            --umi-flank3)      require_arg "$1" "${2:-}"; umi_flank3="$2"; shift 2 ;;
+            --min-probe-score) require_arg "$1" "${2:-}"; min_probe_score="$2"; shift 2 ;;
+            --aln-thresh)      require_arg "$1" "${2:-}"; aln_thresh="$2"; shift 2 ;;
+            --size-thresh)     require_arg "$1" "${2:-}"; size_thresh="$2"; shift 2 ;;
+            --cluster-steps)   require_arg "$1" "${2:-}"; cluster_steps="$2"; shift 2 ;;
+            --sample-size)     require_arg "$1" "${2:-}"; sample_size="$2"; shift 2 ;;
+            --help)            echo "Usage: L3Rseq umi --input <dir> --outdir <dir> [--probe <file>] [--method umic-seq|longread-umi] [options]"; return 0 ;;
+            *)                 echo "Unknown option: $1" >&2; return 1 ;;
+        esac
+    done
+
+    [ -z "$input_dir" ] && { echo "ERROR: --input is required" >&2; return 1; }
+    [ -z "$output_dir" ] && { echo "ERROR: --outdir is required" >&2; return 1; }
+    if [ "$method" = "umic-seq" ] && [ -z "$probe_file" ]; then
+        echo "ERROR: --probe is required for --method umic-seq" >&2; return 1
+    fi
+
+    # Use longread-umi default size threshold if not explicitly overridden
+    if [ "$method" = "longread-umi" ] && [ "$size_thresh" = "$DEFAULT_SIZE_THRESH" ]; then
+        size_thresh="$DEFAULT_LONGREAD_SIZE_THRESH"
+    fi
+
+    source "$SCRIPT_DIR/scripts/04_umi.sh"
+    # Activate appropriate conda environment based on method
+    if [ "$method" = "longread-umi" ]; then
+        conda activate "$ENV_LONGREAD_UMI"
+    else
+        conda activate "$ENV_UMIC"
+    fi
+    run_step_04 "$input_dir" "$output_dir" "$probe_file" \
+        "$umi_len" "$umi_loc" "$min_probe_score" "$aln_thresh" \
+        "$size_thresh" "$cluster_steps" "$sample_size" "$method" \
+        "$umi_flank5" "$umi_flank3"
+    conda deactivate
+}
+
+# ---------------------------------------------------------------------------
+# Subcommand: consensus
+# ---------------------------------------------------------------------------
+cmd_consensus() {
+    local input_dir="" output_dir=""
+    local threads="$DEFAULT_CONSENSUS_THREADS"
+    local rounds="$DEFAULT_CONSENSUS_ROUNDS"
+    local preset="$DEFAULT_CONSENSUS_PRESET"
+
+    while [ $# -gt 0 ]; do
+        case "$1" in
+            --input)   require_arg "$1" "${2:-}"; input_dir="$2"; shift 2 ;;
+            --outdir)  require_arg "$1" "${2:-}"; output_dir="$2"; shift 2 ;;
+            --threads) require_arg "$1" "${2:-}"; threads="$2"; shift 2 ;;
+            --rounds)  require_arg "$1" "${2:-}"; rounds="$2"; shift 2 ;;
+            --preset)  require_arg "$1" "${2:-}"; preset="$2"; shift 2 ;;
+            --help)    echo "Usage: L3Rseq consensus --input <dir> --outdir <dir> [--threads <int>] [--rounds <int>] [--preset <str>]"; return 0 ;;
+            *)         echo "Unknown option: $1" >&2; return 1 ;;
+        esac
+    done
+
+    [ -z "$input_dir" ] && { echo "ERROR: --input is required" >&2; return 1; }
+    [ -z "$output_dir" ] && { echo "ERROR: --outdir is required" >&2; return 1; }
+
+    source "$SCRIPT_DIR/scripts/05_consensus.sh"
+    conda activate "$ENV_LONGREAD_UMI"
+    run_step_05 "$input_dir" "$output_dir" "$threads" "$rounds" "$preset"
+    conda deactivate
+}
+
+# ---------------------------------------------------------------------------
+# Subcommand: extract
+# ---------------------------------------------------------------------------
+cmd_extract() {
+    local input_dir="" output_dir=""
+    local target_fwd="$DEFAULT_TARGET_FWD"
+    local target_rev="$DEFAULT_TARGET_REV"
+    local error_rate="$DEFAULT_ERROR_RATE"
+    local min_overlap="$DEFAULT_TARGET_MIN_OVERLAP"
+
+    while [ $# -gt 0 ]; do
+        case "$1" in
+            --input)       require_arg "$1" "${2:-}"; input_dir="$2"; shift 2 ;;
+            --outdir)      require_arg "$1" "${2:-}"; output_dir="$2"; shift 2 ;;
+            --target-fwd)  require_arg "$1" "${2:-}"; target_fwd="$2"; shift 2 ;;
+            --target-rev)  require_arg "$1" "${2:-}"; target_rev="$2"; shift 2 ;;
+            --error-rate)  require_arg "$1" "${2:-}"; error_rate="$2"; shift 2 ;;
+            --min-overlap) require_arg "$1" "${2:-}"; min_overlap="$2"; shift 2 ;;
+            --help)        echo "Usage: L3Rseq extract --input <dir> --outdir <dir> [options]"; return 0 ;;
+            *)             echo "Unknown option: $1" >&2; return 1 ;;
+        esac
+    done
+
+    [ -z "$input_dir" ] && { echo "ERROR: --input is required" >&2; return 1; }
+    [ -z "$output_dir" ] && { echo "ERROR: --outdir is required" >&2; return 1; }
+
+    source "$SCRIPT_DIR/scripts/06_extract.sh"
+    conda activate "$ENV_CUTADAPT"
+    run_step_06 "$input_dir" "$output_dir" "$target_fwd" "$target_rev" "$error_rate" "$min_overlap"
+    conda deactivate
+}
+
+# ---------------------------------------------------------------------------
+# Subcommand: map
+# ---------------------------------------------------------------------------
+cmd_map() {
+    local input_dir="" output_dir="" ref_file=""
+    local preset="$DEFAULT_MAP_PRESET"
+
+    while [ $# -gt 0 ]; do
+        case "$1" in
+            --input)   require_arg "$1" "${2:-}"; input_dir="$2"; shift 2 ;;
+            --outdir)  require_arg "$1" "${2:-}"; output_dir="$2"; shift 2 ;;
+            --ref)     require_arg "$1" "${2:-}"; ref_file="$2"; shift 2 ;;
+            --preset)  require_arg "$1" "${2:-}"; preset="$2"; shift 2 ;;
+            --help)    echo "Usage: L3Rseq map --input <dir> --outdir <dir> --ref <file> [--preset <str>]"; return 0 ;;
+            *)         echo "Unknown option: $1" >&2; return 1 ;;
+        esac
+    done
+
+    [ -z "$input_dir" ] && { echo "ERROR: --input is required" >&2; return 1; }
+    [ -z "$output_dir" ] && { echo "ERROR: --outdir is required" >&2; return 1; }
+    [ -z "$ref_file" ] && { echo "ERROR: --ref is required" >&2; return 1; }
+
+    source "$SCRIPT_DIR/scripts/07_map.sh"
+    conda activate "$ENV_MAP"
+    run_step_07 "$input_dir" "$output_dir" "$ref_file" "$preset"
+    conda deactivate
+}
+
+# ---------------------------------------------------------------------------
+# Subcommand: variants
+# ---------------------------------------------------------------------------
+cmd_variants() {
+    local input_dir="" output_dir="" ref_file=""
+    local min_af="$DEFAULT_MIN_AF"
+    local pattern="$DEFAULT_PATTERN"
+
+    while [ $# -gt 0 ]; do
+        case "$1" in
+            --input)   require_arg "$1" "${2:-}"; input_dir="$2"; shift 2 ;;
+            --outdir)  require_arg "$1" "${2:-}"; output_dir="$2"; shift 2 ;;
+            --ref)     require_arg "$1" "${2:-}"; ref_file="$2"; shift 2 ;;
+            --min-af)  require_arg "$1" "${2:-}"; min_af="$2"; shift 2 ;;
+            --pattern) require_arg "$1" "${2:-}"; pattern="$2"; shift 2 ;;
+            --help)    echo "Usage: L3Rseq variants --input <dir> --outdir <dir> --ref <file> [--min-af <float>] [--pattern <str>]"; return 0 ;;
+            *)         echo "Unknown option: $1" >&2; return 1 ;;
+        esac
+    done
+
+    [ -z "$input_dir" ] && { echo "ERROR: --input is required" >&2; return 1; }
+    [ -z "$output_dir" ] && { echo "ERROR: --outdir is required" >&2; return 1; }
+    [ -z "$ref_file" ] && { echo "ERROR: --ref is required" >&2; return 1; }
+
+    source "$SCRIPT_DIR/scripts/08_variants.sh"
+    conda activate "$ENV_LOFREQ"
+    run_step_08 "$input_dir" "$output_dir" "$ref_file" "$min_af" "$pattern"
+    conda deactivate
+}
+
+# ---------------------------------------------------------------------------
+# Subcommand: correct
+# ---------------------------------------------------------------------------
+cmd_correct() {
+    local input_dir="" output_dir="" ref_file=""
+    local var_file=""
+    local pattern="$DEFAULT_PATTERN"
+    local blast_db_path="$DEFAULT_BLAST_DB_PATH"
+    local blast_db2_path="$DEFAULT_BLAST_DB2_PATH"
+    local clip_thresh="$DEFAULT_CLIP_THRESH"
+    local threads="$DEFAULT_CORRECT_THREADS"
+    local count_pattern=""
+    local introns=""
+    while [ $# -gt 0 ]; do
+        case "$1" in
+            --input)         require_arg "$1" "${2:-}"; input_dir="$2"; shift 2 ;;
+            --outdir)        require_arg "$1" "${2:-}"; output_dir="$2"; shift 2 ;;
+            --ref)           require_arg "$1" "${2:-}"; ref_file="$2"; shift 2 ;;
+            --var)           require_arg "$1" "${2:-}"; var_file="$2"; shift 2 ;;
+            --pattern)       require_arg "$1" "${2:-}"; pattern="$2"; shift 2 ;;
+            --count-pattern) require_arg "$1" "${2:-}"; count_pattern="$2"; shift 2 ;;
+            --introns)       require_arg "$1" "${2:-}"; introns="$2"; shift 2 ;;
+            --blast-db)      require_arg "$1" "${2:-}"; blast_db_path="$2"; shift 2 ;;
+            --blast-db2)     require_arg "$1" "${2:-}"; blast_db2_path="$2"; shift 2 ;;
+            --clip-thresh)   require_arg "$1" "${2:-}"; clip_thresh="$2"; shift 2 ;;
+            --threads)       require_arg "$1" "${2:-}"; threads="$2"; shift 2 ;;
+            --help)          echo "Usage: L3Rseq correct --input <dir> --outdir <dir> --ref <file> [--var <file>] [--pattern <str>] [--count-pattern <str>] [--introns <spec>] [--threads <n>]"; return 0 ;;
+            *)               echo "Unknown option: $1" >&2; return 1 ;;
+        esac
+    done
+
+    [ -z "$input_dir" ] && { echo "ERROR: --input is required" >&2; return 1; }
+    [ -z "$output_dir" ] && { echo "ERROR: --outdir is required" >&2; return 1; }
+    [ -z "$ref_file" ] && { echo "ERROR: --ref is required" >&2; return 1; }
+    validate_introns "$introns" || return 1
+
+    conda activate "$ENV_MAP"
+    source "$SCRIPT_DIR/scripts/09_tail_correct.sh"
+    run_step_09 "$input_dir" "$output_dir" "$ref_file" "$var_file" "$pattern" \
+        "$blast_db_path" "$blast_db2_path" "$clip_thresh" "$output_dir/08_variants" "$threads" "$count_pattern" "$introns"
+    conda deactivate
+}
+
+# ---------------------------------------------------------------------------
+# Subcommand: export
+# ---------------------------------------------------------------------------
+cmd_export() {
+    local input_dir="" output_dir=""
+
+    while [ $# -gt 0 ]; do
+        case "$1" in
+            --input)  require_arg "$1" "${2:-}"; input_dir="$2"; shift 2 ;;
+            --outdir) require_arg "$1" "${2:-}"; output_dir="$2"; shift 2 ;;
+            --help)   echo "Usage: L3Rseq export --input <dir> --outdir <dir>"; return 0 ;;
+            *)        echo "Unknown option: $1" >&2; return 1 ;;
+        esac
+    done
+
+    [ -z "$input_dir" ] && { echo "ERROR: --input is required" >&2; return 1; }
+    [ -z "$output_dir" ] && { echo "ERROR: --outdir is required" >&2; return 1; }
+
+    source "$SCRIPT_DIR/scripts/10_export_csv.sh"
+    run_step_10 "$input_dir" "$output_dir"
+}
+
+# ---------------------------------------------------------------------------
+# Subcommand: discover-introns
+# ---------------------------------------------------------------------------
+cmd_discover_introns() {
+    local input_dir="" output_dir=""
+    local min_del_len=50
+    local min_support_pct=5
+    local boundary_tolerance=10
+
+    while [ $# -gt 0 ]; do
+        case "$1" in
+            --input)                require_arg "$1" "${2:-}"; input_dir="$2"; shift 2 ;;
+            --outdir)               require_arg "$1" "${2:-}"; output_dir="$2"; shift 2 ;;
+            --min-del-length)       require_arg "$1" "${2:-}"; min_del_len="$2"; shift 2 ;;
+            --min-support-pct)      require_arg "$1" "${2:-}"; min_support_pct="$2"; shift 2 ;;
+            --boundary-tolerance)   require_arg "$1" "${2:-}"; boundary_tolerance="$2"; shift 2 ;;
+            --help)            echo "Usage: L3Rseq discover-introns --input <07_map_dir> --outdir <dir> [--min-del-length <int>] [--min-support-pct <float>] [--boundary-tolerance <int>]"; return 0 ;;
+            *)                 echo "Unknown option: $1" >&2; return 1 ;;
+        esac
+    done
+
+    [ -z "$input_dir" ] && { echo "ERROR: --input is required (path to 07_map output)" >&2; return 1; }
+    [ -z "$output_dir" ] && { echo "ERROR: --outdir is required" >&2; return 1; }
+
+    source "$SCRIPT_DIR/scripts/discover_introns.sh"
+    conda activate "$ENV_MAP"
+    run_discover_introns "$input_dir" "$output_dir" "$min_del_len" "$min_support_pct" "$boundary_tolerance"
+    conda deactivate
+}
+
+# ---------------------------------------------------------------------------
+# Subcommand: run (full pipeline)
+# ---------------------------------------------------------------------------
+cmd_run() {
+    local input_dir="" output_dir="" ref_file="" probe_file=""
+    local rpi_fasta="" var_file="" prefix=""
+    local start_at=1 stop_at=10
+    local prefilter=0
+    local pattern="$DEFAULT_PATTERN"
+    local threads="$DEFAULT_CONSENSUS_THREADS"
+    local method="longread-umi"
+    local umi_flank5="$DEFAULT_UMI_FLANK5"
+    local umi_flank3="$DEFAULT_UMI_FLANK3"
+    local count_pattern=""
+    local keep_intermediates=0
+    # Library-specific overrides (default to config.sh values; for adapter/target
+    # customization, edit config.sh or use the individual subcommands directly)
+    local blast_db_path="$DEFAULT_BLAST_DB_PATH"
+    local blast_db2_path="$DEFAULT_BLAST_DB2_PATH"
+    local introns=""
+    local target_fwd="$DEFAULT_TARGET_FWD"
+    local target_rev="$DEFAULT_TARGET_REV"
+
+    while [ $# -gt 0 ]; do
+        case "$1" in
+            --input)              require_arg "$1" "${2:-}"; input_dir="$2"; shift 2 ;;
+            --outdir)             require_arg "$1" "${2:-}"; output_dir="$2"; shift 2 ;;
+            --ref)                require_arg "$1" "${2:-}"; ref_file="$2"; shift 2 ;;
+            --probe)              require_arg "$1" "${2:-}"; probe_file="$2"; shift 2 ;;
+            --rpi-fasta)          require_arg "$1" "${2:-}"; rpi_fasta="$2"; shift 2 ;;
+            --var)                require_arg "$1" "${2:-}"; var_file="$2"; shift 2 ;;
+            --pattern)            require_arg "$1" "${2:-}"; pattern="$2"; shift 2 ;;
+            --count-pattern)      require_arg "$1" "${2:-}"; count_pattern="$2"; shift 2 ;;
+            --prefix)             require_arg "$1" "${2:-}"; prefix="$2"; shift 2 ;;
+            --start-at)           require_arg "$1" "${2:-}"; start_at="$2"; shift 2 ;;
+            --stop-at)            require_arg "$1" "${2:-}"; stop_at="$2"; shift 2 ;;
+            --prefilter)          prefilter=1; shift ;;
+            --threads)            require_arg "$1" "${2:-}"; threads="$2"; shift 2 ;;
+            --method)             require_arg "$1" "${2:-}"; method="$2"; shift 2 ;;
+            --umi-flank5)         require_arg "$1" "${2:-}"; umi_flank5="$2"; shift 2 ;;
+            --umi-flank3)         require_arg "$1" "${2:-}"; umi_flank3="$2"; shift 2 ;;
+            --blast-db)           require_arg "$1" "${2:-}"; blast_db_path="$2"; shift 2 ;;
+            --blast-db2)          require_arg "$1" "${2:-}"; blast_db2_path="$2"; shift 2 ;;
+            --introns)            require_arg "$1" "${2:-}"; introns="$2"; shift 2 ;;
+            --target-fwd)         require_arg "$1" "${2:-}"; target_fwd="$2"; shift 2 ;;
+            --target-rev)         require_arg "$1" "${2:-}"; target_rev="$2"; shift 2 ;;
+            --keep-intermediates) keep_intermediates=1; shift ;;
+            --help)
+                cat <<'RUNHELP'
+Usage: L3Rseq run --input <dir> --outdir <dir> [options]
+
+Run the full pipeline (or a subset with --start-at / --stop-at).
+
+Required:
+  --input <dir>           Input directory (raw FASTQs or demuxed reads)
+  --outdir <dir>          Output directory
+
+Reference & annotation:
+  --ref <file>            Reference FASTA (required for steps 07-09)
+  --probe <file>          Probe FASTA for UMIC-seq UMI extraction (step 04)
+  --rpi-fasta <file>      RPI barcode FASTA for demultiplexing (step 03)
+  --var <file>            Variant file for tail correction (auto-detected from step 08)
+  --blast-db <path>       BLAST DB prefix for translocation detection (step 09)
+  --blast-db2 <path>      BLAST DB prefix for cDNA annotation (step 09)
+
+UMI & editing:
+  --method <str>          UMI method: umic-seq (default) or longread-umi
+  --pattern <str>         Editing pattern, e.g., CT (default), AG
+  --count-pattern <str>   Secondary count-only pattern, e.g., TC for SLAM-seq
+  --umi-flank5 <seq>      5' UMI flanking sequence (longread-umi method)
+  --umi-flank3 <seq>      3' UMI flanking sequence (longread-umi method)
+  --target-fwd <seq>      Forward target sequence for extraction (step 06)
+  --target-rev <seq>      Reverse target sequence for extraction (step 06)
+
+Pipeline control:
+  --start-at <n>          Start at step n (default: 1)
+  --stop-at <n>           Stop after step n (default: 10)
+  --threads <n>           Threads for consensus/correction (default: all CPUs)
+  --prefilter             Run optional filter step between demux and UMI
+  --keep-intermediates    Keep all intermediate files (default: clean up)
+  --prefix <str>          Output file prefix for step 01
+
+Adapter/target sequences default to config.sh values. Override per-step
+with individual subcommands (L3Rseq trim --adapter-fwd, etc.).
+RUNHELP
+                return 0 ;;
+            *)                    echo "Unknown option: $1" >&2; return 1 ;;
+        esac
+    done
+
+    [ -z "$input_dir" ] && { echo "ERROR: --input is required" >&2; return 1; }
+    [ -z "$output_dir" ] && { echo "ERROR: --outdir is required" >&2; return 1; }
+    validate_introns "$introns" || return 1
+
+    mkdir -p "$output_dir"
+
+    # When --start-at > 1, link --input so downstream steps find their data.
+    # Two modes: (a) --input contains step output subdirs (e.g., 07_map/, 08_variants/)
+    #   → symlink each one; (b) --input IS the data → symlink as the expected dir name.
+    if [ "$start_at" -gt 1 ] && [ -n "$input_dir" ]; then
+        local _abs_input
+        _abs_input="$(cd "$input_dir" && pwd)"
+
+        # Check for numbered step subdirectories inside --input
+        local _linked=0
+        for _d in "$_abs_input"/[0-9][0-9]_*/; do
+            [ -d "$_d" ] || continue
+            local _dname
+            _dname="$(basename "$_d")"
+            if [ ! -e "$output_dir/$_dname" ]; then
+                ln -sf "$_abs_input/$_dname" "$output_dir/$_dname"
+            fi
+            _linked=1
+        done
+
+        # No step subdirs found → symlink --input as the expected previous-step output
+        if [ "$_linked" -eq 0 ]; then
+            local _target
+            case "$start_at" in
+                2)    _target="01_concat" ;;
+                3)    _target="02_trim" ;;
+                4)    _target="03_demux" ;;
+                5)    _target="04_umi" ;;
+                6)    _target="05_consensus" ;;
+                7)    _target="06_extract" ;;
+                8|9)  _target="07_map" ;;
+                10)   _target="09_correct" ;;
+            esac
+            if [ -n "${_target:-}" ] && [ ! -e "$output_dir/$_target" ]; then
+                ln -sf "$_abs_input" "$output_dir/$_target"
+            fi
+        fi
+    fi
+
+    echo "========================================"
+    echo "L3Rseq pipeline: steps $start_at to $stop_at"
+    echo "========================================"
+
+    # Step 1: Concatenate
+    if [ "$start_at" -le 1 ] && [ "$stop_at" -ge 1 ]; then
+        source "$SCRIPT_DIR/scripts/01_concat.sh"
+        run_step_01 "$input_dir" "$output_dir" "$prefix"
+    fi
+
+    # Step 2: Trim (input: 01_concat/)
+    if [ "$start_at" -le 2 ] && [ "$stop_at" -ge 2 ]; then
+        source "$SCRIPT_DIR/scripts/02_trim.sh"
+        conda activate "$ENV_CUTADAPT"
+        run_step_02 "$output_dir/01_concat" "$output_dir" \
+            "$DEFAULT_ADAPTER_FWD" "$DEFAULT_ADAPTER_REV" "$DEFAULT_ADAPTER_TRIM3" "$DEFAULT_ERROR_RATE"
+        conda deactivate
+        # Cleanup: trim1/trim2 are intermediate; only trim3 used by step 03
+        if [ "$keep_intermediates" -eq 0 ]; then
+            for _bc_dir in "$output_dir"/02_trim/*/; do
+                [ -d "$_bc_dir" ] || continue
+                rm -f "$_bc_dir"/*_trim1.fastq.gz "$_bc_dir"/*_trim2.fastq.gz
+            done
+        fi
+    fi
+
+    # Step 3: Demux (input: 02_trim/)
+    if [ "$start_at" -le 3 ] && [ "$stop_at" -ge 3 ]; then
+        [ -z "$rpi_fasta" ] && { echo "ERROR: --rpi-fasta is required for step 3" >&2; return 1; }
+        [ -n "$rpi_fasta" ] && [ ! -f "$rpi_fasta" ] && { echo "ERROR: --rpi-fasta file not found: $rpi_fasta" >&2; return 1; }
+        source "$SCRIPT_DIR/scripts/03_demultiplex.sh"
+        conda activate "$ENV_CUTADAPT"
+        run_step_03 "$output_dir/02_trim" "$output_dir" "$rpi_fasta" \
+            "$DEFAULT_DEMUX_ERROR_RATE" "$DEFAULT_DEMUX_MIN_OVERLAP"
+        conda deactivate
+        # Cleanup: unclassified reads not used downstream
+        if [ "$keep_intermediates" -eq 0 ]; then
+            find "$output_dir/03_demux" -name '*_unclassified.fastq' -delete 2>/dev/null || true
+        fi
+    fi
+
+    # Optional: filter (input: 03_demux/)
+    if [ "$prefilter" -eq 1 ] && [ "$start_at" -le 3 ] && [ "$stop_at" -ge 4 ]; then
+        [ -z "$ref_file" ] && { echo "ERROR: --ref is required for --prefilter" >&2; return 1; }
+        source "$SCRIPT_DIR/scripts/filter.sh"
+        conda activate "$ENV_MAP"
+        run_step_filter "$output_dir/03_demux" "$output_dir" "$ref_file" "$DEFAULT_MAP_PRESET"
+        conda deactivate
+    fi
+
+    # Step 4: UMI (input: filter/ or 03_demux/)
+    if [ "$start_at" -le 4 ] && [ "$stop_at" -ge 4 ]; then
+        if [ "$method" = "umic-seq" ] && [ -z "$probe_file" ]; then
+            echo "ERROR: --probe is required for step 4 with --method umic-seq" >&2; return 1
+        fi
+        local umi_input="$output_dir/03_demux"
+        if [ "$prefilter" -eq 1 ] && [ -d "$output_dir/filter" ]; then
+            umi_input="$output_dir/filter"
+        fi
+        local run_size_thresh="$DEFAULT_SIZE_THRESH"
+        if [ "$method" = "longread-umi" ]; then
+            run_size_thresh="$DEFAULT_LONGREAD_SIZE_THRESH"
+        fi
+        source "$SCRIPT_DIR/scripts/04_umi.sh"
+        if [ "$method" = "longread-umi" ]; then
+            conda activate "$ENV_LONGREAD_UMI"
+        else
+            conda activate "$ENV_UMIC"
+        fi
+        run_step_04 "$umi_input" "$output_dir" "$probe_file" \
+            "$DEFAULT_UMI_LEN" "$DEFAULT_UMI_LOC" "$DEFAULT_MIN_PROBE_SCORE" \
+            "$DEFAULT_ALN_THRESH" "$run_size_thresh" "$DEFAULT_CLUSTER_STEPS" \
+            "$DEFAULT_SAMPLE_SIZE" "$method" "$umi_flank5" "$umi_flank3"
+        conda deactivate
+    fi
+
+    # Step 5: Consensus (input: 04_umi/)
+    if [ "$start_at" -le 5 ] && [ "$stop_at" -ge 5 ]; then
+        source "$SCRIPT_DIR/scripts/05_consensus.sh"
+        conda activate "$ENV_LONGREAD_UMI"
+        run_step_05 "$output_dir/04_umi" "$output_dir" "$threads" \
+            "$DEFAULT_CONSENSUS_ROUNDS" "$DEFAULT_CONSENSUS_PRESET" "$keep_intermediates"
+        conda deactivate
+        # Cleanup step 04: bin FASTQs and UMI refs no longer needed after consensus
+        if [ "$keep_intermediates" -eq 0 ]; then
+            for _rpi_dir in "$output_dir"/04_umi/*/*; do
+                [ -d "$_rpi_dir" ] || continue
+                rm -rf "$_rpi_dir/umi_ref" "$_rpi_dir/trim"
+                rm -rf "$_rpi_dir/read_binning/bins" "$_rpi_dir/UMIclusterfull"
+            done
+        fi
+    fi
+
+    # Step 6: Extract (input: 05_consensus/)
+    if [ "$start_at" -le 6 ] && [ "$stop_at" -ge 6 ]; then
+        source "$SCRIPT_DIR/scripts/06_extract.sh"
+        conda activate "$ENV_CUTADAPT"
+        run_step_06 "$output_dir/05_consensus" "$output_dir" \
+            "$target_fwd" "$target_rev" "$DEFAULT_ERROR_RATE" "$DEFAULT_TARGET_MIN_OVERLAP"
+        conda deactivate
+    fi
+
+    # Step 7: Map (input: 06_extract/)
+    if [ "$start_at" -le 7 ] && [ "$stop_at" -ge 7 ]; then
+        [ -z "$ref_file" ] && { echo "ERROR: --ref is required for step 7" >&2; return 1; }
+        [ ! -f "$ref_file" ] && { echo "ERROR: --ref file not found: $ref_file" >&2; return 1; }
+        source "$SCRIPT_DIR/scripts/07_map.sh"
+        conda activate "$ENV_MAP"
+        run_step_07 "$output_dir/06_extract" "$output_dir" "$ref_file" "$DEFAULT_MAP_PRESET"
+        conda deactivate
+        # Cleanup: aligned.sam and aligned.bam redundant with sort.bam
+        if [ "$keep_intermediates" -eq 0 ]; then
+            for _rpi_dir in "$output_dir"/07_map/*/*; do
+                [ -d "$_rpi_dir" ] || continue
+                rm -f "$_rpi_dir/aligned.sam" "$_rpi_dir/aligned.bam"
+            done
+        fi
+    fi
+
+    # Step 8: Variants (input: 07_map/)
+    if [ "$start_at" -le 8 ] && [ "$stop_at" -ge 8 ]; then
+        [ -z "$ref_file" ] && { echo "ERROR: --ref is required for step 8" >&2; return 1; }
+        [ ! -f "$ref_file" ] && { echo "ERROR: --ref file not found: $ref_file" >&2; return 1; }
+        source "$SCRIPT_DIR/scripts/08_variants.sh"
+        conda activate "$ENV_LOFREQ"
+        run_step_08 "$output_dir/07_map" "$output_dir" "$ref_file" "$DEFAULT_MIN_AF" "$pattern"
+        conda deactivate
+    fi
+
+    # Step 9: Correct (input: 07_map/)
+    if [ "$start_at" -le 9 ] && [ "$stop_at" -ge 9 ]; then
+        [ -z "$ref_file" ] && { echo "ERROR: --ref is required for step 9" >&2; return 1; }
+        [ ! -f "$ref_file" ] && { echo "ERROR: --ref file not found: $ref_file" >&2; return 1; }
+        # Auto-detect variant files from step 08 if --var not specified
+        local run_var_file="$var_file"
+        conda activate "$ENV_MAP"
+        source "$SCRIPT_DIR/scripts/09_tail_correct.sh"
+        run_step_09 "$output_dir/07_map" "$output_dir" "$ref_file" "$run_var_file" "$pattern" \
+            "$blast_db_path" "$blast_db2_path" "$DEFAULT_CLIP_THRESH" \
+            "$output_dir/08_variants" "$threads" "$count_pattern" "$introns"
+        conda deactivate
+    fi
+
+    # Step 10: Export (input: 09_correct/)
+    if [ "$start_at" -le 10 ] && [ "$stop_at" -ge 10 ]; then
+        source "$SCRIPT_DIR/scripts/10_export_csv.sh"
+        run_step_10 "$output_dir/09_correct" "$output_dir"
+    fi
+
+    echo "========================================"
+    echo "L3Rseq pipeline complete."
+    echo "========================================"
+}
+
+# ---------------------------------------------------------------------------
+# Subcommand: viewer
+# ---------------------------------------------------------------------------
+cmd_viewer() {
+    local port=8080
+    local stop=0
+    local scan_dir=""
+
+    while [ $# -gt 0 ]; do
+        case "$1" in
+            --port) require_arg "$1" "${2:-}"; port="$2"; shift 2 ;;
+            --dir)  require_arg "$1" "${2:-}"; scan_dir="$2"; shift 2 ;;
+            --stop) stop=1; shift ;;
+            --help) cat <<'VIEWERHELP'
+Usage: L3Rseq viewer [--dir <path>] [--port <int>] [--stop]
+
+Start the IGV.js alignment viewer in your browser.
+Auto-discovers BAM files from pipeline output directories.
+
+Options:
+  --dir <path>   Only scan this directory for datasets (default: entire workspace)
+  --port <int>   Port number (default: 8080)
+  --stop         Stop a running viewer
+
+Examples:
+  L3Rseq viewer                        # scan everything
+  L3Rseq viewer --dir tests/output     # only synthetic test results
+  L3Rseq viewer --dir runs/Splice      # only one run
+
+The viewer shows:
+  - Raw mapping (step 07, gray) and tail-corrected reads (step 09, tan)
+  - Reads are displayed in squished mode with soft-clipped bases visible
+  - Click any read to see SAM tags (EC, SC, NC, 3E, SJ, etc.)
+
+Requires Node.js. In the devcontainer, the viewer starts automatically.
+VIEWERHELP
+                return 0 ;;
+            *) echo "Unknown option: $1" >&2; return 1 ;;
+        esac
+    done
+
+    if [ "$stop" -eq 1 ]; then
+        if pkill -f "node.*igv_viewer/server.js" 2>/dev/null; then
+            echo "Viewer stopped."
+        else
+            echo "No viewer running."
+        fi
+        return 0
+    fi
+
+    if ! command -v node >/dev/null 2>&1; then
+        echo "ERROR: Node.js is not installed. Install it or use the devcontainer." >&2
+        return 1
+    fi
+
+    # Install dependencies if needed
+    if [ ! -d "$SCRIPT_DIR/igv_viewer/node_modules/igv" ]; then
+        echo "Installing IGV.js dependency..."
+        (cd "$SCRIPT_DIR/igv_viewer" && npm install --silent) || {
+            echo "ERROR: npm install failed." >&2; return 1
+        }
+    fi
+
+    # Resolve --dir to absolute path
+    local scan_env=""
+    if [ -n "$scan_dir" ]; then
+        scan_dir=$(cd "$scan_dir" 2>/dev/null && pwd) || {
+            echo "ERROR: --dir not found: $scan_dir" >&2; return 1
+        }
+        scan_env="$scan_dir"
+    fi
+
+    # Stop existing instance if running
+    pkill -f "node.*igv_viewer/server.js" 2>/dev/null || true
+    sleep 0.5
+
+    IGV_PORT="$port" IGV_SCAN_DIR="$scan_env" IGV_DATA_DIR="${IGV_DATA_DIR:-}" node "$SCRIPT_DIR/igv_viewer/server.js" &
+    echo ""
+    echo "  IGV.js viewer running at http://localhost:${port}"
+    if [ -n "$scan_env" ]; then
+        echo "  Scanning: $scan_env"
+    fi
+    echo "  In VS Code / Codespaces, check the Ports tab to open in browser."
+    echo "  Stop with: L3Rseq viewer --stop"
+    echo ""
+}
+
+# ---------------------------------------------------------------------------
+# Main: dispatch subcommand
+# ---------------------------------------------------------------------------
+if [ $# -eq 0 ]; then
+    show_help
+    exit 0
+fi
+
+subcommand="$1"
+shift
+
+case "$subcommand" in
+    concat)    cmd_concat "$@" ;;
+    trim)      cmd_trim "$@" ;;
+    demux)     cmd_demux "$@" ;;
+    filter)    cmd_filter "$@" ;;
+    umi)       cmd_umi "$@" ;;
+    consensus) cmd_consensus "$@" ;;
+    extract)   cmd_extract "$@" ;;
+    map)       cmd_map "$@" ;;
+    variants)  cmd_variants "$@" ;;
+    correct)   cmd_correct "$@" ;;
+    export)            cmd_export "$@" ;;
+    discover-introns)  cmd_discover_introns "$@" ;;
+    viewer)            cmd_viewer "$@" ;;
+    run)               cmd_run "$@" ;;
+    --help|-h)      show_help ;;
+    --version|-v)   echo "L3Rseq $VERSION" ;;
+    *)              echo "Unknown subcommand: $subcommand" >&2; echo "Run 'L3Rseq --help' for usage." >&2; exit 1 ;;
+esac

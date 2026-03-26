@@ -1,0 +1,592 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <title>L3Rseq — IGV.js Viewer</title>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body { font-family: system-ui, sans-serif; background: #f5f5f5; }
+    header { background: #2c3e50; color: #fff; padding: 12px 24px;
+             display: flex; align-items: center; gap: 16px; flex-wrap: wrap; }
+    header h1 { font-size: 18px; font-weight: 600; }
+    header select { padding: 4px 8px; border-radius: 4px; font-size: 14px; }
+    #igv-container { margin: 12px; }
+    .info { margin: 12px 12px 0; padding: 12px; background: #fff;
+            border-radius: 6px 6px 0 0; font-size: 13px; color: #555; }
+    .info code { background: #eee; padding: 2px 6px; border-radius: 3px; }
+    .empty { margin: 24px; color: #888; font-size: 15px; }
+
+    .controls-bar { display: none; margin: 0 12px 12px; background: #fff;
+                    border-radius: 0 0 6px 6px; border-top: 1px solid #eee;
+                    font-size: 13px; }
+    .controls-header { padding: 8px 12px; cursor: pointer;
+                       display: flex; align-items: center; gap: 8px;
+                       user-select: none; color: #333; }
+    .controls-header:hover { background: #fafafa; }
+    .controls-header .arrow { display: inline-block; font-size: 10px;
+                              transition: transform 0.15s; }
+    .controls-header .arrow.open { transform: rotate(90deg); }
+    .controls-header .title { font-weight: 600; }
+    .controls-panel { display: none; padding: 4px 12px 12px;
+                      border-top: 1px solid #eee; }
+    .controls-panel.open { display: block; }
+    .ctrl-row { display: flex; flex-wrap: wrap; align-items: center;
+                gap: 6px 10px; margin-bottom: 6px; }
+    .ctrl-row:last-child { margin-bottom: 0; }
+    .ctrl-row label.ctrl-label { font-weight: 600; min-width: 65px; color: #555; }
+    .ctrl-row select { padding: 3px 6px; border: 1px solid #ccc;
+                       border-radius: 4px; font-size: 13px; }
+    .ctrl-btn { padding: 3px 10px; border: 1px solid #ccc;
+                border-radius: 4px; background: #f8f8f8;
+                cursor: pointer; font-size: 13px; }
+    .ctrl-btn:hover { background: #e8e8e8; }
+    .ctrl-btn.active { background: #2c3e50; color: #fff; border-color: #2c3e50; }
+    .ctrl-toggles { display: flex; flex-wrap: wrap; gap: 4px 14px; }
+    .ctrl-toggles label { font-weight: normal; min-width: auto;
+                          cursor: pointer; display: flex;
+                          align-items: center; gap: 3px; }
+    #status { padding: 6px 12px; font-size: 12px; color: #c0392b;
+              border-top: 1px solid #eee; word-break: break-all; }
+    .color-legend { display: inline-flex; gap: 10px; margin-left: 8px; font-size: 12px; }
+    .color-legend span { display: inline-flex; align-items: center; gap: 3px; }
+    .color-swatch { display: inline-block; width: 12px; height: 12px;
+                    border-radius: 2px; border: 1px solid #ccc; }
+  </style>
+</head>
+<body>
+  <header>
+    <h1>L3Rseq Mapping Viewer</h1>
+    <label for="dataset">Dataset:</label>
+    <select id="dataset"><option value="">loading...</option></select>
+    <label for="ref-select">Reference:</label>
+    <select id="ref-select"><option value="">loading...</option></select>
+    <label for="show-all" style="margin-left: 12px; font-size: 14px; cursor: pointer;">
+      <input type="checkbox" id="show-all" style="cursor: pointer;"> Show all reads
+    </label>
+  </header>
+  <div class="info">
+    Tracks show raw mapping (step 07, blue) and tail-corrected reads (step 09, red).
+    Click a read to see SAM tags: <code>EC</code> = editing count,
+    <code>SC</code> = secondary count (SLAM T&rarr;C),
+    <code>NC</code> = noise count, <code>3E</code> = 3&prime; end position,
+    <code>SJ</code> = splice status (S=spliced, R=retained, -=not spanned).
+  </div>
+
+  <div class="controls-bar" id="controls-bar">
+    <div class="controls-header" onclick="toggleControlsPanel()">
+      <span class="arrow" id="controls-arrow">&#9654;</span>
+      <span class="title">All-Track Controls</span>
+    </div>
+    <div class="controls-panel" id="controls-panel">
+      <div class="ctrl-row">
+        <label class="ctrl-label">Tracks:</label>
+        <div class="ctrl-toggles" id="track-toggles"></div>
+      </div>
+      <div class="ctrl-row">
+        <label class="ctrl-label">Display:</label>
+        <button class="ctrl-btn active" id="btn-squished" onclick="setAllDisplay('SQUISHED')">Squished</button>
+        <button class="ctrl-btn" id="btn-expanded" onclick="setAllDisplay('EXPANDED')">Expanded</button>
+      </div>
+      <div class="ctrl-row">
+        <label class="ctrl-label">Height:</label>
+        <input type="number" id="track-height" value="250" min="50" max="1000" step="50"
+               style="width: 70px; padding: 3px 6px; border: 1px solid #ccc;
+                      border-radius: 4px; font-size: 13px;"
+               onchange="setAllHeight(this.value)">
+        <span style="color: #888">px</span>
+      </div>
+      <div class="ctrl-row">
+        <label class="ctrl-label">Sort by:</label>
+        <select id="sort-by" onchange="sortAllTracks()">
+          <option value="none">None</option>
+          <optgroup label="SAM Tags">
+            <option value="tag:EC">EC — editing count</option>
+            <option value="tag:SC">SC — secondary count (SLAM)</option>
+            <option value="tag:NC">NC — noise count</option>
+            <option value="tag:3E">3E — 3' end position</option>
+            <option value="tag:TL">TL — translocation</option>
+            <option value="tag:DS">DS — double-sorter</option>
+            <option value="tag:mL">mL — matched length</option>
+            <option value="tag:SJ">SJ — splice status</option>
+            <option value="tag:SI">SI — introns spliced</option>
+            <option value="tag:IR">IR — introns retained</option>
+          </optgroup>
+          <optgroup label="Alignment">
+            <option value="ALIGNED_READ_LENGTH">Read length</option>
+            <option value="START">Start position</option>
+            <option value="MQ">Mapping quality</option>
+            <option value="strand">Strand</option>
+          </optgroup>
+        </select>
+        <button class="ctrl-btn active" id="btn-sort-asc" onclick="setSortDir('ASC')">ASC</button>
+        <button class="ctrl-btn" id="btn-sort-desc" onclick="setSortDir('DESC')">DESC</button>
+      </div>
+      <div class="ctrl-row">
+        <label class="ctrl-label">Color by:</label>
+        <select id="color-by" onchange="setAllColor()">
+          <option value="none">None (track default)</option>
+          <option value="tag:SJ">SJ — splice status</option>
+          <option value="tag:EC">EC — editing count</option>
+          <option value="tag:NC">NC — noise count</option>
+          <option value="tag:TL">TL — translocation</option>
+          <option value="strand">Strand</option>
+        </select>
+        <span class="color-legend" id="color-legend"></span>
+      </div>
+      <div class="ctrl-row">
+        <label class="ctrl-label">Group by:</label>
+        <select id="group-by" onchange="groupAllTracks()">
+          <option value="none">None</option>
+          <optgroup label="SAM Tags">
+            <option value="tag:SJ">SJ — splice status</option>
+            <option value="tag:EC">EC — editing count</option>
+            <option value="tag:SC">SC — secondary count (SLAM)</option>
+            <option value="tag:NC">NC — noise count</option>
+            <option value="tag:TL">TL — translocation</option>
+          </optgroup>
+          <optgroup label="Alignment">
+            <option value="strand">Strand</option>
+            <option value="firstOfPairStrand">First-of-pair strand</option>
+          </optgroup>
+        </select>
+      </div>
+      <div class="ctrl-row">
+        <label class="ctrl-label">Show:</label>
+        <div class="ctrl-toggles">
+          <label><input type="checkbox" id="tog-softclips" checked
+                        onchange="setAllToggle('showSoftClips', this.checked)"> Soft clips</label>
+          <label><input type="checkbox" id="tog-mismatches" checked
+                        onchange="setAllToggle('showMismatches', this.checked)"> Mismatches</label>
+          <label><input type="checkbox" id="tog-insertions" checked
+                        onchange="setAllToggle('showInsertions', this.checked)"> Insertions</label>
+          <label><input type="checkbox" id="tog-allbases"
+                        onchange="setAllToggle('showAllBases', this.checked)"> All bases</label>
+        </div>
+      </div>
+    </div>
+    <div id="status"></div>
+  </div>
+
+  <div id="igv-container"></div>
+
+  <script src="/igv/igv.min.js"></script>
+  <script>
+    var browser = null;  // var so Puppeteer tools can access window.browser
+    let references = [];
+    let allTracks = [];  // full track configs from API (for toggle)
+
+    function showStatus(msg) {
+      const el = document.getElementById("status");
+      el.style.display = "block";
+      el.textContent = msg;
+    }
+
+    /* ---- Initialization (fast — only fetches directory names) ---- */
+
+    async function init() {
+      const res = await fetch("/api/datasets");
+      const config = await res.json();
+      references = config.references;
+
+      const sel = document.getElementById("dataset");
+      sel.innerHTML = '<option value="">-- select dataset --</option>';
+      const names = config.datasets;
+      if (names.length === 0) {
+        sel.innerHTML = '<option value="">No pipeline output found</option>';
+        document.getElementById("igv-container").innerHTML =
+          '<p class="empty">Run the L3Rseq pipeline first, then refresh this page.<br>' +
+          'The viewer auto-discovers sorted BAM files in any output directory ' +
+          'that contains <code>07_map/</code> or <code>09_correct/</code>.</p>';
+        return;
+      }
+      for (const name of names) {
+        const opt = document.createElement("option");
+        opt.value = name;
+        opt.textContent = name;
+        sel.appendChild(opt);
+      }
+      sel.onchange = () => loadDataset(sel.value);
+
+      /* Populate reference selector */
+      const refSel = document.getElementById("ref-select");
+      refSel.innerHTML = "";
+      for (let i = 0; i < references.length; i++) {
+        const opt = document.createElement("option");
+        opt.value = i;
+        opt.textContent = references[i].name;
+        refSel.appendChild(opt);
+      }
+      refSel.onchange = () => {
+        const dsSel = document.getElementById("dataset");
+        if (dsSel.value) loadDataset(dsSel.value);
+      };
+    }
+
+    /* ---- Load tracks on demand (only when user selects a dataset) ---- */
+
+    async function loadDataset(name) {
+      if (!name) return;
+      const container = document.getElementById("igv-container");
+      if (browser) { igv.removeBrowser(browser); browser = null; }
+
+      showStatus("Loading " + name + " ...");
+
+      const res = await fetch("/api/tracks?name=" + encodeURIComponent(name));
+      if (!res.ok) { showStatus("Failed to load dataset: " + name); return; }
+      const ds = await res.json();
+
+      /* Auto-select the matching reference for this dataset */
+      const refSel = document.getElementById("ref-select");
+      if (ds.refName) {
+        for (let i = 0; i < references.length; i++) {
+          if (references[i].name === ds.refName) {
+            refSel.value = i;
+            break;
+          }
+        }
+      }
+
+      const refIdx = parseInt(refSel.value, 10) || 0;
+      const ref = references[refIdx];
+      if (!ref) { container.innerHTML = '<p class="empty">No indexed reference found.</p>'; return; }
+
+      allTracks = ds.tracks;
+      buildTrackToggles(allTracks);
+
+      const showAll = document.getElementById("show-all").checked;
+      const enabledTracks = getEnabledTracks(showAll);
+
+      /* Apply active groupBy to track configs before creating the browser,
+         so data is fetched and packed with grouping from the start. */
+      const activeGroupBy = document.getElementById("group-by")?.value;
+      const groupBy = (activeGroupBy && activeGroupBy !== "none") ? activeGroupBy : undefined;
+      if (groupBy) {
+        for (const t of enabledTracks) t.groupBy = groupBy;
+      }
+
+      browser = await igv.createBrowser(container, {
+        reference: ref,
+        tracks: enabledTracks,
+      });
+
+      /* Also set groupBy on AlignmentTrack objects for sort/color to reference */
+      if (groupBy) {
+        eachBAMTrack((tv, at) => { at.groupBy = groupBy; });
+      }
+
+      document.getElementById("controls-bar").style.display = "block";
+
+      /* Re-apply color setting if active */
+      const colorSel = document.getElementById("color-by");
+      if (colorSel.value !== "none") setAllColor();
+
+      showStatus("Ready. " + enabledTracks.length + " of " + allTracks.length + " tracks loaded.");
+    }
+
+    document.getElementById("show-all").onchange = () => {
+      const sel = document.getElementById("dataset");
+      if (sel.value) loadDataset(sel.value);
+    };
+
+    /* ---- Display mode ---- */
+
+    function setAllDisplay(mode) {
+      for (const id of ["squished", "expanded"]) {
+        document.getElementById("btn-" + id)
+          .classList.toggle("active", id === mode.toLowerCase());
+      }
+      eachBAMTrack((tv, at) => {
+        if (typeof at.setDisplayMode === "function") {
+          at.setDisplayMode(mode);
+        } else {
+          at.displayMode = mode;
+          tv.repaintViews();
+        }
+      });
+    }
+
+    function setAllHeight(px) {
+      const h = parseInt(px, 10);
+      if (isNaN(h) || h < 50) return;
+      eachBAMTrack((tv) => {
+        if (typeof tv.setTrackHeight === "function") tv.setTrackHeight(h);
+      });
+    }
+
+    function setAllToggle(prop, value) {
+      eachBAMTrack((tv, at) => {
+        at[prop] = value;
+        if (prop === "viewAsPairs" &&
+            typeof at.repackAlignments === "function") at.repackAlignments();
+        tv.repaintViews();
+      });
+    }
+
+    function eachBAMTrack(fn) {
+      if (!browser || !browser.trackViews) return;
+      for (const tv of browser.trackViews) {
+        if (tv.track && tv.track.alignmentTrack) fn(tv, tv.track.alignmentTrack);
+      }
+    }
+
+    /* ---- Sort all tracks ---- */
+
+    function setSortDir(dir) {
+      document.getElementById("btn-sort-asc").classList.toggle("active", dir === "ASC");
+      document.getElementById("btn-sort-desc").classList.toggle("active", dir === "DESC");
+      sortAllTracks();
+    }
+
+    async function sortAllTracks() {
+      if (!browser) return;
+      const sortVal = document.getElementById("sort-by").value;
+      const isAsc = document.getElementById("btn-sort-asc").classList.contains("active");
+
+      if (sortVal === "none") {
+        /* Unsort: reload the dataset to reset row order */
+        const sel = document.getElementById("dataset");
+        if (sel.value) {
+          document.getElementById("sort-by").value = "none";
+          await loadDataset(sel.value);
+        }
+        return;
+      }
+
+      let option, tag;
+      if (sortVal.startsWith("tag:")) {
+        option = "TAG";
+        tag = sortVal.substring(4);
+      } else {
+        option = sortVal;
+      }
+
+      showStatus("Sorting by " + (tag || option) + "...");
+
+      /*
+       * Mimic IGV.js context-menu sort path (AlignmentTrack popupData):
+       *   1. Build sortObject with viewport's own chr + center position
+       *   2. Set at.sortObject (persists for future repaints)
+       *   3. Direct sortRows() on existing cached features (no cache clearing)
+       *   4. vp.repaint() to redraw the canvas
+       *
+       * This bypasses BAMTrack.sort() which has a position-decrement bug
+       * in assignSort() and a containsPosition() check that silently skips
+       * viewports when chr aliasing fails.
+       */
+      eachBAMTrack((tv, at) => {
+        for (const vp of tv.viewports) {
+          const rf = vp.referenceFrame;
+          if (!rf) continue;
+          const cached = vp.cachedFeatures;
+          if (!cached) continue;
+
+          const sortObj = {
+            option: option,
+            direction: isAsc,
+            chr: rf.chr,
+            position: Math.round((rf.start + rf.end) / 2),
+          };
+          if (tag) sortObj.tag = tag;
+          at.sortObject = sortObj;
+
+          /*
+           * For TAG sorts, IGV.js sortRows only sorts reads that span the
+           * sort position — reads elsewhere are left unsorted. Override this
+           * for TAG sorts: sort ALL rows in every group by their tag value,
+           * regardless of position.
+           */
+          if (option === "TAG" && cached.packedGroups) {
+            for (const grp of cached.packedGroups.values()) {
+              if (!grp.rows) continue;
+              grp.rows.sort((a, b) => {
+                const aVal = _getTagFromRow(a, tag);
+                const bVal = _getTagFromRow(b, tag);
+                if (aVal === undefined && bVal === undefined) return 0;
+                if (aVal === undefined) return 1;
+                if (bVal === undefined) return -1;
+                const cmp = aVal > bVal ? 1 : aVal < bVal ? -1 : 0;
+                return isAsc ? cmp : -cmp;
+              });
+            }
+          } else if (typeof cached.sortRows === "function") {
+            cached.sortRows(sortObj);
+          }
+          vp.repaint();
+        }
+      });
+
+      showStatus("Sorted by " + (tag || option) + " (" + (isAsc ? "ascending" : "descending") + ").");
+    }
+
+    /* Extract a tag value from any alignment in a packed row */
+    function _getTagFromRow(row, tag) {
+      if (!row || !row.alignments) return undefined;
+      for (const aln of row.alignments) {
+        if (typeof aln.getTag === "function") {
+          const v = aln.getTag(tag);
+          if (v !== undefined) return v;
+        }
+      }
+      return undefined;
+    }
+
+    /* ---- Color all tracks ---- */
+
+    const SJ_COLORS = { "S": "#2ecc71", "R": "#e74c3c", "-": "#95a5a6" };
+    const SJ_LABELS = { "S": "spliced", "R": "retained", "-": "not spanned" };
+    const TL_COLORS = { "0": "#5dade2", "1": "#e74c3c" };
+    const TL_LABELS = { "0": "normal", "1": "translocation" };
+
+    function makeColorTable(map) {
+      return { getColor(key) { return map[String(key)] || "#cccccc"; } };
+    }
+
+    function setAllColor() {
+      const colorVal = document.getElementById("color-by").value;
+      const legend = document.getElementById("color-legend");
+      legend.innerHTML = "";
+
+      if (colorVal === "none") {
+        eachBAMTrack((tv, at) => {
+          at.colorBy = "none";
+          at.colorTable = null;
+          tv.repaintViews();
+        });
+        return;
+      }
+
+      let colorBy, legendMap, labelMap;
+      if (colorVal === "tag:SJ") {
+        colorBy = "tag:SJ";
+        legendMap = SJ_COLORS;
+        labelMap = SJ_LABELS;
+      } else if (colorVal === "tag:TL") {
+        colorBy = "tag:TL";
+        legendMap = TL_COLORS;
+        labelMap = TL_LABELS;
+      } else if (colorVal === "strand") {
+        colorBy = "strand";
+      } else {
+        colorBy = colorVal;
+      }
+
+      eachBAMTrack((tv, at) => {
+        at.colorBy = colorBy;
+        if (legendMap) at.colorTable = makeColorTable(legendMap);
+        else at.colorTable = null;
+        tv.repaintViews();
+      });
+
+      /* Show legend */
+      if (legendMap && labelMap) {
+        for (const [val, color] of Object.entries(legendMap)) {
+          const label = labelMap[val] || val;
+          legend.innerHTML += '<span><span class="color-swatch" style="background:' +
+            color + '"></span>' + label + '</span>';
+        }
+      }
+    }
+
+    /* ---- Group all tracks ---- */
+
+    async function groupAllTracks() {
+      if (!browser) return;
+      const val = document.getElementById("group-by").value;
+      const label = val === "none" ? "" : val.replace("tag:", "");
+
+      /* Save current locus, reload dataset (loadDataset reads the group-by
+         dropdown and bakes groupBy into track configs before creating browser) */
+      const rf = browser.referenceFrameList?.[0];
+      const savedLocus = rf
+        ? rf.chr + ":" + Math.round(rf.start) + "-" + Math.round(rf.end)
+        : null;
+
+      const sel = document.getElementById("dataset");
+      if (sel.value) await loadDataset(sel.value);
+
+      if (savedLocus) {
+        try { await browser.search(savedLocus); } catch {}
+      }
+
+      showStatus(label ? "Grouped by " + label + "." : "Grouping removed.");
+    }
+
+    /* ---- Track selection ---- */
+
+    function buildTrackToggles(tracks) {
+      const container = document.getElementById("track-toggles");
+      container.innerHTML = "";
+      for (let i = 0; i < tracks.length; i++) {
+        const t = tracks[i];
+        const label = document.createElement("label");
+        const cb = document.createElement("input");
+        cb.type = "checkbox";
+        cb.checked = true;
+        cb.dataset.trackIdx = i;
+        cb.onchange = () => toggleTrack(i, cb.checked);
+        label.appendChild(cb);
+        label.appendChild(document.createTextNode(" " + t.name));
+        container.appendChild(label);
+      }
+    }
+
+    function getEnabledTracks(showAll) {
+      const container = document.getElementById("track-toggles");
+      const cbs = container.querySelectorAll("input[type=checkbox]");
+      const enabled = [];
+      for (const cb of cbs) {
+        if (!cb.checked) continue;
+        const t = allTracks[parseInt(cb.dataset.trackIdx, 10)];
+        if (!t) continue;
+        const extra = showAll
+          ? { samplingDepth: 10000, visibilityWindow: 1000000, maxRows: 5000 }
+          : {};
+        enabled.push({ ...t, ...extra });
+      }
+      return enabled;
+    }
+
+    async function toggleTrack(idx, enabled) {
+      if (!browser) return;
+      const t = allTracks[idx];
+      if (!t) return;
+
+      if (enabled) {
+        const showAll = document.getElementById("show-all").checked;
+        const extra = showAll
+          ? { samplingDepth: 10000, visibilityWindow: 1000000, maxRows: 5000 }
+          : {};
+        const activeGroupBy = document.getElementById("group-by")?.value;
+        const groupBy = (activeGroupBy && activeGroupBy !== "none") ? activeGroupBy : undefined;
+        const trackCfg = { ...t, ...extra };
+        if (groupBy) trackCfg.groupBy = groupBy;
+        try {
+          await browser.loadTrack(trackCfg);
+        } catch (e) {
+          showStatus("Failed to load track: " + e.message);
+        }
+      } else {
+        /* Remove by matching track name */
+        const toRemove = browser.trackViews.find(
+          tv => tv.track && tv.track.name === t.name
+        );
+        if (toRemove) browser.removeTrack(toRemove.track);
+      }
+
+      const loaded = browser.trackViews.filter(
+        tv => tv.track && tv.track.alignmentTrack
+      ).length;
+      showStatus("Showing " + loaded + " of " + allTracks.length + " tracks.");
+    }
+
+    function toggleControlsPanel() {
+      const panel = document.getElementById("controls-panel");
+      const arrow = document.getElementById("controls-arrow");
+      const isOpen = panel.classList.toggle("open");
+      arrow.classList.toggle("open", isOpen);
+    }
+
+    init();
+  </script>
+</body>
+</html>

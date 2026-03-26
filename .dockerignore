@@ -1,0 +1,22 @@
+# Exclude everything, then include only what the Dockerfiles need.
+# Mirrors the allowlist pattern in .gitignore.
+*
+
+# Build dependencies (COPYed by Dockerfile)
+!.devcontainer/
+!.devcontainer/**
+!longread_umi_L3Rseq/
+!longread_umi_L3Rseq/**
+!UMIC-seq_L3Rseq/
+!UMIC-seq_L3Rseq/**
+
+# Pipeline runtime code
+!L3Rseq
+!config.sh
+!scripts/
+!scripts/**
+!resources/
+!resources/**
+!igv_viewer/
+!igv_viewer/**
+igv_viewer/node_modules/

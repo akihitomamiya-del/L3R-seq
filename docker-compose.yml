@@ -1,0 +1,26 @@
+# L3Rseq Docker Compose — bind-mount data I/O
+#
+# Usage:
+#   1. Copy .env.example to .env and edit paths/UID
+#   2. docker compose run l3rseq L3Rseq run \
+#        --input /data/input --outdir /data/output \
+#        --ref /data/input/reference.fa --pattern CT
+#
+# The --user flag ensures output files are owned by your host user.
+# Input is mounted read-only to prevent accidental modification.
+
+services:
+  l3rseq:
+    build:
+      context: .
+      dockerfile: .devcontainer/default/Dockerfile
+    image: ghcr.io/akihitomamiya-del/l3rseq:latest
+    user: "${L3RSEQ_UID}:${L3RSEQ_GID}"
+    volumes:
+      - ${L3RSEQ_INPUT}:/data/input:ro    # read-only: source data cannot be modified
+      - ${L3RSEQ_OUTPUT}:/data/output     # read-write: pipeline writes results here
+    ports:
+      - "${L3RSEQ_PORT:-8080}:8080"
+    environment:
+      - IGV_DATA_DIR=/data/output
+    working_dir: /workspace

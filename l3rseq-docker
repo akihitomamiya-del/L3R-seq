@@ -1,0 +1,84 @@
+#!/bin/bash
+# l3rseq-docker — Convenience wrapper for running L3Rseq in Docker
+#
+# Builds the docker run command with correct bind mounts and user flags.
+# Input is mounted read-only; output files are owned by your host user.
+#
+# Usage:
+#   ./l3rseq-docker --input /path/to/fastq --outdir /path/to/results \
+#       --ref /data/input/reference.fa --pattern CT [other L3Rseq options...]
+#
+# The reference file path must be relative to the container's /data/input
+# mount point (since --ref is resolved inside the container).
+
+set -euo pipefail
+
+IMAGE="${L3RSEQ_IMAGE:-ghcr.io/akihitomamiya-del/l3rseq:latest}"
+
+INPUT_DIR=""
+OUTPUT_DIR=""
+REF_FILE=""
+PASSTHROUGH=()
+
+# Parse --input, --outdir, and --ref from the args; pass the rest through
+while [ $# -gt 0 ]; do
+    case "$1" in
+        --input)
+            [ -z "${2:-}" ] && { echo "ERROR: --input requires a path" >&2; exit 1; }
+            INPUT_DIR="$2"; shift 2 ;;
+        --outdir)
+            [ -z "${2:-}" ] && { echo "ERROR: --outdir requires a path" >&2; exit 1; }
+            OUTPUT_DIR="$2"; shift 2 ;;
+        --ref)
+            [ -z "${2:-}" ] && { echo "ERROR: --ref requires a path" >&2; exit 1; }
+            REF_FILE="$2"; shift 2 ;;
+        *)
+            PASSTHROUGH+=("$1"); shift ;;
+    esac
+done
+
+if [ -z "$INPUT_DIR" ] || [ -z "$OUTPUT_DIR" ]; then
+    echo "Usage: l3rseq-docker --input <host_fastq_dir> --outdir <host_output_dir> [L3Rseq options]"
+    echo ""
+    echo "Example:"
+    echo "  ./l3rseq-docker --input ~/data/fastq --outdir ~/results \\"
+    echo "      --ref /data/input/reference.fa --pattern CT"
+    echo ""
+    echo "Required:"
+    echo "  --input <dir>   Host directory containing FASTQ files (mounted read-only)"
+    echo "  --outdir <dir>  Host directory for pipeline output (created if needed)"
+    echo ""
+    echo "The reference (--ref) path must use /data/input/ since that's where"
+    echo "your input directory is mounted inside the container."
+    echo ""
+    echo "Set L3RSEQ_IMAGE to override the Docker image (default: ghcr.io/akihitomamiya-del/l3rseq:latest)"
+    exit 1
+fi
+
+# Validate and resolve to absolute paths (handles ~/relative paths)
+[ -d "$INPUT_DIR" ] || { echo "ERROR: Input directory does not exist: $INPUT_DIR" >&2; exit 1; }
+INPUT_DIR="$(cd "$INPUT_DIR" && pwd)"
+
+mkdir -p "$OUTPUT_DIR"
+OUTPUT_DIR="$(cd "$OUTPUT_DIR" && pwd)"
+
+# Build ref flag for container path
+REF_ARGS=()
+if [ -n "$REF_FILE" ]; then
+    REF_ARGS=(--ref "$REF_FILE")
+fi
+
+echo "L3Rseq Docker Run"
+echo "  Input:  $INPUT_DIR → /data/input (read-only)"
+echo "  Output: $OUTPUT_DIR → /data/output (host-owned, UID=$(id -u))"
+echo "  Image:  $IMAGE"
+echo ""
+
+# :ro = read-only mount — source data cannot be modified inside the container
+docker run --rm \
+    --user "$(id -u):$(id -g)" \
+    -v "$INPUT_DIR:/data/input:ro" \
+    -v "$OUTPUT_DIR:/data/output" \
+    "$IMAGE" \
+    L3Rseq run --input /data/input --outdir /data/output \
+    ${REF_ARGS[@]+"${REF_ARGS[@]}"} ${PASSTHROUGH[@]+"${PASSTHROUGH[@]}"}

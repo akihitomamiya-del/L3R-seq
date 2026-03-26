@@ -1,0 +1,46 @@
+*
+!.gitignore
+!.dockerignore
+!.devcontainer/
+!.devcontainer/**
+!dev/
+!dev/**
+!L3Rseq
+!CLAUDE.md
+!LICENSE
+!CITATION.cff
+!README.md
+!CHANGELOG.md
+!docker-compose.yml
+!.env.example
+!l3rseq-docker
+!.github/
+!.github/**
+!config.sh
+!scripts/
+!scripts/**
+!resources/
+!resources/references/test_gene*.fasta
+!resources/references/test_gene*.fasta.fai
+!resources/rpi_barcodes/
+!resources/rpi_barcodes/RPI_Barcode_20nt.fasta
+!tests/
+!tests/**
+!longread_umi_L3Rseq/
+!longread_umi_L3Rseq/**
+!UMIC-seq_L3Rseq/
+!UMIC-seq_L3Rseq/**
+!examples/
+!examples/**
+!runs/
+!runs/README.md
+!igv_viewer/
+!igv_viewer/**
+igv_viewer/node_modules/
+# Test runner output (generated at runtime)
+tests/output/
+# Production BLAST databases are large — built by setup_blast_db.sh or Docker
+resources/blast/TAIR10_*/
+# Synthetic data staging area (committed data lives in tests/data/)
+tests/synthetic_data/
+igv_viewer/screenshots/

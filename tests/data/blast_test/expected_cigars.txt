@@ -1,0 +1,8 @@
+walk_short;ubs=8	500M55S	512M43S
+walk_medium;ubs=8	400M80S	430M50S
+walk_long;ubs=8	300M120S	360M60S
+walk_full;ubs=8	450M60S	510M
+walk_dense;ubs=8	350M70S	375M45S
+walk_from_50;ubs=8	400M65S	420M45S
+walk_extend_45;ubs=8	500M80S	545M35S
+walk_minimal;ubs=8	600M55S	608M47S

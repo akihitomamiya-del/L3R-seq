@@ -1,0 +1,21 @@
+cff-version: 1.2.0
+message: "If you use L3Rseq in your research, please cite it as below."
+type: software
+title: "L3Rseq"
+abstract: >-
+  Bioinformatic pipeline for Long-read 3' RACE-seq (L3R-seq).
+  Processes nanopore UMI consensus sequencing data to quantify
+  RNA editing, 3' end cleavage, and poly(A) tail status per
+  single molecule.
+license: GPL-3.0
+repository-code: "https://github.com/akihitomamiya-del/L3R-seq"
+authors:
+  - family-names: Mamiya
+    given-names: Akihito
+keywords:
+  - nanopore
+  - UMI
+  - RNA editing
+  - 3' RACE-seq
+  - bioinformatics
+  - consensus sequencing
