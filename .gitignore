@@ -23,6 +23,11 @@
 !resources/references/
 !resources/references/test_gene*.fasta
 !resources/references/test_gene*.fasta.fai
+!resources/blast/
+!resources/blast/mock_chrm/
+!resources/blast/mock_chrm/**
+!resources/blast/mock_cdna/
+!resources/blast/mock_cdna/**
 !resources/rpi_barcodes/
 !resources/rpi_barcodes/RPI_Barcode_20nt.fasta
 !tests/
