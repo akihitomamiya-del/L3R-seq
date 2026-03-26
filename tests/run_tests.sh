@@ -12,6 +12,19 @@
 #                           implies --skip-preprocess
 #   With --no-viewer:       skip IGV viewer after tests complete
 #
+# Timing (AMD EPYC 7763, 4 vCPU / 16 GB RAM, Codespaces):
+#   Full run (default):       ~2 min  (108 checks)
+#     Test 1  steps 01-03       ~5s
+#     Test 1b filter            ~1s
+#     Test 1c negative tests    ~3s
+#     Test 2  steps 04-10      ~88s  (dominant — UMI clustering + racon consensus)
+#     Demo    viewer data        ~8s
+#     Test 3  SLAM-seq           ~3s
+#     Test 4  splice + discover  ~4s
+#     Test 5  BLAST + walk       ~3s
+#   --skip-preprocess:        ~110s
+#   --quick:                  ~13s
+#
 # Requirements: all conda environments must be available (longread_umi,
 #   cutadaptenv, NanoporeMap, LoFreq)
 
