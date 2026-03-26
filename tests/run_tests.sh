@@ -12,17 +12,32 @@
 #                           implies --skip-preprocess
 #   With --no-viewer:       skip IGV viewer after tests complete
 #
-# Timing (AMD EPYC 7763, 4 vCPU / 32 GB RAM, Codespaces):
-#   Full run (default):       ~90s   (108 checks)
-#     Test 1+1b steps 01-03     ~7s
-#     Test 1c negative tests    ~2s
-#     Test 2  steps 04-10      ~67s  (dominant — UMI clustering + racon consensus)
-#     Demo    viewer data        ~5s
-#     Test 3  SLAM-seq           ~3s
-#     Test 4  splice + discover  ~3s
-#     Test 5  BLAST + walk       ~3s
-#   --skip-preprocess:        ~83s
-#   --quick:                  ~13s
+# Timing reference (108 checks, all steps 01-10):
+#
+#   Codespaces 4-core (AMD EPYC 7763, 4 vCPU / 32 GB RAM):
+#     Full run:  ~90s
+#       Test 1+1b steps 01-03     ~7s
+#       Test 1c negative tests    ~2s
+#       Test 2  steps 04-10      ~67s  (dominant — UMI clustering + racon consensus)
+#       Demo    viewer data        ~5s
+#       Test 3  SLAM-seq           ~3s
+#       Test 4  splice + discover  ~3s
+#       Test 5  BLAST + walk       ~3s
+#     --skip-preprocess:  ~83s
+#     --quick:            ~13s
+#
+#   Codespaces 4-core (AMD EPYC 7763, 4 vCPU / 16 GB RAM):
+#     Full run:  ~2 min 13s
+#       Test 1  steps 01-03        ~9s
+#       Test 1b filter             ~3s
+#       Test 1c negative tests     ~3s
+#       Test 2  steps 04-10       ~96s  (dominant — UMI clustering + racon consensus)
+#       Demo    viewer data         ~9s
+#       Test 3  SLAM-seq            ~3s
+#       Test 4  splice + discover   ~4s
+#       Test 5  BLAST + walk        ~6s
+#     --skip-preprocess:  ~2 min
+#     --quick:            ~13s
 #
 # Requirements: all conda environments must be available (longread_umi,
 #   cutadaptenv, NanoporeMap, LoFreq)
