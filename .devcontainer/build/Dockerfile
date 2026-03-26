@@ -33,10 +33,10 @@ RUN ARCH=$(dpkg --print-architecture) \
 # longread_umi conda environment
 # ============================================================
 RUN mamba create -y -n longread_umi -c conda-forge -c bioconda \
-    parallel=20191122 \
+    parallel=20260122 \
     racon=1.5.0 \
     minimap2=2.28 \
-    gawk=4.1.3 \
+    gawk=5.3.1 \
     cutadapt=4.9 \
     bwa=0.7.18 \
     samtools=1.20 \
