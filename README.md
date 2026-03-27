@@ -1,10 +1,10 @@
 # L3Rseq
 
-L3Rseq is the bioinformatics pipeline for **L3R-seq** (Long-read 3' RACE-seq), a targeted nanopore sequencing method that uses unique molecular identifiers (UMIs) to build one high-accuracy consensus sequence per original RNA molecule.
+L3Rseq is the bioinformatics pipeline for **L3R-seq** (Long-read 3' RACE-seq), a targeted long-read sequencing method for deep quantitative analysis of RNA processing. The method ligates a UMI-containing adapter ([Scheer et al. 2020](https://doi.org/10.1007/978-1-0716-0507-7_5)) to the 3' end of RNA molecules prior to reverse transcription and PCR amplification. By grouping cDNA reads sharing the same UMI and generating a consensus sequence for each original RNA molecule, L3R-seq corrects random sequencing errors and mitigates PCR-duplicate-driven quantification biases.
 
-It lets you quantify — within each single molecule — RNA editing, splicing, 3' end cleavage position, and poly(A) tail status, starting from raw Oxford Nanopore FASTQ files. Results are exported as per-molecule CSV tables for downstream analysis and can be explored visually through a built-in [alignment viewer](#8-alignment-viewer) that sorts and colors reads by their biological annotations.
+L3Rseq enables simultaneous, per-molecule analysis of RNA editing, 3' end cleavage and trimming, and polyadenylation status, starting from raw Oxford Nanopore FASTQ files. Results are exported as per-molecule CSV tables for downstream analysis and can be explored visually through a built-in [alignment viewer](#8-alignment-viewer) that sorts and colors reads by their biological annotations. The workflow is also transferable to the PacBio platform.
 
-L3Rseq was developed for analyzing the *Arabidopsis thaliana* mitochondrial *ccmC* mRNA — a transcript with extensive C-to-U editing and short poly(A) tails — but is adaptable to any target RNA on nanopore platforms. See [Adapting to your experiment](#7-adapting-to-your-experiment) for how to configure it for your gene and organism.
+L3Rseq was developed for analyzing the *Arabidopsis thaliana* mitochondrial *ccmC* mRNA — a transcript with extensive C-to-U editing and non-canonical 3' end processing — but is adaptable to any target RNA. See [Adapting to your experiment](#7-adapting-to-your-experiment) for how to configure it for your gene and organism.
 
 ## Contents
 
@@ -20,69 +20,45 @@ L3Rseq was developed for analyzing the *Arabidopsis thaliana* mitochondrial *ccm
 10. [Intron splicing support](#10-intron-splicing-support)
 11. [Testing](#11-testing)
 12. [UMI bin size analysis](#12-umi-bin-size-analysis)
-13. [Requirements](#13-requirements)
-14. [License](#14-license)
-15. [Citation](#15-citation)
-16. [Acknowledgments](#16-acknowledgments)
+13. [Development](#13-development)
+14. [Requirements](#14-requirements)
+15. [License](#15-license)
+16. [Citation](#16-citation)
+17. [Acknowledgments](#17-acknowledgments)
 
 ## 1. Quick start
 
 ### What you need
 
-Before running L3Rseq, prepare these files:
-
-1. **Demultiplexed FASTQ files** — basecalled and native-barcode-demultiplexed by dorado (see the manuscript for the wet-lab and basecalling protocol)
-2. **A reference FASTA** — the genomic sequence of your target gene
-3. **Sample barcode FASTA** (if starting from [step 01](#2-pipeline-overview)) — one entry per sample-specific index primer (called "RPI" in our protocol; see the manuscript for details)
-
-### Choose your setup
-
-There are three ways to run L3Rseq. Pick the one that fits your situation:
-
-| | **A. Codespaces** | **B. Docker** | **C. Build from source** | **D. Claude Code** |
-|---|---|---|---|---|
-| Best for | Beginners, quick exploration | Most users with local data | Developers modifying the pipeline | AI-assisted development |
-| Requires | GitHub account | [Docker](https://docs.docker.com/get-docker/) | Docker + git | Docker + git + [Anthropic API key](https://console.anthropic.com/) |
-| Setup time | ~5 min | ~5 min (image pull) | ~11 min (image build) | ~12 min (image build) |
-| Runs in | Browser | Your terminal | Your terminal | VS Code + Claude CLI |
-| Works on | Any OS | macOS, Linux, Windows (WSL2) — see [platform support](#platform-support) | macOS, Linux | macOS, Linux |
-
----
+1. **Demultiplexed FASTQ files** — basecalled (SUP model recommended) and native-barcode-demultiplexed by dorado (see the [manuscript](#16-citation) for the wet-lab, basecalling, and demultiplexing protocol)
+2. **A reference FASTA** — the genomic (DNA) sequence of your target gene, covering the target region plus downstream sequence
+3. **Sample barcode FASTA** (if starting from [step 01](#2-pipeline-overview)) — one entry per RPI (sample-specific index primer; 20 nt)
 
 ### A. GitHub Codespaces (no installation required)
 
-This is the easiest way to get started. Everything runs in your browser via VS Code for the Web.
+Best for quickly trying out the tool — run the test suite, explore the viewer, and see what the pipeline does before setting up a local environment.
 
-1. On this repository, click **Code** > **Codespaces** > **Create codespace**
-2. When prompted, select **L3Rseq Pipeline** (the default)
-3. Wait ~1 min for the environment to load
-4. You now have a fully configured Linux terminal with all tools pre-installed
-
-If you need to modify the Docker image itself, select **L3Rseq Pipeline (build)** instead (~10 min setup).
+1. Click **Code** > **Codespaces** > **Create codespace** on this repository
+2. Select **L3Rseq Pipeline** (the default) and wait ~1 min
+3. You now have a fully configured Linux terminal with all tools pre-installed
 
 > **Tip:** You can also open this devcontainer locally with [VS Code](https://code.visualstudio.com/) + the [Dev Containers extension](https://marketplace.visualstudio.com/items?itemName=ms-vscode-remote.remote-containers) — clone the repo, then use **Reopen in Container** from the command palette.
 
----
+### B. Docker — pre-built image (recommended for local data)
 
-### B. Docker (recommended for local data)
+#### B1. Pull the image
 
-Install [Docker](https://docs.docker.com/get-docker/) (Docker Desktop on macOS/Windows, or Docker Engine on Linux) if you don't have it, then pull the pre-built image:
+Install [Docker](https://docs.docker.com/get-docker/) if you don't have it, then pull the pre-built image:
 
 ```bash
 docker pull ghcr.io/akihitomamiya-del/l3rseq:latest
 ```
 
-The image supports Intel and Apple Silicon Macs, Linux, and Windows (WSL2) natively.
+The image supports Intel and Apple Silicon Macs, Linux, and Windows (WSL2).
 
-**Run the pipeline** using one of these methods (pick one):
+#### B2. Run the pipeline
 
-**Wrapper script** (simplest — handles mounts and file ownership for you):
-```bash
-./l3rseq-docker --input ~/data/fastq --outdir ~/results \
-    --ref /data/input/reference.fa --pattern CT
-```
-
-**docker run** (explicit control over mounts):
+**docker run**:
 ```bash
 docker run --rm \
     --user "$(id -u):$(id -g)" \
@@ -101,7 +77,13 @@ docker compose run l3rseq L3Rseq run \
     --ref /data/input/reference.fa --pattern CT
 ```
 
-#### How data mounts work
+**Wrapper script** (shorthand — handles mounts and file ownership for you):
+```bash
+./l3rseq-docker --input ~/data/fastq --outdir ~/results \
+    --ref /data/input/reference.fa --pattern CT
+```
+
+#### B3. How data mounts work
 
 Your data is not copied into the container. Instead, directories on your machine are mounted into the container:
 
@@ -113,35 +95,6 @@ Your data is not copied into the container. Instead, directories on your machine
 The read-only flag on `/data/input` is enforced by the kernel — the pipeline cannot modify or delete your source data. Use a dedicated empty directory for `/data/output`.
 
 On Linux, `--user "$(id -u):$(id -g)"` ensures output files are owned by your host user. On macOS and WSL2, Docker Desktop handles file ownership automatically.
-
----
-
-### C. Build from source
-
-For developers who want to modify the pipeline or Dockerfile. If you use VS Code, clone the repo and select **Reopen in Container** > **L3Rseq Pipeline (build)** — this builds the image and drops you into a ready-to-edit environment. Otherwise, build manually:
-
-```bash
-git clone https://github.com/akihitomamiya-del/L3R-seq.git
-cd L3R-seq
-docker build -f .devcontainer/build/Dockerfile -t l3rseq .
-```
-
-On Apple Silicon Macs, this builds a native arm64 image. Docker Desktop for Mac uses a Linux VM, so expect slower I/O on bind-mounted volumes compared to native Linux. Use VirtioFS (the default file sharing backend in Docker Desktop settings) for best performance.
-
----
-
-### D. Claude Code development (AI-assisted)
-
-For modifying the pipeline with [Claude Code](https://docs.anthropic.com/en/docs/claude-code). This devcontainer extends the pre-built L3Rseq image with the Claude CLI, a network firewall (for safe `--dangerously-skip-permissions` use), and developer tooling (zsh, git-delta, fzf).
-
-1. Set your API key as an environment variable on your host: `export ANTHROPIC_API_KEY=sk-ant-...`
-2. Clone the repo and open it in VS Code
-3. Select **Reopen in Container** > **Claude Code Sandbox**
-4. Run `claude` in the terminal to start an AI-assisted session
-
-The firewall restricts outbound network access to GitHub, Anthropic API, npm, and VS Code services only.
-
----
 
 ### Verify your installation
 
@@ -155,7 +108,9 @@ This runs 98 checks on synthetic data (~2 min) and confirms all tools are workin
 
 ## 2. Pipeline overview
 
-Raw nanopore reads are preprocessed and demultiplexed (steps 01-03), then grouped by their UMI to identify reads originating from the same RNA molecule (step 04). Each group is polished into a single consensus sequence (step 05), removing random sequencing errors and PCR-duplicate bias. The consensus is trimmed to the target region (step 06), mapped to a reference (step 07), and scanned for RNA editing variants (step 08). A CIGAR-walk algorithm then corrects 3' soft-clip boundaries that were mis-assigned due to editing near the transcript end (step 09). Finally, per-molecule annotations are exported to CSV for downstream analysis in R, Python, or spreadsheets (step 10).
+Basecalled, native-barcode-demultiplexed reads from dorado are preprocessed: per-barcode FASTQs are concatenated (step 01), library preparation adapters are trimmed using cutadapt (step 02), and reads are demultiplexed by the RPI barcodes introduced during PCR (step 03). An optional pre-filter retains only on-target reads by rough mapping.
+
+UMIs are extracted and reads sharing the same UMI — i.e. reads derived from the same original RNA molecule — are grouped by clustering (step 04). Within each cluster, reads are aligned and polished through iterative rounds of racon to produce a single high-accuracy consensus sequence (step 05). The consensus is trimmed to the target region using cutadapt (step 06), mapped to a reference with minimap2 (step 07), and scanned for single-nucleotide variants with LoFreq (step 08). A CIGAR-walk algorithm then corrects 3' soft-clip boundaries that were mis-assigned because edited bases near the transcript end appear as mismatches against the genomic reference (step 09). Right-clipped sequences exceeding 50 bp are additionally searched by BLAST against the organellar genome to detect translocation or chimeric artifacts. Finally, per-molecule annotations are exported to CSV for downstream analysis in R, Python, or spreadsheets (step 10).
 
 ```mermaid
 %%{init: {'theme': 'default', 'themeVariables': {'fontSize': '20px'}, 'flowchart': {'padding': 15, 'nodeSpacing': 20, 'rankSpacing': 25}}}%%
@@ -218,18 +173,49 @@ graph TD
 10 export     CSV export + quality report
 ```
 
-Users can enter the pipeline at any step using `--start-at` and `--stop-at`:
+### Running the full pipeline
 
 ```bash
-# Full pipeline from raw FASTQ
-L3Rseq run --input raw_fastq/ --outdir out/ --ref ref.fa --rpi-fasta barcodes.fa
+L3Rseq run --input raw_fastq/ --outdir out/ --ref ref.fa --rpi-fasta barcodes.fa --pattern CT
+```
 
-# From pre-demuxed reads (skip steps 01-03)
+This runs all 10 steps. Use `--start-at` and `--stop-at` to run a subset:
+
+```bash
+# From pre-demuxed reads (skip preprocessing steps 01-03)
 L3Rseq run --input demuxed/ --outdir out/ --ref ref.fa --start-at 4
 
 # From consensus FASTA (skip steps 01-05)
 L3Rseq run --input consensus/ --outdir out/ --ref ref.fa --start-at 6
+
+# Preprocess only (stop after demultiplexing)
+L3Rseq run --input raw_fastq/ --outdir out/ --ref ref.fa --rpi-fasta barcodes.fa --stop-at 3
 ```
+
+### Running individual steps
+
+Each pipeline step is also available as a standalone subcommand. This is useful for re-running a single step with different parameters, or for debugging:
+
+```bash
+# Preprocessing
+L3Rseq concat   --input raw_fastq/ --outdir out/     # 01: concatenate per-barcode FASTQs
+L3Rseq trim     --input out/       --outdir out/     # 02: adapter trimming
+L3Rseq demux    --input out/       --outdir out/ --rpi-fasta barcodes.fa  # 03: RPI demux
+
+# Optional: pre-filter by rough mapping
+L3Rseq filter   --input out/       --outdir out/ --ref ref.fa
+
+# Core pipeline
+L3Rseq umi       --input out/ --outdir out/                              # 04: UMI clustering
+L3Rseq consensus --input out/ --outdir out/                              # 05: consensus calling
+L3Rseq extract   --input out/ --outdir out/                              # 06: target extraction
+L3Rseq map       --input out/ --outdir out/ --ref ref.fa                 # 07: mapping
+L3Rseq variants  --input out/ --outdir out/ --ref ref.fa --pattern CT    # 08: variant calling
+L3Rseq correct   --input out/ --outdir out/ --ref ref.fa --pattern CT    # 09: tail correction
+L3Rseq export    --input out/ --outdir out/                              # 10: CSV export
+```
+
+For subcommand-specific help: `L3Rseq <subcommand> --help`
 
 ## 3. Key features
 
@@ -420,9 +406,10 @@ L3Rseq ships with default adapter sequences and reference files for the *Arabido
 | Sample barcodes (RPI) | `--rpi-fasta your_barcodes.fa` |
 | UMI flanking sequences | `--umi-flank5 NNNNN --umi-flank3 NNNNN` |
 | BLAST databases | `bash scripts/setup_blast_db.sh --organelle-fasta your_mtDNA.fa --transcriptome-fasta your_cDNA.fa` then `--blast-db` / `--blast-db2` |
-| Adapter sequences | Edit `config.sh` or use `L3Rseq trim --adapter-fwd ...` |
-| Target extraction primers | Edit `config.sh` or use `L3Rseq extract --target-fwd ...` |
-| Editing pattern | `--pattern AG` (for A-to-G editing) |
+| Adapter sequences | `L3Rseq trim --adapter-fwd ... --adapter-rev ...` (defaults match the protocol in the manuscript; override for different library designs) |
+| Target extraction primers | `L3Rseq extract --target-fwd ... --target-rev ...` (users analyzing shorter amplicons may need to reduce `--min-overlap`) |
+| Editing pattern | `--pattern AG` (for A-to-I editing, which appears as A-to-G in sequencing data) |
+| Known editing positions | `--var known_sites.txt` (use when a control sample with established editing sites is available, in addition to or instead of LoFreq-detected positions) |
 
 ## 8. Alignment viewer
 
@@ -459,7 +446,11 @@ Then open `http://localhost:8080` in your browser.
 
 ## 9. How CIGAR-walk works
 
-When the aligner encounters an RNA editing site near the 3' end of a read, it sees a mismatch against the genomic reference and prematurely soft-clips the rest of the sequence. The CIGAR-walk correction tolerates C-to-T mismatches at known editing positions, extending the aligned region to find the true 3' boundary. Right-clips are further classified by BLAST against organellar and transcriptome databases to separate real poly(A) tails from chimeric artifacts. This is critical for accurate 3' end and poly(A) tail measurements.
+In L3R-seq, the reference sequence represents the genomic (DNA) sequence. Because C-to-U RNA editing changes the transcript relative to the genome, edited positions near the 3' end of the aligned region appear as mismatches, causing the aligner to prematurely soft-clip the rest of the sequence. For example, a read with true alignment `527M10S` may be reported as `513M24S` because 14 edited bases near the 3' boundary look like mismatches.
+
+The CIGAR-walk correction parses the right-clipped portion and performs a base-by-base comparison between the clipped sequence and the downstream reference, tolerating mismatches at positions known to undergo RNA editing (from step 08). The comparison proceeds until a non-editing mismatch or the end of the reference is encountered, at which point the CIGAR is rebuilt with updated match and soft-clip counts. The remaining soft-clipped sequence after correction represents the true non-templated 3' extension (e.g., poly(A) tail).
+
+Right-clipped sequences exceeding 50 bp are additionally searched by BLAST against the organellar genome to detect translocation events (e.g., trans-splicing or DNA recombination). Reads with an organellar hit are flagged (`TL:i:1`). Reads with no organellar hit are searched against a cDNA database; those matching elsewhere (e.g., ribosomal RNA) are classified as chimeric artifacts and separated for manual review. A user-supplied file of known editing positions (`--var`) can be used in addition to or instead of the positions detected in step 08.
 
 ## 10. Intron splicing support
 
@@ -543,9 +534,35 @@ python3 scripts/plot_umi_bins.py results/ --quality
 python3 scripts/plot_umi_bins.py results/ --compare results_umic/ --quality  # compare methods
 ```
 
-## 13. Requirements
+## 13. Development
 
-L3Rseq runs inside a Docker container where all dependencies are pre-installed. You need [Docker Desktop](https://www.docker.com/products/docker-desktop/) (macOS, Windows) or Docker Engine (Linux).
+### Build the Docker image from source
+
+For developers who want to modify the pipeline or Dockerfile. If you use VS Code, clone the repo and select **Reopen in Container** > **L3Rseq Pipeline (build)** — this builds the image and drops you into a ready-to-edit environment. Otherwise, build manually:
+
+```bash
+git clone https://github.com/akihitomamiya-del/L3R-seq.git
+cd L3R-seq
+docker build -f .devcontainer/build/Dockerfile -t l3rseq .
+```
+
+On Apple Silicon Macs, this builds a native arm64 image. Docker Desktop for Mac uses a Linux VM, so expect slower I/O on bind-mounted volumes compared to native Linux. Use VirtioFS (the default file sharing backend in Docker Desktop settings) for best performance.
+
+### Claude Code (AI-assisted development)
+
+For running and customizing the pipeline with [Claude Code](https://docs.anthropic.com/en/docs/claude-code). Claude can execute the pipeline for you, explain results, and help you adapt the code to your own gene and organism — useful if you're less comfortable with shell scripting. If you want to modify the pipeline itself, fork the repo first so Claude can commit and push changes to your copy. This devcontainer extends the pre-built L3Rseq image with the Claude CLI, a network firewall (for safe `--dangerously-skip-permissions` use), and developer tooling (zsh, git-delta, fzf).
+
+1. Fork this repo (if you plan to make changes), then clone your fork
+2. Set your API key as an environment variable on your host: `export ANTHROPIC_API_KEY=sk-ant-...`
+3. Open the repo in VS Code
+4. Select **Reopen in Container** > **Claude Code Sandbox**
+5. Run `claude` in the terminal to start an AI-assisted session
+
+The firewall restricts outbound network access to GitHub, Anthropic API, npm, and VS Code services only. The devcontainer setup is based on Anthropic's [Claude Code DevContainer reference](https://github.com/anthropics/claude-code/tree/main/.devcontainer).
+
+## 14. Requirements
+
+L3Rseq runs inside a Docker container where all dependencies are pre-installed. You need [Docker Desktop](https://www.docker.com/products/docker-desktop/) (macOS, Windows) or Docker Engine (Linux). The pipeline is CPU-only and does not require a GPU. An NVIDIA GPU is recommended for basecalling with dorado (SUP model).
 
 ### Platform support
 
@@ -573,17 +590,17 @@ The conda environments listed below are managed automatically — no manual acti
 | LoFreq | lofreq, bcftools | Step 08 |
 | UMIC-seq | Python, UMIC-seq scripts | Step 04 (with `--method umic-seq`) |
 
-## 14. License
+## 15. License
 
 GPL-3.0 (required by UMIC-seq and longread_umi dependencies). See [LICENSE](LICENSE).
 
-## 15. Citation
+## 16. Citation
 
 If you use L3Rseq in your research, please cite:
 
-> [Citation details to be added upon publication]
+> Mamiya A, Takenaka M, Sugiyama M. L3R-seq: A long-read 3'RACE approach for deep quantitative analysis of RNA processing. In: *Methods in Molecular Biology*. Springer. (in press)
 
-## 16. Acknowledgments
+## 17. Acknowledgments
 
 L3Rseq bundles and builds on two open-source projects, both licensed under GPL-3.0. Please cite the original authors when using these components:
 
