@@ -48,10 +48,10 @@ ENV DEVCONTAINER=true
 RUN mkdir -p /home/vscode/.claude /usr/local/share/npm-global && \
     chown -R vscode:vscode /home/vscode/.claude /usr/local/share/npm-global
 
-# Firewall script + passwordless sudo for it
-COPY .devcontainer/claude-code/init-firewall.sh /usr/local/bin/
-RUN chmod +x /usr/local/bin/init-firewall.sh && \
-    echo "vscode ALL=(root) NOPASSWD: /usr/local/bin/init-firewall.sh" > /etc/sudoers.d/vscode-firewall && \
+# Firewall scripts + passwordless sudo
+COPY .devcontainer/claude-code/init-firewall.sh .devcontainer/claude-code/start-firewall.sh /usr/local/bin/
+RUN chmod +x /usr/local/bin/init-firewall.sh /usr/local/bin/start-firewall.sh && \
+    echo "vscode ALL=(root) NOPASSWD: /usr/local/bin/init-firewall.sh, /usr/local/bin/start-firewall.sh" > /etc/sudoers.d/vscode-firewall && \
     chmod 0440 /etc/sudoers.d/vscode-firewall
 
 # ============================================================

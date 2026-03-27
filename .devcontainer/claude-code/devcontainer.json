@@ -50,6 +50,9 @@
     "8080": { "label": "IGV Viewer", "onAutoForward": "notify" }
   },
   "postCreateCommand": "cd /workspace/igv_viewer && npm install --silent",
-  "postStartCommand": "sudo /usr/local/bin/init-firewall.sh && node /workspace/igv_viewer/server.js > /tmp/igv-server.log 2>&1 &",
+  "postStartCommand": {
+    "firewall": "sudo /usr/local/bin/start-firewall.sh",
+    "igv-viewer": "node /workspace/igv_viewer/server.js > /tmp/igv-server.log 2>&1 &"
+  },
   "waitFor": "postStartCommand"
 }

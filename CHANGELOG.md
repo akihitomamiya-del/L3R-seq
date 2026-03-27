@@ -2,6 +2,15 @@
 
 All notable changes are documented here.
 
+## [1.0.10] - 2026-03-27
+
+### Fixed
+- Claude Code devcontainer: firewall failed silently at startup, leaving container unrestricted
+
+### Changed
+- Devcontainer: split postStartCommand into independent firewall and IGV server tasks
+- Devcontainer: added start-firewall.sh retry wrapper (3 attempts, 5s delay, logs to /tmp/firewall-init.log)
+
 ## [1.0.9] - 2026-03-27
 
 ### Fixed
