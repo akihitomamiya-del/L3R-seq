@@ -45,7 +45,19 @@ There are three ways to run L3Rseq. Pick the one that fits your situation:
 | Requires | GitHub account | [Docker Desktop](https://www.docker.com/products/docker-desktop/) | Docker Desktop + git |
 | Setup time | ~5 min | ~5 min (image pull) | ~11 min (image build) |
 | Runs in | Browser | Your terminal | Your terminal |
-| Works on | Any OS | Linux, macOS (Intel + Apple Silicon), Windows (WSL2) | Linux, macOS (Intel + Apple Silicon) |
+| Works on | Any OS | See platform support below | See platform support below |
+
+**Platform support:**
+
+| Platform | Docker pull | Build from source | Status |
+|---|---|---|---|
+| macOS — Apple Silicon (M1/M2/M3/M4) | Native arm64 image | Native arm64 build | Tested |
+| GitHub Codespaces | Pre-built image | N/A | Tested |
+| Linux (x86_64) | Native amd64 image | Native amd64 build | Tested (CI) |
+| macOS — Intel | Native amd64 image | Native amd64 build | Expected to work (untested) |
+| Windows (WSL2) | Native amd64 image | Native amd64 build | Expected to work (untested) |
+
+If you can help us confirm Intel Mac or WSL2 support, please [open an issue](https://github.com/akihitomamiya-del/L3R-seq/issues).
 
 ---
 
