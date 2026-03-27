@@ -54,7 +54,7 @@ run_step_08() {
             # Filter for the specified editing pattern
             bcftools view --no-header -i "AF > $min_af" "$odir/variants.vcf" | \
                 awk '{print $2 $4 $5}' | \
-                grep -P "[0-9]+${ref_base}${alt_base}" \
+                grep -E "[0-9]+${ref_base}${alt_base}" \
                 > "$odir/observed_variants.txt" || true
 
         done

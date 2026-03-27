@@ -174,7 +174,11 @@ docker run --rm \
     bash -c "echo test > /data/output/ownership_test.txt" 2>&1
 
 if [ -f "$TMPOUT/ownership_test.txt" ]; then
-    OWNER=$(stat -c '%u' "$TMPOUT/ownership_test.txt")
+    if [ "$(uname -s)" = "Darwin" ]; then
+        OWNER=$(stat -f '%u' "$TMPOUT/ownership_test.txt")
+    else
+        OWNER=$(stat -c '%u' "$TMPOUT/ownership_test.txt")
+    fi
     if [ "$OWNER" = "$(id -u)" ]; then
         pass "Output file owned by host user (UID=$OWNER)"
     else

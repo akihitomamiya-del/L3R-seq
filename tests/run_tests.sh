@@ -87,8 +87,8 @@ check_range() {
 count_csv_rows() { echo $(( $(wc -l < "$1") - 1 )); }
 count_fasta_seqs() { local n; n=$(grep -c '^>' "$1" 2>/dev/null) || n=0; echo "$n"; }
 count_sam_reads() { local n; n=$(grep -cv '^@' "$1" 2>/dev/null) || n=0; echo "$n"; }
-sum_ec_tags() { grep -v '^@' "$1" 2>/dev/null | grep -oP 'EC:i:\K[0-9]+' | awk '{s+=$1} END{print s+0}'; }
-sum_sc_tags() { grep -v '^@' "$1" 2>/dev/null | grep -oP 'SC:i:\K[0-9]+' | awk '{s+=$1} END{print s+0}'; }
+sum_ec_tags() { grep -v '^@' "$1" 2>/dev/null | grep -oE 'EC:i:[0-9]+' | sed 's/EC:i://' | awk '{s+=$1} END{print s+0}'; }
+sum_sc_tags() { grep -v '^@' "$1" 2>/dev/null | grep -oE 'SC:i:[0-9]+' | sed 's/SC:i://' | awk '{s+=$1} END{print s+0}'; }
 count_csv_cols() { head -1 "$1" | awk -F',' '{print NF}'; }
 
 # ---------------------------------------------------------------------------
@@ -126,10 +126,17 @@ echo "========================================"
 echo ""
 
 # System specs
-echo "System: $(lscpu | grep 'Model name' | sed 's/.*: *//')"
-echo "CPUs:   $(nproc) vCPU ($(lscpu | grep 'Core(s) per socket' | awk '{print $NF}') cores × $(lscpu | grep 'Thread(s) per core' | awk '{print $NF}') threads)"
-echo "RAM:    $(free -h | awk '/Mem:/{print $2}')"
-echo "Disk:   $(df -h / | awk 'NR==2{print $2 " total, " $4 " avail"}')"
+if [ "$(uname -s)" = "Darwin" ]; then
+    echo "CPU:  $(sysctl -n machdep.cpu.brand_string 2>/dev/null || echo 'unknown')"
+    echo "CPUs: $(sysctl -n hw.logicalcpu 2>/dev/null || echo '?')"
+    _mem_bytes=$(sysctl -n hw.memsize 2>/dev/null || echo 0)
+    echo "RAM:  $(( _mem_bytes / 1073741824 ))G"
+else
+    echo "CPU:  $(lscpu 2>/dev/null | grep 'Model name' | sed 's/.*: *//' || echo 'unknown')"
+    echo "CPUs: $(nproc 2>/dev/null || echo '?')"
+    echo "RAM:  $(free -h 2>/dev/null | awk '/Mem:/{print $2}' || echo '?')"
+fi
+echo "Disk: $(df -h / | awk 'NR==2{print $2 " total, " $4 " avail"}')"
 echo ""
 
 SUITE_START=$SECONDS
@@ -160,7 +167,7 @@ if [ "$SKIP_PREPROCESS" -eq 0 ]; then
 
     # Check concat: 840 reads per barcode (2 RPIs × 420)
     for bc in barcode01 barcode02; do
-        got=$(zcat "$OUTPUT_DIR/full_preprocess/01_concat/${bc}.fastq.gz" | awk 'NR%4==1' | wc -l)
+        got=$(gzip -dc "$OUTPUT_DIR/full_preprocess/01_concat/${bc}.fastq.gz" | awk 'NR%4==1' | wc -l)
         check_exact "Step 01 concat $bc" "$got" "840"
     done
 
@@ -168,7 +175,7 @@ if [ "$SKIP_PREPROCESS" -eq 0 ]; then
     for bc in barcode01 barcode02; do
         trim3="$OUTPUT_DIR/full_preprocess/02_trim/$bc/${bc}_trim3.fastq.gz"
         if [ -f "$trim3" ]; then
-            got=$(zcat "$trim3" | awk 'NR%4==1' | wc -l)
+            got=$(gzip -dc "$trim3" | awk 'NR%4==1' | wc -l)
             # Expect ~730 after trimming (840 - chimeric/no-adapter reads)
             check_range "Step 02 trim $bc" "$got" "730" "0.10"
         else
@@ -568,7 +575,7 @@ slam_sc=$(sum_sc_tags "$SLAM_SAM")
 check_exact "SLAM SC total (T->C)" "$slam_sc" "590"
 
 # NC total (noise)
-slam_nc=$(grep -v '^@' "$SLAM_SAM" | grep -oP 'NC:i:\K[0-9]+' | awk '{s+=$1} END{print s+0}')
+slam_nc=$(grep -v '^@' "$SLAM_SAM" | grep -oE 'NC:i:[0-9]+' | sed 's/NC:i://' | awk '{s+=$1} END{print s+0}')
 check_exact "SLAM NC total (noise)" "$slam_nc" "101"
 
 # CSV export

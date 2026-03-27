@@ -28,7 +28,7 @@ fi
 
 # ---------------------------------------------------------------------------
 # Help text
-VERSION="1.0.3"
+VERSION="1.0.4"
 
 # ---------------------------------------------------------------------------
 show_help() {
@@ -128,7 +128,7 @@ validate_introns() {
     fi
 
     # Not a file — must be coordinate format (start-end or start-end,start-end)
-    if ! echo "$spec" | grep -qP '^\d+-\d+(,\d+-\d+)*$'; then
+    if ! echo "$spec" | grep -qE '^[0-9]+-[0-9]+(,[0-9]+-[0-9]+)*$'; then
         echo "ERROR: --introns '$spec' is not a valid format." >&2
         echo "       Expected: coordinate (e.g., '847-2891'), BED file, or GFF3 file." >&2
         echo "       Coordinate format: 'start-end' or 'start-end,start-end'" >&2

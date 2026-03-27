@@ -171,7 +171,7 @@ run_step_09() {
 
         # Calculate metrics with corrected CIGAR
         local new_total_m
-        new_total_m=$(echo "$RESULT_New_CIGAR" | grep -Po '[0-9]+M' | grep -Po '[0-9]+' | awk '{a+=$1} END{print a+0;}')
+        new_total_m=$(echo "$RESULT_New_CIGAR" | grep -Eo '[0-9]+M' | grep -Eo '[0-9]+' | awk '{a+=$1} END{print a+0;}')
         local terminus=$((RESULT_Aln_Start - 1 + new_total_m + RESULT_Total_D))
         local matched_length=$((RESULT_Total_M + RESULT_Total_D))
         local doublesorter=$((terminus * 10000 + RESULT_CIGAR_Tail_new_S))
@@ -181,7 +181,7 @@ run_step_09() {
         if [ "$RESULT_CIGAR_Tail_new_S" -gt 0 ]; then
             local seq
             seq=$(printf '%s\n' "$read_line" | cut -f10)
-            rightclip_seq_new=$(echo "$seq" | grep -Pio "[ATGC]{$RESULT_CIGAR_Tail_new_S}$" || true)
+            rightclip_seq_new=$(echo "$seq" | grep -Eio "[ATGC]{$RESULT_CIGAR_Tail_new_S}$" || true)
         fi
 
         # Phase 1c: single awk replaces CIGAR + 8 chained seds
@@ -352,7 +352,7 @@ run_step_09() {
                 # Parallel mode: split reads into chunks (one per thread)
                 seq 1 "$nreads" > "$tmp_dir/indices.txt"
                 local chunk_size=$(( (nreads + threads - 1) / threads ))
-                split -l "$chunk_size" -d "$tmp_dir/indices.txt" "$tmp_dir/chunk_"
+                split -l "$chunk_size" "$tmp_dir/indices.txt" "$tmp_dir/chunk_"
 
                 local pids=()
                 for chunk_file in "$tmp_dir"/chunk_*; do

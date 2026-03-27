@@ -43,6 +43,41 @@ RUN mamba create -y -n longread_umi -c conda-forge -c bioconda \
     vsearch=2.30.4 \
     && mamba clean -afy
 
+# On arm64 the bioconda racon binary uses SIMD instructions unsupported by
+# Docker Desktop's virtualisation on Apple Silicon.  Rebuild from source with
+# baseline ARMv8 flags so it runs everywhere.  On amd64 the bioconda binary
+# is fine, so this step is skipped.
+# On arm64 the bioconda racon binary uses SIMD instructions unsupported by
+# Docker Desktop's virtualisation on Apple Silicon.  Rebuild from source with
+# baseline ARMv8 flags.  On amd64 the bioconda binary is fine — step is skipped.
+# Uses curl + tar instead of git clone (BuildKit may block git).
+RUN if [ "$(uname -m)" = "aarch64" ]; then \
+      apt-get update && apt-get install -y --no-install-recommends cmake g++ zlib1g-dev \
+      && mkdir -p /tmp/racon-build \
+      && curl -fsSL https://github.com/lbcb-sci/racon/archive/refs/tags/1.5.0.tar.gz \
+         | tar -xz -C /tmp/racon-build --strip-components=1 \
+      && for dep in \
+           "vendor/spoa https://github.com/rvaser/spoa/archive/12f2ad2a76030ed25aaa616c3a171d149ca9fd13.tar.gz" \
+           "vendor/thread_pool https://github.com/rvaser/thread_pool/archive/3f5aaacf1af7cb47cbc918812a7af42e290c7031.tar.gz" \
+           "vendor/edlib https://github.com/martinsos/edlib/archive/ee36875e944b63abf6f9b9e14c010b445529427d.tar.gz" \
+           "vendor/rampler https://github.com/rvaser/rampler/archive/4f2d91e4f3ce5ef61d14b319040a7d24f116aedd.tar.gz" \
+         ; do \
+           dir=$(echo "$dep" | cut -d' ' -f1); \
+           url=$(echo "$dep" | cut -d' ' -f2); \
+           mkdir -p /tmp/racon-build/$dir; \
+           curl -fsSL "$url" | tar -xz -C /tmp/racon-build/$dir --strip-components=1; \
+         done \
+      && cd /tmp/racon-build && mkdir build && cd build \
+      && cmake -DCMAKE_BUILD_TYPE=Release \
+               -DCMAKE_C_FLAGS="-march=armv8-a" \
+               -DCMAKE_CXX_FLAGS="-march=armv8-a" \
+               .. \
+      && make -j$(nproc) \
+      && cp bin/racon /opt/miniforge/envs/longread_umi/bin/racon \
+      && rm -rf /tmp/racon-build \
+      && apt-get clean && rm -rf /var/lib/apt/lists/*; \
+    fi
+
 # Install L3Rseq's bundled longread_umi scripts (modified from upstream)
 COPY longread_umi_L3Rseq/ /tmp/longread_umi_L3Rseq/
 RUN bash -c "source activate longread_umi \
@@ -91,10 +126,14 @@ RUN bash -c "source activate NanoporeMap \
 
 # ============================================================
 # LoFreq conda environment
+# lofreq 2.1.5 may lack an arm64 bioconda build; fall back to
+# pip install (builds from source via htslib bundled in the wheel).
 # ============================================================
 RUN mamba create -y -n LoFreq -c conda-forge -c bioconda \
-    lofreq=2.1.5 \
     bcftools=1.21 \
+    python=3.12 \
+    && (mamba install -y -n LoFreq -c conda-forge -c bioconda lofreq=2.1.5 \
+        || /opt/miniforge/envs/LoFreq/bin/pip install lofreq) \
     && mamba clean -afy
 
 # ============================================================

@@ -345,11 +345,11 @@ for bc_dir in "$OUTDIR"/09_correct/*/; do
         fi
 
         # Total EC
-        TOTAL_EC=$(grep -v '^@' "$SAM" | grep -oP 'EC:i:\K[0-9]+' | awk '{s+=$1} END{print s+0}')
+        TOTAL_EC=$(grep -v '^@' "$SAM" | grep -oE 'EC:i:[0-9]+' | sed 's/EC:i://' | awk '{s+=$1} END{print s+0}')
         echo "    EC total: $TOTAL_EC (avg $(echo "$TOTAL_EC $NREADS" | awk '{printf "%.1f", $1/$2}') / read)"
 
         # Total NC
-        TOTAL_NC=$(grep -v '^@' "$SAM" | grep -oP 'NC:i:\K[0-9]+' | awk '{s+=$1} END{print s+0}')
+        TOTAL_NC=$(grep -v '^@' "$SAM" | grep -oE 'NC:i:[0-9]+' | sed 's/NC:i://' | awk '{s+=$1} END{print s+0}')
         echo "    NC total: $TOTAL_NC"
 
         # SC tags (only expected with --count-pattern)
@@ -360,7 +360,7 @@ for bc_dir in "$OUTDIR"/09_correct/*/; do
             else
                 fail "SC tag on $SC_COUNT / $NREADS reads"
             fi
-            TOTAL_SC=$(grep -v '^@' "$SAM" | grep -oP 'SC:i:\K[0-9]+' | awk '{s+=$1} END{print s+0}')
+            TOTAL_SC=$(grep -v '^@' "$SAM" | grep -oE 'SC:i:[0-9]+' | sed 's/SC:i://' | awk '{s+=$1} END{print s+0}')
             echo "    SC total: $TOTAL_SC"
         fi
 
@@ -372,9 +372,9 @@ for bc_dir in "$OUTDIR"/09_correct/*/; do
             else
                 fail "No SJ tags found (--introns was set)"
             fi
-            N_SPLICED=$(grep -v '^@' "$SAM" | grep -oP 'SJ:Z:\KS' | wc -l || echo 0)
-            N_UNSPLICED=$(grep -v '^@' "$SAM" | grep -oP 'SJ:Z:\KR' | wc -l || echo 0)
-            N_UNSPANNED=$(grep -v '^@' "$SAM" | grep -oP 'SJ:Z:\K-' | wc -l || echo 0)
+            N_SPLICED=$(grep -v '^@' "$SAM" | grep -oE 'SJ:Z:S' | sed 's/SJ:Z://' | wc -l || echo 0)
+            N_UNSPLICED=$(grep -v '^@' "$SAM" | grep -oE 'SJ:Z:R' | sed 's/SJ:Z://' | wc -l || echo 0)
+            N_UNSPANNED=$(grep -v '^@' "$SAM" | grep -oE 'SJ:Z:-' | sed 's/SJ:Z://' | wc -l || echo 0)
             echo "    Splice: S=$N_SPLICED R=$N_UNSPLICED -=$N_UNSPANNED"
         fi
 
@@ -409,15 +409,15 @@ for bc_dir in "$OUTDIR"/09_correct/*/; do
         if [ -f "$QR" ]; then
             pass "Quality report exists"
             # Extract key stats
-            Q_SUBS=$(grep 'Q (subs only)' "$QR" | grep -oP 'Q[0-9.]+' | head -1 || true)
-            Q_ALL=$(grep 'Q (subs.indels)' "$QR" | grep -oP 'Q[0-9.]+' | head -1 || true)
-            ERR_FREE=$(grep 'Error-free' "$QR" | grep -oP '[0-9.]+%' | head -1 || true)
+            Q_SUBS=$(grep 'Q (subs only)' "$QR" | grep -oE 'Q[0-9.]+' | head -1 || true)
+            Q_ALL=$(grep 'Q (subs.indels)' "$QR" | grep -oE 'Q[0-9.]+' | head -1 || true)
+            ERR_FREE=$(grep 'Error-free' "$QR" | grep -oE '[0-9.]+%' | head -1 || true)
             [ -n "$Q_SUBS" ]   && echo "    Q (subs): $Q_SUBS"
             [ -n "$Q_ALL" ]    && echo "    Q (subs+indels): $Q_ALL"
             [ -n "$ERR_FREE" ] && echo "    Error-free: $ERR_FREE"
 
             if [ -n "$INTRONS" ] && grep -q "Splicing analysis" "$QR"; then
-                EFFICIENCY=$(grep "Intron 1:" "$QR" | grep -oP '\(.*?\)' || true)
+                EFFICIENCY=$(grep "Intron 1:" "$QR" | grep -oE '\(.*\)' || true)
                 [ -n "$EFFICIENCY" ] && echo "    Splicing efficiency: $EFFICIENCY"
             fi
         else

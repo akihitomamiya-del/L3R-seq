@@ -2,6 +2,23 @@
 
 All notable changes are documented here.
 
+## [1.0.4] - 2026-03-27
+
+### Fixed
+- macOS / Apple Silicon compatibility across the entire codebase
+- Replaced ~40 `grep -P` (Perl regex) calls with portable `grep -E` + `sed`
+- Replaced GNU-specific `sed -i`, `readlink -f`, `find -printf`, `split -d` with portable alternatives
+- Replaced `zcat` with `gzip -dc` (macOS `zcat` expects `.Z` format)
+- Replaced `lscpu`/`free`/`nproc`/`stat -c` with cross-platform alternatives in test scripts
+- Added `curl` fallback for `wget` in `setup_blast_db.sh`
+- Fixed `longread_umi.sh` symlink resolution (portable loop replacing `readlink -f`)
+
+### Changed
+- CI workflow now builds multi-arch Docker images (linux/amd64 + linux/arm64)
+- Dockerfile: racon built from source on arm64 with safe `-march=armv8-a` flags (bioconda binary uses SIMD instructions unsupported by Docker Desktop virtualisation)
+- Dockerfile: LoFreq install falls back to pip if bioconda arm64 build unavailable
+- README: added Apple Silicon section with build instructions and performance notes
+
 ## [1.0.3] - 2026-03-26
 
 ### Changed

@@ -143,7 +143,7 @@ seed_racon () {
   done
   
   # Rename and add binsize
-  sed -i "s/^>.*/>$UMINO;ubs=$BINSIZE/" $OUT/${UMINO}_sr.fa                    
+  sed "s/^>.*/>$UMINO;ubs=$BINSIZE/" $OUT/${UMINO}_sr.fa > $OUT/${UMINO}_sr.fa.tmp && mv $OUT/${UMINO}_sr.fa.tmp $OUT/${UMINO}_sr.fa
 } 
 
 export -f seed_racon

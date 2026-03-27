@@ -255,9 +255,9 @@ else
 fi
 
 # Check distribution: S, R, -
-N_SPLICED=$(grep -oP "SJ:Z:\KS" "$CORRECTED_SAM" | wc -l || echo 0)
-N_UNSPLICED=$(grep -oP "SJ:Z:\KR" "$CORRECTED_SAM" | wc -l || echo 0)
-N_UNSPANNED=$(grep -oP "SJ:Z:\K-" "$CORRECTED_SAM" | wc -l || echo 0)
+N_SPLICED=$(grep -oE "SJ:Z:S" "$CORRECTED_SAM" | sed 's/SJ:Z://' | wc -l || echo 0)
+N_UNSPLICED=$(grep -oE "SJ:Z:R" "$CORRECTED_SAM" | sed 's/SJ:Z://' | wc -l || echo 0)
+N_UNSPANNED=$(grep -oE "SJ:Z:-" "$CORRECTED_SAM" | sed 's/SJ:Z://' | wc -l || echo 0)
 
 echo "  Splice distribution: S=$N_SPLICED  R=$N_UNSPLICED  -=$N_UNSPANNED"
 
@@ -276,8 +276,8 @@ fi
 # Verify SI/IR tags match SJ
 SAMPLE_S=$(grep "SJ:Z:S" "$CORRECTED_SAM" | head -1)
 if [ -n "$SAMPLE_S" ]; then
-    SI_VAL=$(echo "$SAMPLE_S" | grep -oP "SI:i:\K[0-9]+")
-    IR_VAL=$(echo "$SAMPLE_S" | grep -oP "IR:i:\K[0-9]+")
+    SI_VAL=$(echo "$SAMPLE_S" | grep -oE "SI:i:[0-9]+" | sed 's/SI:i://')
+    IR_VAL=$(echo "$SAMPLE_S" | grep -oE "IR:i:[0-9]+" | sed 's/IR:i://')
     if [ "$SI_VAL" = "1" ] && [ "$IR_VAL" = "0" ]; then
         ok "Spliced read has SI:i:1, IR:i:0"
     else
@@ -287,8 +287,8 @@ fi
 
 SAMPLE_R=$(grep "SJ:Z:R" "$CORRECTED_SAM" | head -1)
 if [ -n "$SAMPLE_R" ]; then
-    SI_VAL=$(echo "$SAMPLE_R" | grep -oP "SI:i:\K[0-9]+")
-    IR_VAL=$(echo "$SAMPLE_R" | grep -oP "IR:i:\K[0-9]+")
+    SI_VAL=$(echo "$SAMPLE_R" | grep -oE "SI:i:[0-9]+" | sed 's/SI:i://')
+    IR_VAL=$(echo "$SAMPLE_R" | grep -oE "IR:i:[0-9]+" | sed 's/IR:i://')
     if [ "$SI_VAL" = "0" ] && [ "$IR_VAL" = "1" ]; then
         ok "Unspliced read has SI:i:0, IR:i:1"
     else
@@ -330,7 +330,7 @@ if [ -f "$QR" ]; then
     ok "Quality report exists"
     if grep -q "Splicing analysis" "$QR"; then
         ok "Quality report includes splicing section"
-        EFFICIENCY=$(grep "Intron 1:" "$QR" | grep -oP '\(.*?\)' || true)
+        EFFICIENCY=$(grep "Intron 1:" "$QR" | grep -oE '\(.*\)' || true)
         [ -n "$EFFICIENCY" ] && echo "  Splicing efficiency: $EFFICIENCY"
     else
         fail "Quality report missing splicing section"

@@ -13,8 +13,8 @@ sanitize_fasta() {
     local dirty=0
 
     # Check for \r (Windows line endings) or lines > 80 chars in sequence
-    if grep -qP '\r' "$fa" 2>/dev/null; then
-        sed -i 's/\r//g' "$fa"
+    if grep -q $'\r' "$fa" 2>/dev/null; then
+        sed 's/\r//g' "$fa" > "${fa}.tmp" && mv "${fa}.tmp" "$fa"
         dirty=1
         echo "  Fixed \\r line endings in $(basename "$fa")"
     fi

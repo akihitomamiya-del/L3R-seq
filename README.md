@@ -77,6 +77,18 @@ The `:ro` flag on `/data/input` is enforced by the kernel — the pipeline canno
 
 Using `--user "$(id -u):$(id -g)"` ensures output files are owned by your host user (Linux). On macOS/WSL2, file ownership is handled automatically by Docker Desktop.
 
+### Apple Silicon (M1/M2/M3/M4) Macs
+
+The pre-built image is multi-arch (amd64 + arm64), so `docker pull` works natively on Apple Silicon. If you need to build locally:
+
+```bash
+git clone https://github.com/akihitomamiya-del/L3R-seq.git
+cd L3R-seq
+docker build -f .devcontainer/build/Dockerfile -t l3rseq .
+```
+
+Docker Desktop for Mac uses a Linux VM, so expect slower I/O on bind-mounted volumes compared to native Linux. Use VirtioFS (the default file sharing backend in Docker Desktop) for best performance.
+
 ### Local installation
 
 Clone the repository and build the Docker image:

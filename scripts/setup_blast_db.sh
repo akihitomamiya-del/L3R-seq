@@ -114,13 +114,15 @@ download_fasta() {
     local url="$1"
     local output="$2"
 
-    if ! command -v wget &>/dev/null; then
-        echo "ERROR: wget is required for downloading. Install wget or use --*-fasta with a local file." >&2
+    echo "  Downloading: $url"
+    if command -v curl &>/dev/null; then
+        curl -fSL --progress-bar "$url" -o "$output"
+    elif command -v wget &>/dev/null; then
+        wget -q --show-progress "$url" -O "$output"
+    else
+        echo "ERROR: Neither curl nor wget found. Install one to download files." >&2
         exit 1
     fi
-
-    echo "  Downloading: $url"
-    wget -q --show-progress "$url" -O "$output"
 
     if [ ! -s "$output" ]; then
         echo "  ERROR: Download failed or file is empty." >&2

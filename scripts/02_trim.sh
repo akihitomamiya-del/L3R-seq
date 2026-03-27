@@ -58,8 +58,8 @@ run_step_02() {
         local _log="$_odir/${_bn}_trim3_report.log"
         if [ -f "$_log" ]; then
             local _in _out _pct
-            _in=$(grep -m1 'Total reads processed' "$_log" | grep -oP '[\d,]+' | tr -d ',')
-            _out=$(grep -m1 'Reads written' "$_log" | grep -oP '[\d,]+' | head -1 | tr -d ',')
+            _in=$(grep -m1 'Total reads processed' "$_log" | grep -oE '[0-9,]+' | tr -d ',')
+            _out=$(grep -m1 'Reads written' "$_log" | grep -oE '[0-9,]+' | head -1 | tr -d ',')
             _pct=$(( _out * 100 / (_in > 0 ? _in : 1) ))
             echo "    $_bn: ${_in:-?} → ${_out:-?} reads after trimming (${_pct}%)"
             _summary_append "$output_dir" "$_bn" "-" "02" "reads_in" "${_in:-0}" 2>/dev/null || true

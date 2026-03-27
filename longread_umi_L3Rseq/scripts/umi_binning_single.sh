@@ -75,7 +75,7 @@ BINNING_DIR=$OUT_DIR/read_binning
 mkdir -p $TRIM_DIR $UMI_DIR $BINNING_DIR $BINNING_DIR/bins
 
 # Symlink input reads for downstream compatibility
-ln -sf "$(readlink -f "$READ_IN")" "$TRIM_DIR/reads_tf.fq"
+ln -sf "$(cd "$(dirname "$READ_IN")" && pwd -P)/$(basename "$READ_IN")" "$TRIM_DIR/reads_tf.fq"
 
 ### Extract UMIs with cutadapt -------------------------------------------------
 echo "[umi_binning_single] Extracting UMIs with cutadapt --revcomp..."
@@ -362,7 +362,7 @@ aggregate_bins() {
 
 export -f aggregate_bins
 
-find $BINNING_DIR/bins/*/*/ -name "*bins.fastq" -printf "%f\n" | \
+find $BINNING_DIR/bins/*/*/ -name "*bins.fastq" | sed 's|.*/||' | \
   sort | \
   uniq | \
   $GNUPARALLEL \

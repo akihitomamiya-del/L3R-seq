@@ -9,7 +9,15 @@
 #
 
 ### List tools ----------------------------------------------------------------
-export LONGREAD_UMI_PATH="$(dirname "$(readlink -f "$0")")"
+# Resolve symlinks portably (readlink -f is GNU-only)
+_target="$0"
+while [ -L "$_target" ]; do
+  _dir="$(cd "$(dirname "$_target")" && pwd -P)"
+  _target="$(readlink "$_target")"
+  [[ "$_target" != /* ]] && _target="$_dir/$_target"
+done
+export LONGREAD_UMI_PATH="$(cd "$(dirname "$_target")" && pwd -P)"
+unset _target _dir
 
 # Format list of scripts
 SCRIPT_LIST=$(
@@ -76,9 +84,9 @@ ${DOCS}
   TAIL='^## License$'
   
   echo "$DOCS" > $LONGREAD_UMI_PATH/docs/tmp.md
-  sed -i \
-  -e "/$LEAD/,/$TAIL/{ /$LEAD/{p; r $LONGREAD_UMI_PATH/docs/tmp.md
-        }; /$TAIL/p; d }"  $LONGREAD_UMI_PATH/README.md
+  sed -e "/$LEAD/,/$TAIL/{ /$LEAD/{p; r $LONGREAD_UMI_PATH/docs/tmp.md
+        }; /$TAIL/p; d }" $LONGREAD_UMI_PATH/README.md > $LONGREAD_UMI_PATH/README.md.tmp \
+  && mv $LONGREAD_UMI_PATH/README.md.tmp $LONGREAD_UMI_PATH/README.md
   rm $LONGREAD_UMI_PATH/docs/tmp.md
   exit 1
 fi

@@ -33,7 +33,7 @@ run_step_03() {
 
         if [[ "$rpi_base_name" =~ _B[0-9]+\.fasta$ ]]; then
             local barcode_num
-            barcode_num=$(echo "$bname" | grep -Po '(?<=barcode)\d+' || echo "")
+            barcode_num=$(echo "$bname" | sed -n 's/.*barcode\([0-9]*\).*/\1/p')
             if [ -n "$barcode_num" ]; then
                 local rpi_dir
                 rpi_dir=$(dirname "$rpi_fasta")

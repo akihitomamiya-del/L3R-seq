@@ -41,7 +41,7 @@ run_step_01() {
         local _bn
         _bn=$(basename "$_fq" .fastq.gz)
         local _nreads
-        _nreads=$(zcat "$_fq" | awk 'NR%4==1' | wc -l)
+        _nreads=$(gzip -dc "$_fq" | awk 'NR%4==1' | wc -l)
         local _size
         _size=$(du -h "$_fq" | cut -f1)
         echo "    $_bn: $_nreads reads ($_size)"

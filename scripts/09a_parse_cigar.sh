@@ -16,9 +16,9 @@ run_parse_cigar() {
     RESULT_Aln_Start="${fields[3]}"
     RESULT_Aln_CIGAR="${fields[5]}"
 
-    RESULT_Rightclip_N=$(echo "$RESULT_Aln_CIGAR" | grep -Po '[0-9]+S$' | grep -Po '^[0-9]+' | awk '{a+=$1} END{print a+0;}')
-    RESULT_Total_M=$(echo "$RESULT_Aln_CIGAR" | grep -Po '[0-9]+M' | grep -Po '[0-9]+' | awk '{a+=$1} END{print a+0;}')
-    RESULT_Total_D=$(echo "$RESULT_Aln_CIGAR" | grep -Po '[0-9]+D' | grep -Po '[0-9]+' | awk '{a+=$1} END{print a+0;}')
+    RESULT_Rightclip_N=$(echo "$RESULT_Aln_CIGAR" | grep -Eo '[0-9]+S$' | grep -Eo '^[0-9]+' | awk '{a+=$1} END{print a+0;}')
+    RESULT_Total_M=$(echo "$RESULT_Aln_CIGAR" | grep -Eo '[0-9]+M' | grep -Eo '[0-9]+' | awk '{a+=$1} END{print a+0;}')
+    RESULT_Total_D=$(echo "$RESULT_Aln_CIGAR" | grep -Eo '[0-9]+D' | grep -Eo '[0-9]+' | awk '{a+=$1} END{print a+0;}')
 
     if [ "$RESULT_Rightclip_N" -gt 0 ]; then
         local seq="${fields[9]}"

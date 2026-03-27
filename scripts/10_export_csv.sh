@@ -210,7 +210,7 @@ run_step_10() {
 
             # Strip SAM header, convert tabs to commas, add CSV header
             sed '/^@/d' "$corrected_sam" | sed 's/\t/,/g' > "$csv_file"
-            sed -i "1i$header" "$csv_file"
+            { echo "$header"; cat "$csv_file"; } > "${csv_file}.tmp" && mv "${csv_file}.tmp" "$csv_file"
 
             # Generate quality report
             local report_file="$output_dir/10_csv/${bname}_${rpi_name}_quality_report.txt"
@@ -242,7 +242,7 @@ run_step_10() {
             elif [ -f "$_cdir/abnormal_rightclip.sam" ]; then
                 _chimeric=$(grep -cv '^@' "$_cdir/abnormal_rightclip.sam" 2>/dev/null) || _chimeric=0
             fi
-            _ec_sum=$(grep -v '^@' "$_sam" | grep -oP 'EC:i:\K[0-9]+' | awk '{s+=$1} END{print s+0}')
+            _ec_sum=$(grep -v '^@' "$_sam" | grep -oE 'EC:i:[0-9]+' | sed 's/EC:i://' | awk '{s+=$1} END{print s+0}')
             _summary_append "$output_dir" "$_bname" "$_rname" "09" "corrected_reads" "$_corrected" 2>/dev/null || true
             _summary_append "$output_dir" "$_bname" "$_rname" "09" "chimeric_clips" "$_chimeric" 2>/dev/null || true
             _summary_append "$output_dir" "$_bname" "$_rname" "09" "total_editing_count" "$_ec_sum" 2>/dev/null || true
