@@ -45,19 +45,7 @@ There are three ways to run L3Rseq. Pick the one that fits your situation:
 | Requires | GitHub account | [Docker Desktop](https://www.docker.com/products/docker-desktop/) | Docker Desktop + git |
 | Setup time | ~5 min | ~5 min (image pull) | ~11 min (image build) |
 | Runs in | Browser | Your terminal | Your terminal |
-| Works on | Any OS | See platform support below | See platform support below |
-
-**Platform support:**
-
-| Platform | Docker pull | Build from source | Status |
-|---|---|---|---|
-| macOS — Apple Silicon (M1/M2/M3/M4) | Native arm64 image | Native arm64 build | Tested |
-| GitHub Codespaces | Pre-built image | N/A | Tested |
-| Linux (x86_64) | Native amd64 image | Native amd64 build | Tested (CI) |
-| macOS — Intel | Native amd64 image | Native amd64 build | Expected to work (untested) |
-| Windows (WSL2) | Native amd64 image | Native amd64 build | Expected to work (untested) |
-
-If you can help us confirm Intel Mac or WSL2 support, please [open an issue](https://github.com/akihitomamiya-del/L3R-seq/issues).
+| Works on | Any OS | macOS, Linux, Windows (WSL2) — see [platform support](#platform-support) | macOS, Linux |
 
 ---
 
@@ -542,7 +530,23 @@ python3 scripts/plot_umi_bins.py results/ --compare results_umic/ --quality  # c
 
 ## 13. Requirements
 
-L3Rseq runs inside a Docker container where all dependencies are pre-installed. You need [Docker Desktop](https://www.docker.com/products/docker-desktop/) (macOS, Windows) or Docker Engine (Linux). The pre-built image supports both Intel and Apple Silicon Macs natively — see [Apple Silicon](#apple-silicon-m1m2m3m4-macs) for details.
+L3Rseq runs inside a Docker container where all dependencies are pre-installed. You need [Docker Desktop](https://www.docker.com/products/docker-desktop/) (macOS, Windows) or Docker Engine (Linux).
+
+### Platform support
+
+The pre-built Docker image is multi-arch (amd64 + arm64):
+
+| Platform | Docker pull | Build from source | Status |
+|---|---|---|---|
+| macOS — Apple Silicon (M1/M2/M3/M4) | Native arm64 image | Native arm64 build | Tested |
+| GitHub Codespaces | Pre-built image | N/A | Tested |
+| Linux (x86_64) | Native amd64 image | Native amd64 build | Tested (CI) |
+| macOS — Intel | Native amd64 image | Native amd64 build | Expected to work (untested) |
+| Windows (WSL2) | Native amd64 image | Native amd64 build | Expected to work (untested) |
+
+If you can help us confirm Intel Mac or WSL2 support, please [open an issue](https://github.com/akihitomamiya-del/L3R-seq/issues).
+
+### Conda environments
 
 The conda environments listed below are managed automatically — no manual activation is needed.
 
