@@ -3,8 +3,11 @@
 *
 
 # Build dependencies (COPYed by Dockerfile)
-!.devcontainer/
-!.devcontainer/**
+# Only include build/ — default/ and claude-code/ are not needed by the main image
+!.devcontainer/build/
+!.devcontainer/build/**
+!.devcontainer/claude-code/
+!.devcontainer/claude-code/**
 !longread_umi_L3Rseq/
 !longread_umi_L3Rseq/**
 !UMIC-seq_L3Rseq/

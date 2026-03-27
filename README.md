@@ -39,13 +39,13 @@ Before running L3Rseq, prepare these files:
 
 There are three ways to run L3Rseq. Pick the one that fits your situation:
 
-| | **A. Codespaces** | **B. Docker** | **C. Build from source** |
-|---|---|---|---|
-| Best for | Beginners, quick exploration | Most users with local data | Developers modifying the pipeline |
-| Requires | GitHub account | [Docker](https://docs.docker.com/get-docker/) | Docker + git |
-| Setup time | ~5 min | ~5 min (image pull) | ~11 min (image build) |
-| Runs in | Browser | Your terminal | Your terminal |
-| Works on | Any OS | macOS, Linux, Windows (WSL2) — see [platform support](#platform-support) | macOS, Linux |
+| | **A. Codespaces** | **B. Docker** | **C. Build from source** | **D. Claude Code** |
+|---|---|---|---|---|
+| Best for | Beginners, quick exploration | Most users with local data | Developers modifying the pipeline | AI-assisted development |
+| Requires | GitHub account | [Docker](https://docs.docker.com/get-docker/) | Docker + git | Docker + git + [Anthropic API key](https://console.anthropic.com/) |
+| Setup time | ~5 min | ~5 min (image pull) | ~11 min (image build) | ~12 min (image build) |
+| Runs in | Browser | Your terminal | Your terminal | VS Code + Claude CLI |
+| Works on | Any OS | macOS, Linux, Windows (WSL2) — see [platform support](#platform-support) | macOS, Linux | macOS, Linux |
 
 ---
 
@@ -127,6 +127,19 @@ docker build -f .devcontainer/build/Dockerfile -t l3rseq .
 ```
 
 On Apple Silicon Macs, this builds a native arm64 image. Docker Desktop for Mac uses a Linux VM, so expect slower I/O on bind-mounted volumes compared to native Linux. Use VirtioFS (the default file sharing backend in Docker Desktop settings) for best performance.
+
+---
+
+### D. Claude Code development (AI-assisted)
+
+For modifying the pipeline with [Claude Code](https://docs.anthropic.com/en/docs/claude-code). This devcontainer extends the pre-built L3Rseq image with the Claude CLI, a network firewall (for safe `--dangerously-skip-permissions` use), and developer tooling (zsh, git-delta, fzf).
+
+1. Set your API key as an environment variable on your host: `export ANTHROPIC_API_KEY=sk-ant-...`
+2. Clone the repo and open it in VS Code
+3. Select **Reopen in Container** > **Claude Code Sandbox**
+4. Run `claude` in the terminal to start an AI-assisted session
+
+The firewall restricts outbound network access to GitHub, Anthropic API, npm, and VS Code services only.
 
 ---
 
