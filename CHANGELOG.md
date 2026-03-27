@@ -2,6 +2,25 @@
 
 All notable changes are documented here.
 
+## [1.0.7] - 2026-03-27
+
+### Fixed
+- 09_tail_correct.sh: `set +e` leaked to caller, disabling error checking for subsequent pipeline steps
+- 09c_walk_correction.sh: substring grep on variant positions caused false positive matches (e.g. position 606 matching 1606CT)
+- L3Rseq: help text showed wrong default for `--method` (said umic-seq, actually longread-umi)
+- UMIC-seq_fastq_v2.py: `similarity_histogram()` used wrong variable (`output_name` instead of parameter `outname`)
+- UMIC-seq_fastq_v2.py: `ax1.set_xlabel()` was trapped inside a comment and never executed
+- IGV viewer: `/extdata/` BAM paths resolved incorrectly in `generatePileup`
+- IGV viewer: HTTP byte-range end not clamped to file size, producing incorrect headers
+
+### Changed
+- Dockerfile: replaced `git clone` with `curl+tar` for UMIC-seq (BuildKit compatibility)
+- Dockerfile: purge arm64 build tools (cmake, g++, zlib1g-dev) after racon build to reduce image size
+- Dockerfile: clean up `/tmp/UMIC-seq_fastq_v2.py` after install
+- Dockerfile + devcontainer: removed `2>/dev/null` from `npm install` so errors are visible
+- Dockerfile + devcontainer: IGV server logs to `/tmp/igv-server.log` instead of `/dev/null`
+- Removed duplicate Node.js devcontainer feature (Dockerfile already installs it)
+
 ## [1.0.6] - 2026-03-27
 
 ### Changed
