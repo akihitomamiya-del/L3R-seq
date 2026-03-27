@@ -498,7 +498,9 @@ python3 scripts/plot_umi_bins.py results/ --compare results_umic/ --quality  # c
 
 ## 13. Requirements
 
-When running inside the Docker container, all dependencies are pre-installed. The conda environments listed below are managed automatically — no manual activation is needed.
+L3Rseq runs inside a Docker container where all dependencies are pre-installed. You need [Docker Desktop](https://www.docker.com/products/docker-desktop/) (macOS, Windows) or Docker Engine (Linux). The pre-built image supports both Intel and Apple Silicon Macs natively — see [Apple Silicon](#apple-silicon-m1m2m3m4-macs) for details.
+
+The conda environments listed below are managed automatically — no manual activation is needed.
 
 | Environment | Tools | Used by |
 |---|---|---|

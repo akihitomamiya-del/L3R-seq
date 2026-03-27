@@ -2,6 +2,14 @@
 
 All notable changes are documented here.
 
+## [1.0.6] - 2026-03-27
+
+### Changed
+- CI: native arm64 GitHub Actions runner replaces QEMU emulation (~12 min vs ~30 min)
+- CI: bumped all GitHub Actions to Node.js 24-compatible versions
+- Added Docker Desktop requirement and Apple Silicon cross-reference to README Requirements section
+- Added version field to CITATION.cff
+
 ## [1.0.5] - 2026-03-27
 
 ### Fixed
