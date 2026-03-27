@@ -2,6 +2,13 @@
 
 All notable changes are documented here.
 
+## [1.0.10] - 2026-03-27
+
+### Fixed
+- 09d_rebuild_cigar.sh: clamp RESULT_CIGAR_Tail_new_S to 0 to prevent invalid negative soft-clip values in CIGAR strings
+- 09_tail_correct.sh: add error guards on samtools view/sort/index calls that were silently ignored under `set +e`
+- L3Rseq: `--start-at 9` with flat input now warns that variant auto-detection requires 08_variants/ or explicit `--var`
+
 ## [1.0.9] - 2026-03-27
 
 ### Fixed

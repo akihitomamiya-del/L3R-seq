@@ -22,6 +22,10 @@ run_rebuild_cigar() {
     cigar_tail_new_m=$((cigar_tail_org_m + match_counter))
 
     RESULT_CIGAR_Tail_new_S=$((cigar_tail_org_s - match_counter))
+    # Guard: clamp to 0 to prevent invalid negative soft-clip in CIGAR
+    if [ "$RESULT_CIGAR_Tail_new_S" -lt 0 ]; then
+        RESULT_CIGAR_Tail_new_S=0
+    fi
 
     local cigar_body
     cigar_body=$(echo "$aln_cigar" | sed "s/${cigar_tail_org}$//")

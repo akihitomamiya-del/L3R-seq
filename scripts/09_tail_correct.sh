@@ -254,11 +254,16 @@ run_step_09() {
             echo "    $nreads reads to process"
 
             if [ "$nreads" -eq 0 ]; then
-                samtools view -H "$input_sam" > "$odir/corrected.sam"
-                samtools view -H "$input_sam" > "$odir/chimeric_rightclip.sam"
-                samtools view -bS "$odir/corrected.sam" > "$odir/corrected.bam"
-                samtools sort "$odir/corrected.bam" > "$odir/corrected.sort.bam"
-                samtools index "$odir/corrected.sort.bam"
+                samtools view -H "$input_sam" > "$odir/corrected.sam" \
+                    || { echo "ERROR: samtools view failed for $bname/$rpi_name" >&2; return 1; }
+                samtools view -H "$input_sam" > "$odir/chimeric_rightclip.sam" \
+                    || { echo "ERROR: samtools view failed for $bname/$rpi_name" >&2; return 1; }
+                samtools view -bS "$odir/corrected.sam" > "$odir/corrected.bam" \
+                    || { echo "ERROR: samtools view -bS failed for $bname/$rpi_name" >&2; return 1; }
+                samtools sort "$odir/corrected.bam" > "$odir/corrected.sort.bam" \
+                    || { echo "ERROR: samtools sort failed for $bname/$rpi_name" >&2; return 1; }
+                samtools index "$odir/corrected.sort.bam" \
+                    || { echo "ERROR: samtools index failed for $bname/$rpi_name" >&2; return 1; }
                 rm -rf "$tmp_dir"
                 continue
             fi
@@ -392,9 +397,12 @@ run_step_09() {
             done
 
             # Convert corrected SAM to sorted BAM
-            samtools view -bS "$odir/corrected.sam" > "$odir/corrected.bam"
-            samtools sort "$odir/corrected.bam" > "$odir/corrected.sort.bam"
-            samtools index "$odir/corrected.sort.bam"
+            samtools view -bS "$odir/corrected.sam" > "$odir/corrected.bam" \
+                || { echo "ERROR: samtools view -bS failed for $bname/$rpi_name" >&2; return 1; }
+            samtools sort "$odir/corrected.bam" > "$odir/corrected.sort.bam" \
+                || { echo "ERROR: samtools sort failed for $bname/$rpi_name" >&2; return 1; }
+            samtools index "$odir/corrected.sort.bam" \
+                || { echo "ERROR: samtools index failed for $bname/$rpi_name" >&2; return 1; }
 
             # Convert chimeric SAM to sorted BAM (for IGV viewer)
             if [ -s "$odir/chimeric_rightclip.sam" ] && grep -qv '^@' "$odir/chimeric_rightclip.sam"; then
