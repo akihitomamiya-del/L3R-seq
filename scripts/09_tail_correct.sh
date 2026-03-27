@@ -175,7 +175,7 @@ run_step_09() {
         local new_total_m
         new_total_m=$(echo "$RESULT_New_CIGAR" | grep -Eo '[0-9]+M' | grep -Eo '[0-9]+' | awk '{a+=$1} END{print a+0;}')
         local terminus=$((RESULT_Aln_Start - 1 + new_total_m + RESULT_Total_D))
-        local matched_length=$((RESULT_Total_M + RESULT_Total_D))
+        local matched_length=$((new_total_m + RESULT_Total_D))
         local doublesorter=$((terminus * 10000 + RESULT_CIGAR_Tail_new_S))
 
         # Get remaining right-clip sequence after correction

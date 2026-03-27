@@ -6,6 +6,7 @@ All notable changes are documented here.
 
 ### Fixed
 - 09_tail_correct.sh: variant caller used original CIGAR instead of walk-corrected CIGAR, under-counting EC for reads where minimap2 soft-clipped at or before editing sites
+- 09_tail_correct.sh: matched_length (mL tag) used original alignment length instead of walk-corrected length
 
 ## [1.0.8] - 2026-03-27
 
