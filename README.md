@@ -42,7 +42,7 @@ There are three ways to run L3Rseq. Pick the one that fits your situation:
 | | **A. Codespaces** | **B. Docker** | **C. Build from source** |
 |---|---|---|---|
 | Best for | Beginners, quick exploration | Most users with local data | Developers modifying the pipeline |
-| Requires | GitHub account | [Docker Desktop](https://www.docker.com/products/docker-desktop/) | Docker Desktop + git |
+| Requires | GitHub account | [Docker](https://docs.docker.com/get-docker/) | Docker + git |
 | Setup time | ~5 min | ~5 min (image pull) | ~11 min (image build) |
 | Runs in | Browser | Your terminal | Your terminal |
 | Works on | Any OS | macOS, Linux, Windows (WSL2) — see [platform support](#platform-support) | macOS, Linux |
@@ -51,7 +51,7 @@ There are three ways to run L3Rseq. Pick the one that fits your situation:
 
 ### A. GitHub Codespaces (no installation required)
 
-This is the easiest way to get started. Everything runs in your browser.
+This is the easiest way to get started. Everything runs in your browser via VS Code for the Web.
 
 1. On this repository, click **Code** > **Codespaces** > **Create codespace**
 2. When prompted, select **L3Rseq Pipeline** (the default)
@@ -60,11 +60,13 @@ This is the easiest way to get started. Everything runs in your browser.
 
 If you need to modify the Docker image itself, select **L3Rseq Pipeline (build)** instead (~10 min setup).
 
+> **Tip:** You can also open this devcontainer locally with [VS Code](https://code.visualstudio.com/) + the [Dev Containers extension](https://marketplace.visualstudio.com/items?itemName=ms-vscode-remote.remote-containers) — clone the repo, then use **Reopen in Container** from the command palette.
+
 ---
 
 ### B. Docker (recommended for local data)
 
-Install [Docker Desktop](https://www.docker.com/products/docker-desktop/) if you don't have it, then pull the pre-built image:
+Install [Docker](https://docs.docker.com/get-docker/) (Docker Desktop on macOS/Windows, or Docker Engine on Linux) if you don't have it, then pull the pre-built image:
 
 ```bash
 docker pull ghcr.io/akihitomamiya-del/l3rseq:latest
@@ -116,7 +118,7 @@ On Linux, `--user "$(id -u):$(id -g)"` ensures output files are owned by your ho
 
 ### C. Build from source
 
-For developers who want to modify the pipeline or Dockerfile:
+For developers who want to modify the pipeline or Dockerfile. If you use VS Code, clone the repo and select **Reopen in Container** > **L3Rseq Pipeline (build)** — this builds the image and drops you into a ready-to-edit environment. Otherwise, build manually:
 
 ```bash
 git clone https://github.com/akihitomamiya-del/L3R-seq.git
@@ -136,7 +138,7 @@ Inside the container or Codespace, run:
 bash tests/run_tests.sh --skip-preprocess
 ```
 
-This runs 97 checks on synthetic data (~25 sec) and confirms all tools are working.
+This runs 97 checks on synthetic data (~25 sec) and confirms all tools are working. After the tests complete, you can view the test output alignments in the IGV viewer — see [Alignment viewer](#8-alignment-viewer) for details.
 
 ## 2. Pipeline overview
 
