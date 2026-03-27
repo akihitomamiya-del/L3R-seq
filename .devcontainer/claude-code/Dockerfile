@@ -19,7 +19,6 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     dnsutils \
     aggregate \
     jq \
-    fzf \
     nano \
     vim \
     man-db \
