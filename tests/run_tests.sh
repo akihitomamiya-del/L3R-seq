@@ -314,7 +314,7 @@ echo ""
 
 T_START=$SECONDS
 echo "[TEST 2] Steps 04-10: longread-umi, CT pattern"
-echo ""
+echo "  ⏳ Running pipeline (this is the longest test) ..."
 
 mkdir -p "$OUTPUT_DIR/pipeline_CT"
 
@@ -326,7 +326,9 @@ mkdir -p "$OUTPUT_DIR/pipeline_CT"
     --pattern CT \
     --keep-intermediates \
     --start-at 4 --stop-at 10 \
-    --threads 4 > "$OUTPUT_DIR/test2.log" 2>&1
+    --threads 4 2>&1 | tee "$OUTPUT_DIR/test2.log" | \
+    awk '/\[Step [0-9]/ && !/Done\./ { printf "  %s\n", $0; fflush() }'
+echo ""
 
 OUT="$OUTPUT_DIR/pipeline_CT"
 
