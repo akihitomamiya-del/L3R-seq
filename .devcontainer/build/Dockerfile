@@ -47,10 +47,12 @@ RUN mamba create -y -n longread_umi -c conda-forge -c bioconda \
 # Docker Desktop's virtualisation on Apple Silicon.  Rebuild from source with
 # baseline ARMv8 flags so it runs everywhere.  On amd64 the bioconda binary
 # is fine, so this step is skipped.
-# On arm64 the bioconda racon binary uses SIMD instructions unsupported by
-# Docker Desktop's virtualisation on Apple Silicon.  Rebuild from source with
-# baseline ARMv8 flags.  On amd64 the bioconda binary is fine — step is skipped.
 # Uses curl + tar instead of git clone (BuildKit may block git).
+#
+# IMPORTANT: -Dspoa_optimize_for_native=OFF is required because spoa's
+# CMakeLists.txt appends -march=native by default, which overrides the
+# portable -march=armv8-a flag.  Without this, the CI runner's native
+# march (e.g. Graviton) bakes in instructions that crash on Apple Silicon.
 RUN if [ "$(uname -m)" = "aarch64" ]; then \
       apt-get update && apt-get install -y --no-install-recommends cmake g++ zlib1g-dev \
       && mkdir -p /tmp/racon-build \
@@ -71,9 +73,16 @@ RUN if [ "$(uname -m)" = "aarch64" ]; then \
       && cmake -DCMAKE_BUILD_TYPE=Release \
                -DCMAKE_C_FLAGS="-march=armv8-a" \
                -DCMAKE_CXX_FLAGS="-march=armv8-a" \
+               -Dspoa_optimize_for_native=OFF \
                .. \
       && make -j$(nproc) \
       && cp bin/racon /opt/miniforge/envs/longread_umi/bin/racon \
+      && printf ">t\nACGTACGT\n" > /tmp/t.fa \
+      && printf "@r\nACGTACGT\n+\nIIIIIIII\n" > /tmp/r.fq \
+      && printf "r\t0\tt\t1\t255\t8M\t*\t0\t0\tACGTACGT\tIIIIIIII\n" > /tmp/o.sam \
+      && /opt/miniforge/envs/longread_umi/bin/racon /tmp/r.fq /tmp/o.sam /tmp/t.fa > /dev/null 2>&1 \
+      && echo "racon arm64 rebuild: functional test passed" \
+      && rm -f /tmp/t.fa /tmp/r.fq /tmp/o.sam \
       && rm -rf /tmp/racon-build \
       && apt-get clean && rm -rf /var/lib/apt/lists/*; \
     fi

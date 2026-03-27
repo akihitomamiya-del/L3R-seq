@@ -6,6 +6,11 @@ const fs = require("fs");
 const path = require("path");
 const zlib = require("zlib");
 
+// Ignore SIGHUP so the server survives when the parent shell (e.g.
+// devcontainer postStartCommand) exits.  Node terminates on SIGHUP by
+// default; this one-liner prevents that.
+process.on("SIGHUP", () => {});
+
 const PORT = process.env.IGV_PORT || 8080;
 const WORKSPACE = process.env.IGV_WORKSPACE || "/workspace";
 const SCAN_DIR = process.env.IGV_SCAN_DIR || WORKSPACE;  // --dir narrows discovery

@@ -120,6 +120,27 @@ if [ ! -f "$REF" ]; then
     exit 1
 fi
 
+# Pre-flight: verify racon can actually polish (not just print --version).
+# The bioconda arm64 binary crashes with SIGILL on Apple Silicon Docker Desktop
+# when spoa's SIMD code runs.  Catch this early with a clear message.
+conda activate longread_umi 2>/dev/null
+_racon_ok=0
+echo ">t" > /tmp/_racon_test.fa; echo "ACGTACGT" >> /tmp/_racon_test.fa
+printf "@r\nACGTACGT\n+\nIIIIIIII\n" > /tmp/_racon_test.fq
+printf "r\t0\tt\t1\t255\t8M\t*\t0\t0\tACGTACGT\tIIIIIIII\n" > /tmp/_racon_test.sam
+if racon /tmp/_racon_test.fq /tmp/_racon_test.sam /tmp/_racon_test.fa > /dev/null 2>&1; then
+    _racon_ok=1
+fi
+rm -f /tmp/_racon_test.fa /tmp/_racon_test.fq /tmp/_racon_test.sam
+conda deactivate 2>/dev/null
+if [ "$_racon_ok" -eq 0 ]; then
+    echo "ERROR: racon crashes during polishing (likely SIGILL on arm64)."
+    echo "  The container image needs rebuilding — see Dockerfile comments."
+    echo "  Quick fix: rebuild racon from source inside the container:"
+    echo "    sudo bash -c 'cd /tmp && curl -fsSL https://github.com/lbcb-sci/racon/archive/refs/tags/1.5.0.tar.gz | tar xz && cd racon-1.5.0 && mkdir build && cd build && cmake -DCMAKE_BUILD_TYPE=Release -DCMAKE_CXX_FLAGS=\"-march=armv8-a\" -Dspoa_optimize_for_native=OFF .. && make -j\$(nproc) && cp bin/racon /opt/miniforge/envs/longread_umi/bin/racon'"
+    exit 1
+fi
+
 echo "========================================"
 echo "L3Rseq Pipeline Tests"
 echo "========================================"

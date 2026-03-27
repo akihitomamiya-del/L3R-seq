@@ -128,6 +128,25 @@ TOOL_CHECKS=(
     "NanoporeMap:blastn -version | head -1"
 )
 
+# Functional racon test — racon --version doesn't exercise SIMD code paths,
+# so a broken arm64 binary can pass version checks but crash during polishing.
+RACON_FUNC=$(docker run --rm "$IMAGE" bash -c '
+    eval "$(conda shell.bash hook)" && conda activate longread_umi
+    echo ">t" > /tmp/t.fa; echo "ACGTACGT" >> /tmp/t.fa
+    printf "@r\nACGTACGT\n+\nIIIIIIII\n" > /tmp/r.fq
+    printf "r\t0\tt\t1\t255\t8M\t*\t0\t0\tACGTACGT\tIIIIIIII\n" > /tmp/o.sam
+    if racon /tmp/r.fq /tmp/o.sam /tmp/t.fa > /dev/null 2>&1; then
+        echo "OK"
+    else
+        echo "SIGILL"
+    fi
+' 2>&1)
+if [ "$RACON_FUNC" = "OK" ]; then
+    pass "racon functional test (polishing works)"
+else
+    fail "racon functional test FAILED ($RACON_FUNC) — arm64 SIMD issue; rebuild image"
+fi
+
 for check in "${TOOL_CHECKS[@]}"; do
     env="${check%%:*}"
     cmd="${check#*:}"
