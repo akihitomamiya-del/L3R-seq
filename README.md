@@ -27,28 +27,61 @@ L3Rseq was developed for analyzing the *Arabidopsis thaliana* mitochondrial *ccm
 
 ## 1. Quick start
 
-Before running, you need:
+### What you need
+
+Before running L3Rseq, prepare these files:
 
 1. **Demultiplexed FASTQ files** — basecalled and native-barcode-demultiplexed by dorado (see the manuscript for the wet-lab and basecalling protocol)
 2. **A reference FASTA** — the genomic sequence of your target gene
 3. **Sample barcode FASTA** (if starting from [step 01](#2-pipeline-overview)) — one entry per sample-specific index primer (called "RPI" in our protocol; see the manuscript for details)
 
-### Using GitHub Codespaces (recommended for beginners)
+### Choose your setup
 
-Click "Code" > "Codespaces" > "Create codespace" on this repository. When prompted, select **L3Rseq Pipeline** (the default). This pulls a pre-built image (~1 min) and gives you a fully configured Linux environment in your browser — no Docker installation, no command-line setup, and no compatibility issues. All bioinformatics tools, conda environments, and the IGV alignment viewer are pre-installed and ready to use.
+There are three ways to run L3Rseq. Pick the one that fits your situation:
 
-If you need to modify the Docker image itself, select **L3Rseq Pipeline (build)** instead — this builds from the Dockerfile (~10 min).
+| | **A. Codespaces** | **B. Docker** | **C. Build from source** |
+|---|---|---|---|
+| Best for | Beginners, quick exploration | Most users with local data | Developers modifying the pipeline |
+| Requires | GitHub account | [Docker Desktop](https://www.docker.com/products/docker-desktop/) | Docker Desktop + git |
+| Setup time | ~5 min | ~5 min (image pull) | ~11 min (image build) |
+| Runs in | Browser | Your terminal | Your terminal |
+| Works on | Any OS | Linux, macOS (Intel + Apple Silicon), Windows (WSL2) | Linux, macOS (Intel + Apple Silicon) |
 
-### Using Docker
+---
+
+### A. GitHub Codespaces (no installation required)
+
+This is the easiest way to get started. Everything runs in your browser.
+
+1. On this repository, click **Code** > **Codespaces** > **Create codespace**
+2. When prompted, select **L3Rseq Pipeline** (the default)
+3. Wait ~1 min for the environment to load
+4. You now have a fully configured Linux terminal with all tools pre-installed
+
+If you need to modify the Docker image itself, select **L3Rseq Pipeline (build)** instead (~10 min setup).
+
+---
+
+### B. Docker (recommended for local data)
+
+Install [Docker Desktop](https://www.docker.com/products/docker-desktop/) if you don't have it, then pull the pre-built image:
 
 ```bash
 docker pull ghcr.io/akihitomamiya-del/l3rseq:latest
+```
 
-# Option 1: Wrapper script (recommended — handles mounts and file ownership)
+The image supports Intel and Apple Silicon Macs, Linux, and Windows (WSL2) natively.
+
+**Run the pipeline** using one of these methods (pick one):
+
+**Wrapper script** (simplest — handles mounts and file ownership for you):
+```bash
 ./l3rseq-docker --input ~/data/fastq --outdir ~/results \
     --ref /data/input/reference.fa --pattern CT
+```
 
-# Option 2: docker run with explicit bind mounts
+**docker run** (explicit control over mounts):
+```bash
 docker run --rm \
     --user "$(id -u):$(id -g)" \
     -v ~/data/fastq:/data/input:ro \
@@ -56,55 +89,54 @@ docker run --rm \
     ghcr.io/akihitomamiya-del/l3rseq:latest \
     L3Rseq run --input /data/input --outdir /data/output \
     --ref /data/input/reference.fa --pattern CT
+```
 
-# Option 3: docker-compose (edit .env first)
-cp .env.example .env   # then edit paths and UID/GID
+**docker compose** (for repeated use — saves your paths in a config file):
+```bash
+cp .env.example .env   # edit this file with your paths and UID/GID
 docker compose run l3rseq L3Rseq run \
     --input /data/input --outdir /data/output \
     --ref /data/input/reference.fa --pattern CT
 ```
 
-#### Data mounts
+#### How data mounts work
 
-Input and output are bind-mounted separately — no data is copied into the container:
+Your data is not copied into the container. Instead, directories on your machine are mounted into the container:
 
-| Container path | Host path | Mode | Contents |
+| Container path | Your path | Access | Contains |
 |---|---|---|---|
-| `/data/input` | Your FASTQ directory | Read-only (`:ro`) | Raw reads, reference FASTA, barcode FASTA |
+| `/data/input` | Your FASTQ directory | Read-only | Raw reads, reference FASTA, barcode FASTA |
 | `/data/output` | Your results directory | Read-write | Pipeline output (01_concat/ through 10_csv/) |
 
-The `:ro` flag on `/data/input` is enforced by the kernel — the pipeline cannot modify or delete your source data, even as root. Use a dedicated empty directory for `/data/output`, not your home folder.
+The read-only flag on `/data/input` is enforced by the kernel — the pipeline cannot modify or delete your source data. Use a dedicated empty directory for `/data/output`.
 
-Using `--user "$(id -u):$(id -g)"` ensures output files are owned by your host user (Linux). On macOS/WSL2, file ownership is handled automatically by Docker Desktop.
+On Linux, `--user "$(id -u):$(id -g)"` ensures output files are owned by your host user. On macOS and WSL2, Docker Desktop handles file ownership automatically.
 
-### Apple Silicon (M1/M2/M3/M4) Macs
+---
 
-The pre-built image is multi-arch (amd64 + arm64), so `docker pull` works natively on Apple Silicon. If you need to build locally:
+### C. Build from source
 
-```bash
-git clone https://github.com/akihitomamiya-del/L3R-seq.git
-cd L3R-seq
-docker build -f .devcontainer/build/Dockerfile -t l3rseq .
-```
-
-Docker Desktop for Mac uses a Linux VM, so expect slower I/O on bind-mounted volumes compared to native Linux. Use VirtioFS (the default file sharing backend in Docker Desktop) for best performance.
-
-### Local installation
-
-Clone the repository and build the Docker image:
+For developers who want to modify the pipeline or Dockerfile:
 
 ```bash
 git clone https://github.com/akihitomamiya-del/L3R-seq.git
 cd L3R-seq
 docker build -f .devcontainer/build/Dockerfile -t l3rseq .
 ```
+
+On Apple Silicon Macs, this builds a native arm64 image. Docker Desktop for Mac uses a Linux VM, so expect slower I/O on bind-mounted volumes compared to native Linux. Use VirtioFS (the default file sharing backend in Docker Desktop settings) for best performance.
+
+---
 
 ### Verify your installation
 
+Inside the container or Codespace, run:
+
 ```bash
-# Run the built-in test suite to confirm all tools are working
 bash tests/run_tests.sh --skip-preprocess
 ```
+
+This runs 97 checks on synthetic data (~25 sec) and confirms all tools are working.
 
 ## 2. Pipeline overview
 
