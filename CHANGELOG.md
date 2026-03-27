@@ -2,6 +2,11 @@
 
 All notable changes are documented here.
 
+## [1.0.9] - 2026-03-27
+
+### Fixed
+- 09_tail_correct.sh: variant caller used original CIGAR instead of walk-corrected CIGAR, under-counting EC for reads where minimap2 soft-clipped at or before editing sites
+
 ## [1.0.8] - 2026-03-27
 
 ### Fixed

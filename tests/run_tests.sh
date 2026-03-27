@@ -658,6 +658,14 @@ check_exact "Spliced reads (SJ:Z:S)" "$spliced" "15"
 check_exact "Unspliced reads (SJ:Z:R)" "$unspliced" "10"
 check_exact "Unknown reads (SJ:Z:-)" "$unknown" "5"
 
+# EC tags should reflect C-to-T editing at 8 exon sites (~70% rate)
+splice_ec=$(grep -v '^@' "$SPLICE_SAM" | grep -oP 'EC:i:\K[0-9]+' | awk '{s+=$1} END{print s+0}')
+check_range "Splice EC total (C->T)" "$splice_ec" "162" "0.10"
+
+# NC tags (background noise) should be present
+splice_nc_count=$(grep -v '^@' "$SPLICE_SAM" | grep -c 'NC:i:') || splice_nc_count=0
+check_exact "Splice NC tag present" "$splice_nc_count" "$total_reads"
+
 # CSV should have splice columns
 SPLICE_CSV="$OUTPUT_DIR/pipeline_splice/10_csv/barcode_splice_barcode_splice_RPI_1.csv"
 if head -1 "$SPLICE_CSV" | grep -q 'splice_pattern'; then

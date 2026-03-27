@@ -156,8 +156,10 @@ run_step_09() {
         # Rebuild CIGAR
         run_rebuild_cigar "$RESULT_Aln_CIGAR" "$RESULT_Match_counter"
 
-        # CIGAR-walk variant calling on original alignment (no bcftools needed)
-        run_call_variants "$read_line" "$ref_seq" "$pattern" "$count_pattern"
+        # CIGAR-walk variant calling on corrected alignment
+        local corrected_read_line
+        corrected_read_line=$(printf '%s\n' "$read_line" | awk -F'\t' -v OFS='\t' -v c="$RESULT_New_CIGAR" '{$6=c; print}')
+        run_call_variants "$corrected_read_line" "$ref_seq" "$pattern" "$count_pattern"
 
         # Splice check on corrected CIGAR (if introns annotated)
         local sj_tags=""

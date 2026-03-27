@@ -227,11 +227,12 @@ def main():
         subprocess.run([samtools, "index", sort_bam],
                        check=True, capture_output=True)
 
-    # Write an empty variants file (step 09 needs it)
+    # Write variant file with editing positions (1-based, CT pattern)
     var_dir = os.path.join(OUT_DIR, "08_variants", "barcode_splice", "barcode_splice_RPI_1")
     os.makedirs(var_dir, exist_ok=True)
     with open(os.path.join(var_dir, "observed_variants.txt"), "w") as f:
-        pass  # empty — no editing variants in this test
+        for site in edit_sites:
+            f.write(f"{site + 1}CT\n")  # 1-based
 
     print(f"\nSAM: {sam_path}")
     print(f"  Spliced reads:   {n_spliced} (deletion at intron {INTRON_START}-{INTRON_END})")
