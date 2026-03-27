@@ -2,20 +2,16 @@
 
 All notable changes are documented here.
 
-## [1.0.10] - 2026-03-27
-
-### Fixed
-- Claude Code devcontainer: firewall failed silently at startup, leaving container unrestricted
-
-### Changed
-- Devcontainer: split postStartCommand into independent firewall and IGV server tasks
-- Devcontainer: added start-firewall.sh retry wrapper (3 attempts, 5s delay, logs to /tmp/firewall-init.log)
-
 ## [1.0.9] - 2026-03-27
 
 ### Fixed
 - 09_tail_correct.sh: variant caller used original CIGAR instead of walk-corrected CIGAR, under-counting EC for reads where minimap2 soft-clipped at or before editing sites
 - 09_tail_correct.sh: matched_length (mL tag) used original alignment length instead of walk-corrected length
+- Claude Code devcontainer: firewall failed silently at startup, leaving container unrestricted
+
+### Changed
+- Devcontainer: split postStartCommand into independent firewall and IGV server tasks
+- Devcontainer: added start-firewall.sh retry wrapper (3 attempts, 5s delay, logs to /tmp/firewall-init.log)
 
 ## [1.0.8] - 2026-03-27
 

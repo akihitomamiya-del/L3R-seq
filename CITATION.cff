@@ -1,7 +1,7 @@
 cff-version: 1.2.0
 message: "If you use L3Rseq in your research, please cite it as below."
 type: software
-version: "1.0.10"
+version: "1.0.9"
 title: "L3Rseq"
 abstract: >-
   Bioinformatic pipeline for Long-read 3' RACE-seq (L3R-seq).
