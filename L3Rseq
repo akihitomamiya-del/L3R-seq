@@ -615,7 +615,7 @@ Reference & annotation:
   --blast-db2 <path>      BLAST DB prefix for cDNA annotation (step 09)
 
 UMI & editing:
-  --method <str>          UMI method: umic-seq (default) or longread-umi
+  --method <str>          UMI method: longread-umi (default) or umic-seq
   --pattern <str>         Editing pattern, e.g., CT (default), AG
   --count-pattern <str>   Secondary count-only pattern, e.g., TC for SLAM-seq
   --umi-flank5 <seq>      5' UMI flanking sequence (longread-umi method)

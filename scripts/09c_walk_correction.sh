@@ -41,7 +41,7 @@ run_walk_correction() {
             # Nucleotide mismatch -- check if it's a known editing variant
             local mismatch="${ref_position}${ref_base_char}${clip_base_char}"
 
-            if [ -n "$ref_var" ] && [ -f "$ref_var" ] && grep -q "$mismatch" "$ref_var"; then
+            if [ -n "$ref_var" ] && [ -f "$ref_var" ] && grep -qx "$mismatch" "$ref_var"; then
                 # Known editing variant -- tolerate
                 ((RESULT_Match_counter++))
                 ((rightclip_position++))

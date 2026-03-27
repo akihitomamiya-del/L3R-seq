@@ -293,7 +293,7 @@ def similarity_histogram(score_lst_lst, outname):
             axarr[a,b].hist(score_lst_lst[i], bins=np.arange(min(score_lst_lst[i]), max(score_lst_lst[i])+binwidth, binwidth))
             axarr[a,b].set_yscale('log')
             i += 1
-    plt.savefig(output_name + "_similarityscores_hist.pdf", bbox_inches='tight')
+    plt.savefig(outname + "_similarityscores_hist.pdf", bbox_inches='tight')
 
 
 #Function performing a threshold approximation for clustering
@@ -318,7 +318,8 @@ def threshold_approx(umis, ssize, left, right, step, outname):
     ax1.plot(threshholds, similarities_lst, color="k", marker="o", linestyle="-", linewidth=2)
     ax2.plot(threshholds, sizes_lst, color="b", marker="o", linestyle="-", linewidth=2)
     #ax1.errorbar(threshholds, similarities_lst, yerr=sim_std_lst, color="k", marker="o", linestyle="-", linewidth=2, capsize=3, elinewidth=0.5)
-    #ax2.errorbar(threshholds, sizes_lst, yerr=size_std_lst, color="b", marker="o", linestyle="-", linewidth=2, capsize=3, elinewidth=0.5)    ax1.set_xlabel("Alignment score threshold", fontsize=14)
+    #ax2.errorbar(threshholds, sizes_lst, yerr=size_std_lst, color="b", marker="o", linestyle="-", linewidth=2, capsize=3, elinewidth=0.5)
+    ax1.set_xlabel("Alignment score threshold", fontsize=14)
     ax1.set_ylabel("Average cluster similarity", color="k", fontsize=14)
     ax2.set_ylabel("Median cluster size", color="b", fontsize=14)
     ax2.set_ylim(0, max(sizes_lst)+10)

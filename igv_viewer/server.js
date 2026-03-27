@@ -336,7 +336,7 @@ function generatePileup(outdir, region, width, callback) {
 
     // Per-track: read count, coverage summary, SAM tag stats, sample reads
     for (const track of tracks) {
-      const bamPath = path.join(WORKSPACE, track.url.replace(/^\/data\//, ""));
+      const bamPath = resolveTrackPath(track.url);
       if (!fs.existsSync(bamPath)) continue;
 
       const label = track.name.split(" — ")[1] || track.name;
@@ -593,7 +593,7 @@ const server = http.createServer((req, res) => {
     const match = rangeHeader.match(/bytes=(\d+)-(\d*)/);
     if (match) {
       const start = parseInt(match[1], 10);
-      const end = match[2] ? parseInt(match[2], 10) : stat.size - 1;
+      const end = match[2] ? Math.min(parseInt(match[2], 10), stat.size - 1) : stat.size - 1;
       res.writeHead(206, {
         "Content-Type": mime,
         "Content-Range": `bytes ${start}-${end}/${stat.size}`,

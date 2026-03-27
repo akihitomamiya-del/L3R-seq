@@ -423,5 +423,6 @@ run_step_09() {
         done
     done
 
+    set -e  # Restore errexit so subsequent pipeline steps are protected
     echo "[Step 09v2] Done. Output in $output_dir/09_correct/"
 }

@@ -84,6 +84,7 @@ RUN if [ "$(uname -m)" = "aarch64" ]; then \
       && echo "racon arm64 rebuild: functional test passed" \
       && rm -f /tmp/t.fa /tmp/r.fq /tmp/o.sam \
       && rm -rf /tmp/racon-build \
+      && apt-get purge -y --auto-remove cmake g++ zlib1g-dev \
       && apt-get clean && rm -rf /var/lib/apt/lists/*; \
     fi
 
@@ -106,13 +107,14 @@ RUN mamba create -y -n UMIC-seq -c conda-forge -c bioconda \
     matplotlib=3.8.4 \
     && mamba clean -afy
 
-RUN bash -c "source activate UMIC-seq \
-    && git clone https://github.com/fhlab/UMIC-seq.git \$CONDA_PREFIX/UMIC-seq \
-    && gunzip \$CONDA_PREFIX/UMIC-seq/example/example_clusterreads.fastq.gz"
-
 COPY UMIC-seq_L3Rseq/UMIC-seq_fastq_v2.py /tmp/UMIC-seq_fastq_v2.py
 RUN bash -c "source activate UMIC-seq \
-    && cp /tmp/UMIC-seq_fastq_v2.py \$CONDA_PREFIX/UMIC-seq/"
+    && mkdir -p \$CONDA_PREFIX/UMIC-seq \
+    && curl -fsSL https://github.com/fhlab/UMIC-seq/archive/refs/heads/master.tar.gz \
+       | tar -xz -C \$CONDA_PREFIX/UMIC-seq --strip-components=1 \
+    && gunzip \$CONDA_PREFIX/UMIC-seq/example/example_clusterreads.fastq.gz \
+    && cp /tmp/UMIC-seq_fastq_v2.py \$CONDA_PREFIX/UMIC-seq/ \
+    && rm /tmp/UMIC-seq_fastq_v2.py"
 
 # ============================================================
 # cutadaptenv
@@ -178,7 +180,7 @@ COPY scripts/ scripts/
 COPY UMIC-seq_L3Rseq/ UMIC-seq_L3Rseq/
 COPY resources/ resources/
 COPY igv_viewer/ igv_viewer/
-RUN cd igv_viewer && npm install --silent 2>/dev/null
+RUN cd igv_viewer && npm install --silent
 
 # Initialize conda for the vscode user
 USER vscode
