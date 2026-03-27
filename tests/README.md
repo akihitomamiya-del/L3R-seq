@@ -5,9 +5,9 @@ Automated tests for verifying the L3Rseq pipeline on synthetic data.
 ## Quick start
 
 ```bash
-bash tests/run_tests.sh --quick           # smoke test (~13 sec, 61 checks)
-bash tests/run_tests.sh --skip-preprocess  # steps 04-10 only (~25 sec, 97 checks)
-bash tests/run_tests.sh                    # all steps 01-10 + filter (109 checks)
+bash tests/run_tests.sh --quick           # smoke test (~2 min, 62 checks)
+bash tests/run_tests.sh --skip-preprocess  # steps 04-10 only (~2 min, 98 checks)
+bash tests/run_tests.sh                    # all steps 01-10 + filter (110 checks)
 bash tests/run_tests.sh --no-viewer        # skip IGV viewer after tests
 ```
 

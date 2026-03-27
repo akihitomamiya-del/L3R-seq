@@ -151,7 +151,7 @@ Inside the container or Codespace, run:
 bash tests/run_tests.sh --skip-preprocess
 ```
 
-This runs 97 checks on synthetic data (~25 sec) and confirms all tools are working. After the tests complete, you can view the test output alignments in the IGV viewer — see [Alignment viewer](#8-alignment-viewer) for details.
+This runs 98 checks on synthetic data (~2 min) and confirms all tools are working. After the tests complete, you can view the test output alignments in the IGV viewer — see [Alignment viewer](#8-alignment-viewer) for details.
 
 ## 2. Pipeline overview
 
@@ -484,9 +484,9 @@ L3Rseq run --introns out/candidate_introns.bed ...
 ## 11. Testing
 
 ```bash
-bash tests/run_tests.sh                    # full suite (109 checks, ~30 sec)
-bash tests/run_tests.sh --skip-preprocess  # steps 04-10 only (97 checks, ~25 sec)
-bash tests/run_tests.sh --quick            # smoke test (61 checks, ~13 sec)
+bash tests/run_tests.sh                    # full suite (110 checks, ~2 min)
+bash tests/run_tests.sh --skip-preprocess  # steps 04-10 only (98 checks, ~2 min)
+bash tests/run_tests.sh --quick            # smoke test (62 checks, ~2 min)
 bash tests/run_tests.sh --no-viewer        # skip IGV viewer after tests
 ```
 
