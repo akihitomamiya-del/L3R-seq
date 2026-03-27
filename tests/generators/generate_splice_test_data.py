@@ -9,6 +9,8 @@ splice annotation + step 10's CSV/quality report directly.
 
 import os
 import random
+import shutil
+import subprocess
 
 SEED = 42
 random.seed(SEED)
@@ -37,12 +39,37 @@ def revcomp(seq):
     return seq.translate(comp)[::-1]
 
 
-def mutate(seq, rate=0.03):
+def mutate(seq, rate=0.002):
+    """Add low-level background noise (simulates sequencing errors)."""
     result = list(seq)
     for i in range(len(result)):
         if random.random() < rate:
             alts = [b for b in "ACGT" if b != result[i]]
             result[i] = random.choice(alts)
+    return "".join(result)
+
+
+def find_edit_sites(ref_seq, n_sites=4):
+    """Pick well-spaced C positions in each exon for targeted C-to-T editing."""
+    sites = []
+    # Exon1: avoid edges (reads start 10-50bp in)
+    exon1_cs = [i for i in range(60, EXON1_LEN - 20) if ref_seq[i] == 'C']
+    # Exon2: avoid edges
+    exon2_cs = [i for i in range(INTRON_END + 30, TOTAL_LEN - 60) if ref_seq[i] == 'C']
+    for pool in (exon1_cs, exon2_cs):
+        step = max(1, len(pool) // n_sites)
+        sites.extend(pool[::step][:n_sites])
+    return sorted(sites)
+
+
+def apply_editing(seq, ref_start, edit_sites, edit_rate=0.7):
+    """Apply C-to-T editing at known sites within this read's reference span."""
+    result = list(seq)
+    for site in edit_sites:
+        pos = site - ref_start
+        if 0 <= pos < len(result) and result[pos] == 'C':
+            if random.random() < edit_rate:
+                result[pos] = 'T'
     return "".join(result)
 
 
@@ -86,6 +113,13 @@ def main():
     print(f"  Intron: {INTRON_START}-{INTRON_END} ({INTRON_LEN}bp)")
     print(f"  Exon2: {INTRON_END}-{TOTAL_LEN} ({EXON2_LEN}bp)")
 
+    # Pick C positions for targeted C-to-T editing (exons only, not intron)
+    edit_sites = find_edit_sites(ref_seq, n_sites=4)
+    print(f"\n  C-to-T editing sites (0-based): {edit_sites}")
+    for s in edit_sites:
+        region = "exon1" if s < INTRON_START else ("intron" if s < INTRON_END else "exon2")
+        print(f"    pos {s} ({region}): ref={ref_seq[s]}")
+
     # Write intron BED file
     bed_path = os.path.join(OUT_DIR, "introns.bed")
     with open(bed_path, "w") as f:
@@ -110,7 +144,10 @@ def main():
         e2_match = EXON2_LEN - end_offset
 
         # Build the actual read sequence (exon1 part + exon2 part, no intron)
-        read_seq = mutate(exon1[start_offset:]) + mutate(exon2[:EXON2_LEN - end_offset])
+        # Apply editing first, then noise — so editing sites are clearly visible
+        e1_seq = apply_editing(exon1[start_offset:], start_offset, edit_sites)
+        e2_seq = apply_editing(exon2[:EXON2_LEN - end_offset], INTRON_END, edit_sites)
+        read_seq = mutate(e1_seq) + mutate(e2_seq)
         cigar = make_cigar_spliced(e1_match, INTRON_LEN, e2_match)
         pos = start_offset + 1  # 1-based
         qual = generate_quality(len(read_seq))
@@ -127,7 +164,9 @@ def main():
         end_offset = random.randint(10, 50)
         read_len = TOTAL_LEN - start_offset - end_offset
 
-        read_seq = mutate(ref_seq[start_offset:TOTAL_LEN - end_offset])
+        segment = apply_editing(ref_seq[start_offset:TOTAL_LEN - end_offset],
+                               start_offset, edit_sites)
+        read_seq = mutate(segment)
         cigar = make_cigar_unspliced(read_len)
         pos = start_offset + 1
         qual = generate_quality(len(read_seq))
@@ -145,7 +184,9 @@ def main():
         read_len = random.randint(100, 200)
         read_len = min(read_len, EXON1_LEN - start_offset - 30)
 
-        read_seq = mutate(ref_seq[start_offset:start_offset + read_len])
+        segment = apply_editing(ref_seq[start_offset:start_offset + read_len],
+                               start_offset, edit_sites)
+        read_seq = mutate(segment)
         cigar = f"{read_len}M"
         pos = start_offset + 1
         qual = generate_quality(len(read_seq))
@@ -165,10 +206,26 @@ def main():
         for fields in reads:
             f.write("\t".join(fields) + "\n")
 
-    # Also create a sorted BAM + index (needed by step 08)
-    os.system(f"samtools view -bS {sam_path} > {sam_dir}/aligned.bam 2>/dev/null")
-    os.system(f"samtools sort {sam_dir}/aligned.bam > {sam_dir}/aligned.sort.bam 2>/dev/null")
-    os.system(f"samtools index {sam_dir}/aligned.sort.bam 2>/dev/null")
+    # Also create a sorted BAM + index (needed by step 08 and IGV viewer)
+    samtools = shutil.which("samtools")
+    if not samtools:
+        # Search conda environments
+        for p in ["/opt/miniforge/envs/NanoporeMap/bin/samtools",
+                  "/opt/miniforge/envs/longread_umi/bin/samtools"]:
+            if os.path.exists(p):
+                samtools = p
+                break
+    if not samtools:
+        print("WARNING: samtools not found — BAM files not created")
+    else:
+        bam = os.path.join(sam_dir, "aligned.bam")
+        sort_bam = os.path.join(sam_dir, "aligned.sort.bam")
+        subprocess.run([samtools, "view", "-bS", sam_path, "-o", bam],
+                       check=True, capture_output=True)
+        subprocess.run([samtools, "sort", bam, "-o", sort_bam],
+                       check=True, capture_output=True)
+        subprocess.run([samtools, "index", sort_bam],
+                       check=True, capture_output=True)
 
     # Write an empty variants file (step 09 needs it)
     var_dir = os.path.join(OUT_DIR, "08_variants", "barcode_splice", "barcode_splice_RPI_1")
@@ -183,6 +240,7 @@ def main():
     print(f"  Total:           {read_num}")
     print(f"\nIntron spec for testing: \"{INTRON_START}-{INTRON_END}\"")
     print(f"Expected SJ distribution: S={n_spliced}, R={n_unspliced}, -={n_short}")
+    print(f"Editing: C-to-T at {len(edit_sites)} sites (~70% of reads), exons only")
 
 
 if __name__ == "__main__":

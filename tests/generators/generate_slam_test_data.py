@@ -14,6 +14,8 @@ This bypasses steps 01-08 and tests step 09's dual-pattern counting
 
 import os
 import random
+import shutil
+import subprocess
 
 SEED = 99
 random.seed(SEED)
@@ -148,9 +150,24 @@ def main():
             f.write("\t".join(fields) + "\n")
 
     # Create sorted BAM + index
-    os.system(f"samtools view -bS {sam_path} > {sam_dir}/aligned.bam 2>/dev/null")
-    os.system(f"samtools sort {sam_dir}/aligned.bam > {sam_dir}/aligned.sort.bam 2>/dev/null")
-    os.system(f"samtools index {sam_dir}/aligned.sort.bam 2>/dev/null")
+    samtools = shutil.which("samtools")
+    if not samtools:
+        for p in ["/opt/miniforge/envs/NanoporeMap/bin/samtools",
+                  "/opt/miniforge/envs/longread_umi/bin/samtools"]:
+            if os.path.exists(p):
+                samtools = p
+                break
+    if not samtools:
+        print("WARNING: samtools not found — BAM files not created")
+    else:
+        bam = os.path.join(sam_dir, "aligned.bam")
+        sort_bam = os.path.join(sam_dir, "aligned.sort.bam")
+        subprocess.run([samtools, "view", "-bS", sam_path, "-o", bam],
+                       check=True, capture_output=True)
+        subprocess.run([samtools, "sort", bam, "-o", sort_bam],
+                       check=True, capture_output=True)
+        subprocess.run([samtools, "index", sort_bam],
+                       check=True, capture_output=True)
 
     # Write variant file with the fixed editing positions (for walk correction)
     var_dir = os.path.join(OUT_DIR, "08_variants", "slam", "slam_RPI_5")

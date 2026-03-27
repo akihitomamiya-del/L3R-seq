@@ -594,6 +594,7 @@ const server = http.createServer((req, res) => {
     if (match) {
       const start = parseInt(match[1], 10);
       const end = match[2] ? Math.min(parseInt(match[2], 10), stat.size - 1) : stat.size - 1;
+      if (end < 0 || start > end) { res.writeHead(416); res.end(); return; }
       res.writeHead(206, {
         "Content-Type": mime,
         "Content-Range": `bytes ${start}-${end}/${stat.size}`,
