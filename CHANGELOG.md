@@ -2,7 +2,7 @@
 
 All notable changes are documented here.
 
-## [1.0.7] - 2026-03-27
+## [1.0.8] - 2026-03-27
 
 ### Fixed
 - 09_tail_correct.sh: `set +e` leaked to caller, disabling error checking for subsequent pipeline steps
