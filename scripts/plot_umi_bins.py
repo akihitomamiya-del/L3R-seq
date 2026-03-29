@@ -117,18 +117,36 @@ def load_cluster_stats(run_dir, sample):
 
 
 def load_cluster_size_dist(run_dir, sample):
-    """Load cluster size distribution — longread-umi TSV or UMIC-seq log."""
-    # Try longread-umi format first
-    path = Path(run_dir) / "04_umi" / sample / "read_binning" / "umi_cluster_size_dist.tsv"
-    if path.exists():
+    """Load bin size distribution — final read counts per bin.
+
+    For longread-umi: prefers umi_binning_stats.txt (post-BWA assignment)
+    over umi_cluster_size_dist.tsv (pre-assignment UMI cluster sizes).
+    The BWA step reassigns reads from removed singletons to nearby bins,
+    so the final bin sizes can be larger than the initial cluster sizes.
+
+    For UMIC-seq: parses UMIclusterfull.log (no remapping step).
+    """
+    # longread-umi: prefer final bin sizes from umi_binning_stats.txt
+    stats_path = Path(run_dir) / "04_umi" / sample / "read_binning" / "umi_binning_stats.txt"
+    if stats_path.exists():
+        dist = defaultdict(int)
+        with open(stats_path) as f:
+            reader = csv.DictReader(f, delimiter='\t')
+            for row in reader:
+                dist[int(row['read_count'])] += 1
+        return dict(dist)
+
+    # longread-umi fallback: umi_cluster_size_dist.tsv (older pipeline versions)
+    tsv_path = Path(run_dir) / "04_umi" / sample / "read_binning" / "umi_cluster_size_dist.tsv"
+    if tsv_path.exists():
         dist = {}
-        with open(path) as f:
+        with open(tsv_path) as f:
             reader = csv.DictReader(f, delimiter='\t')
             for row in reader:
                 dist[int(row['cluster_size'])] = int(row['count'])
         return dist
 
-    # Fall back to UMIC-seq
+    # UMIC-seq: parse cluster sizes from log
     sizes = _parse_umic_log(run_dir, sample)
     if not sizes:
         return {}

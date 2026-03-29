@@ -125,7 +125,22 @@ class TestLoadClusterStats(unittest.TestCase):
 
 
 class TestLoadClusterSizeDist(unittest.TestCase):
-    def test_longread_format(self):
+    def test_prefers_binning_stats(self):
+        """umi_binning_stats.txt (post-BWA) is preferred over umi_cluster_size_dist.tsv."""
+        with tempfile.TemporaryDirectory() as d:
+            rb = Path(d) / "04_umi" / "bc1" / "rpi1" / "read_binning"
+            rb.mkdir(parents=True)
+            # Both files exist — binning_stats should win
+            (rb / "umi_binning_stats.txt").write_text(
+                "umi_name\tread_count\numi1;size=3\t5\numi2;size=3\t7\numi3;size=4\t5\n")
+            (rb / "umi_cluster_size_dist.tsv").write_text(
+                "cluster_size\tcount\n3\t20\n5\t15\n")
+            dist = pub.load_cluster_size_dist(d, "bc1/rpi1")
+            # Should reflect binning_stats: two bins of size 5, one of size 7
+            self.assertEqual(dist, {5: 2, 7: 1})
+
+    def test_falls_back_to_cluster_size_dist(self):
+        """Falls back to umi_cluster_size_dist.tsv when binning_stats is absent."""
         with tempfile.TemporaryDirectory() as d:
             tsv = Path(d) / "04_umi" / "bc1" / "rpi1" / "read_binning" / "umi_cluster_size_dist.tsv"
             tsv.parent.mkdir(parents=True)
