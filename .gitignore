@@ -44,6 +44,7 @@
 !docs/**
 !igv_viewer/
 !igv_viewer/**
+__pycache__/
 igv_viewer/node_modules/
 # Test runner output (generated at runtime)
 tests/output/
