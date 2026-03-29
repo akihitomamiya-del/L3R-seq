@@ -311,10 +311,17 @@ def plot_single(run_dir, sample, quality_records, outpath, method_label="longrea
     ax1.axvline(x=min_bin - 0.5, color='navy', linestyle='--', linewidth=1.5,
                 label=f'min_bin = {min_bin}')
 
+    # Grey count labels above each bar
+    for s in x_range:
+        count = cluster_dist.get(s, 0)
+        if count > 0:
+            ax1.text(s, count, str(count), ha='center', va='bottom',
+                     fontsize=7, color='grey')
+
     ax1.set_yscale('log')
     ax1.set_xlabel('Bin size (reads per UMI)', fontsize=12)
     ax1.set_ylabel('Number of bins (log)', fontsize=12)
-    ax1.set_title('Bin Size Distribution', fontsize=14, fontweight='bold')
+    ax1.set_title('Bin Size Distribution (Step 04: UMI clustering)', fontsize=14, fontweight='bold')
     ax1.legend(fontsize=10, loc='upper right')
 
     # Annotation box
@@ -334,15 +341,18 @@ def plot_single(run_dir, sample, quality_records, outpath, method_label="longrea
     # ── Panel 2: Noise rate by bin size ──────────────────────────────────────
 
     qbs = compute_quality_by_binsize(quality_records)
-    q_sizes = sorted(s for s in qbs if s >= min_bin and qbs[s]['reads'] >= 3)
+    q_sizes = sorted(s for s in qbs if s >= min_bin)
 
     ax2 = fig.add_subplot(gs[1])
     noise_vals = [qbs[s]['noise_per_1k'] for s in q_sizes]
     colors_noise = ['#DD8452' if s >= min_bin else '#AAAAAA' for s in q_sizes]
     ax2.bar(q_sizes, noise_vals, color=colors_noise, edgecolor='black', linewidth=0.3)
+    for s, nv in zip(q_sizes, noise_vals):
+        ax2.text(s, nv, str(qbs[s]['reads']), ha='center', va='bottom',
+                 fontsize=7, color='grey')
     ax2.set_xlabel('Bin size', fontsize=12)
     ax2.set_ylabel('Noise rate (per 1,000 bp)', fontsize=12)
-    ax2.set_title('Noise Rate by Bin Size', fontsize=14, fontweight='bold')
+    ax2.set_title('Noise Rate by Bin Size (Step 10: final reads)', fontsize=14, fontweight='bold')
     ax2.set_xticks(q_sizes)
 
     # ── Panel 3: Error-free rate by bin size ─────────────────────────────────
@@ -351,9 +361,13 @@ def plot_single(run_dir, sample, quality_records, outpath, method_label="longrea
     ef_vals = [qbs[s]['error_free_pct'] for s in q_sizes]
     colors_ef = ['#4C72B0' if s >= min_bin else '#AAAAAA' for s in q_sizes]
     ax3.bar(q_sizes, ef_vals, color=colors_ef, edgecolor='black', linewidth=0.3)
+    for s, ev in zip(q_sizes, ef_vals):
+        ax3.text(s, ev, str(qbs[s]['reads']), ha='center', va='bottom',
+                 fontsize=7, color='grey')
     ax3.set_xlabel('Bin size', fontsize=12)
     ax3.set_ylabel('Error-free reads (%)', fontsize=12)
-    ax3.set_title('Error-Free Rate (NC=0) by Bin Size', fontsize=14, fontweight='bold')
+    ax3.set_title('Error-Free Rate (NC=0) by Bin Size (Step 10: final reads)',
+                  fontsize=14, fontweight='bold')
     ax3.set_xticks(q_sizes)
     ax3.set_ylim(0, 105)
     ax3.axhline(y=90, color='green', linestyle=':', alpha=0.4, linewidth=1)
@@ -468,7 +482,13 @@ def plot_compare(run_dir1, run_dir2, sample, qrecs1, qrecs2, outpath,
         ax.set_yscale('log')
         ax.set_xlabel('Bin size (reads per UMI)', fontsize=11)
         ax.set_ylabel('Number of bins (log)', fontsize=11)
-        ax.set_title(f'{label} (ALL bins)', fontsize=13, fontweight='bold')
+        # Grey count labels above each bar
+        for s in x_range:
+            count = dist.get(s, 0)
+            if count > 0:
+                ax.text(s, count, str(count), ha='center', va='bottom',
+                        fontsize=6, color='grey')
+        ax.set_title(f'{label} — Bin Size Distribution (Step 04)', fontsize=13, fontweight='bold')
         ax.legend(fontsize=9, loc='upper right')
 
         ann = (f"Total bins: {total_bins:,}\n"
@@ -483,7 +503,7 @@ def plot_compare(run_dir1, run_dir2, sample, qrecs1, qrecs2, outpath,
             continue
 
         qbs = compute_quality_by_binsize(qrecs)
-        q_sizes = sorted(s for s in qbs if s >= min_bin and qbs[s]['reads'] >= 3)
+        q_sizes = sorted(s for s in qbs if s >= min_bin)
         if not q_sizes:
             continue
 
@@ -492,9 +512,12 @@ def plot_compare(run_dir1, run_dir2, sample, qrecs1, qrecs2, outpath,
         ax2 = fig.add_subplot(gs[1, col])
         noise_vals = [qbs[s]['noise_per_1k'] for s in q_sizes]
         ax2.bar(q_sizes, noise_vals, color='#DD8452', edgecolor='black', linewidth=0.3)
+        for s, nv in zip(q_sizes, noise_vals):
+            ax2.text(s, nv, str(qbs[s]['reads']), ha='center', va='bottom',
+                     fontsize=6, color='grey')
         ax2.set_xlabel('Bin size', fontsize=11)
         ax2.set_ylabel('Noise rate (per 1,000 bp)', fontsize=11)
-        ax2.set_title(f'{label} — Noise Rate by Bin Size', fontsize=13, fontweight='bold')
+        ax2.set_title(f'{label} — Noise Rate (Step 10)', fontsize=13, fontweight='bold')
         ax2.set_xticks(q_sizes)
 
         # ── Error-free rate ──────────────────────────────────────────────
@@ -502,9 +525,12 @@ def plot_compare(run_dir1, run_dir2, sample, qrecs1, qrecs2, outpath,
         ax3 = fig.add_subplot(gs[2, col])
         ef_vals = [qbs[s]['error_free_pct'] for s in q_sizes]
         ax3.bar(q_sizes, ef_vals, color='#4C72B0', edgecolor='black', linewidth=0.3)
+        for s, ev in zip(q_sizes, ef_vals):
+            ax3.text(s, ev, str(qbs[s]['reads']), ha='center', va='bottom',
+                     fontsize=6, color='grey')
         ax3.set_xlabel('Bin size', fontsize=11)
         ax3.set_ylabel('Error-free reads (%)', fontsize=11)
-        ax3.set_title(f'{label} — Error-Free Rate (NC=0) by Bin Size',
+        ax3.set_title(f'{label} — Error-Free Rate (Step 10)',
                       fontsize=13, fontweight='bold')
         ax3.set_xticks(q_sizes)
         ax3.set_ylim(0, 105)
