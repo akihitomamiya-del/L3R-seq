@@ -227,11 +227,15 @@ def compute_quality_by_binsize(records):
     return result
 
 
-def compute_threshold_table(records, min_bin=1):
+def compute_threshold_table(records, min_bin=1, cluster_dist=None):
     """Compute quality at each bin size threshold, starting from min_bin.
 
     Thresholds below min_bin are omitted because those bins were already
     excluded at step 04 and never entered the pipeline.
+
+    If cluster_dist is provided (dict of {size: count} from step 04),
+    each row also includes the number of bins that entered the pipeline
+    and the survival rate to step 10.
     """
     rows = []
     for thresh in range(min_bin, min_bin + 5):
@@ -243,12 +247,17 @@ def compute_threshold_table(records, min_bin=1):
         total_noise = sum(nc for _, nc, _ in subset)
         total_ml = sum(ml for _, _, ml in subset)
         noise_per_1k = (total_noise / total_ml * 1000) if total_ml > 0 else 0
-        rows.append({
+        row = {
             'threshold': f'n >= {thresh}',
             'reads': n,
             'error_free_pct': error_free / n * 100,
             'noise_per_1k': noise_per_1k,
-        })
+        }
+        if cluster_dist is not None:
+            bins = sum(c for s, c in cluster_dist.items() if s >= thresh)
+            row['bins'] = bins
+            row['survival_pct'] = n / bins * 100 if bins > 0 else 0
+        rows.append(row)
     return rows
 
 
@@ -378,37 +387,78 @@ def plot_single(run_dir, sample, quality_records, outpath, method_label="longrea
 
     # ── Panel 4: Threshold table ─────────────────────────────────────────────
 
-    thresh_rows = compute_threshold_table(quality_records, min_bin)
+    thresh_rows = compute_threshold_table(quality_records, min_bin, cluster_dist)
     if thresh_rows:
         ax_tbl = fig.add_subplot(gs[3])
         ax_tbl.axis('off')
         ax_tbl.set_title(f'Quality at Each Threshold (green = current setting n>={min_bin})',
                          fontsize=13, fontweight='bold')
 
+        has_bins = 'bins' in thresh_rows[0]
         cell_text = []
         cell_colors = []
         for r in thresh_rows:
             is_current = r['threshold'] == f'n >= {min_bin}'
-            row = [r['threshold'], f"{r['reads']:,}",
-                   f"{r['error_free_pct']:.1f}%", f"{r['noise_per_1k']:.3f}"]
+            row = [r['threshold']]
+            if has_bins:
+                row.append(f"{r['bins']:,}")
+            row.extend([f"{r['reads']:,}",
+                        f"{r['error_free_pct']:.1f}%",
+                        f"{r['noise_per_1k']:.3f}"])
+            if has_bins:
+                row.append(f"{r['survival_pct']:.0f}%")
             cell_text.append(row)
             bg = '#d5f5e3' if is_current else '#ffffff'
-            cell_colors.append([bg] * 4)
+            cell_colors.append([bg] * len(row))
+
+        col_labels = ['Threshold']
+        col_widths = [0.15]
+        if has_bins:
+            col_labels.append('04_umi bins')
+            col_widths.append(0.13)
+        col_labels.extend(['10_csv reads', 'Error-free', 'Noise (/1kbp)'])
+        col_widths.extend([0.13, 0.13, 0.17])
+        if has_bins:
+            col_labels.append('Survival')
+            col_widths.append(0.13)
 
         tbl = ax_tbl.table(
             cellText=cell_text,
-            colLabels=['Threshold', 'Reads', 'Error-free', 'Noise (/1000bp)'],
+            colLabels=col_labels,
             cellColours=cell_colors,
             cellLoc='center', loc='center',
-            colWidths=[0.20, 0.20, 0.20, 0.25],
+            colWidths=col_widths,
         )
         tbl.auto_set_font_size(False)
-        tbl.set_fontsize(11)
+        tbl.set_fontsize(10)
         tbl.scale(1.0, 1.8)
-        for j in range(4):
+        for j in range(len(col_labels)):
             cell = tbl[0, j]
             cell.set_facecolor('#2C3E50')
             cell.set_text_props(color='white', fontweight='bold')
+
+        # Footnote: explain lost bins if any threshold shows < 100% survival
+        if has_bins:
+            lost_sizes = []
+            for r in thresh_rows:
+                lost = r['bins'] - r['reads']
+                if lost > 0 and r['threshold'] == f'n >= {min_bin}':
+                    # Find which bin sizes lost reads
+                    for sz in sorted(cluster_dist):
+                        if sz >= min_bin:
+                            bins_at_sz = cluster_dist.get(sz, 0)
+                            from collections import Counter
+                            reads_at_sz = Counter(bs for bs, _, _, _ in quality_records)
+                            surviving = reads_at_sz.get(sz, 0)
+                            if bins_at_sz > 0 and surviving == 0:
+                                lost_sizes.append(sz)
+            if lost_sizes:
+                sizes_str = ', '.join(str(s) for s in lost_sizes)
+                ax_tbl.text(0.5, -0.05,
+                            f'Bins with size {sizes_str} produced 0 reads at Step 10'
+                            f' (consensus requires multiple reads for error correction).',
+                            transform=ax_tbl.transAxes, fontsize=9, color='#666666',
+                            ha='center', va='top', style='italic')
 
     fig.savefig(outpath, dpi=150, bbox_inches='tight', facecolor='white')
     plt.close()
@@ -545,41 +595,59 @@ def plot_compare(run_dir1, run_dir2, sample, qrecs1, qrecs2, outpath,
     if has_quality and qrecs1 and qrecs2:
         min_bin1 = int(stats1.get('bins_min_bin_size', 3))
         min_bin2 = int(stats2.get('bins_min_bin_size', 3))
-        t1 = compute_threshold_table(qrecs1, min_bin1)
-        t2 = compute_threshold_table(qrecs2, min_bin2)
+        t1 = compute_threshold_table(qrecs1, min_bin1, dist1)
+        t2 = compute_threshold_table(qrecs2, min_bin2, dist2)
 
         ax_tbl = fig.add_subplot(gs[3, :])
         ax_tbl.axis('off')
         ax_tbl.set_title(f'Quality at Each Threshold (green = current setting n>={min_bin1})',
                          fontsize=13, fontweight='bold')
 
+        has_bins = 'bins' in t1[0] if t1 else False
         cell_text = []
         cell_colors = []
         for r1, r2 in zip(t1, t2):
             is_current = r1['threshold'] == f'n >= {min_bin1}'
             bg = '#d5f5e3' if is_current else '#ffffff'
-            cell_text.append([
-                r1['threshold'], label1, f"{r1['reads']:,}",
-                f"{r1['error_free_pct']:.1f}%", f"{r1['noise_per_1k']:.3f}",
-            ])
-            cell_colors.append([bg] * 5)
-            cell_text.append([
-                '', label2, f"{r2['reads']:,}",
-                f"{r2['error_free_pct']:.1f}%", f"{r2['noise_per_1k']:.3f}",
-            ])
-            cell_colors.append([bg] * 5)
+            row1 = [r1['threshold'], label1]
+            row2 = ['', label2]
+            if has_bins:
+                row1.append(f"{r1['bins']:,}")
+                row2.append(f"{r2.get('bins', 0):,}")
+            row1.extend([f"{r1['reads']:,}",
+                         f"{r1['error_free_pct']:.1f}%", f"{r1['noise_per_1k']:.3f}"])
+            row2.extend([f"{r2['reads']:,}",
+                         f"{r2['error_free_pct']:.1f}%", f"{r2['noise_per_1k']:.3f}"])
+            if has_bins:
+                row1.append(f"{r1['survival_pct']:.0f}%")
+                row2.append(f"{r2.get('survival_pct', 0):.0f}%")
+            cell_text.append(row1)
+            cell_colors.append([bg] * len(row1))
+            cell_text.append(row2)
+            cell_colors.append([bg] * len(row2))
+
+        col_labels = ['Threshold', 'Method']
+        col_widths = [0.12, 0.14]
+        if has_bins:
+            col_labels.append('04_umi bins')
+            col_widths.append(0.10)
+        col_labels.extend(['10_csv reads', 'Error-free', 'Noise (/1kbp)'])
+        col_widths.extend([0.10, 0.10, 0.14])
+        if has_bins:
+            col_labels.append('Survival')
+            col_widths.append(0.10)
 
         tbl = ax_tbl.table(
             cellText=cell_text,
-            colLabels=['Threshold', 'Method', 'Reads', 'Error-free', 'Noise (/1000bp)'],
+            colLabels=col_labels,
             cellColours=cell_colors,
             cellLoc='center', loc='center',
-            colWidths=[0.14, 0.18, 0.14, 0.14, 0.18],
+            colWidths=col_widths,
         )
         tbl.auto_set_font_size(False)
-        tbl.set_fontsize(10)
+        tbl.set_fontsize(9)
         tbl.scale(1.0, 1.6)
-        for j in range(5):
+        for j in range(len(col_labels)):
             cell = tbl[0, j]
             cell.set_facecolor('#2C3E50')
             cell.set_text_props(color='white', fontweight='bold')
@@ -619,7 +687,7 @@ def main():
             os.makedirs(args.outdir, exist_ok=True)
             out_base = args.outdir
         else:
-            out_base = str(Path(args.run_dir) / "04_umi" / sample / "read_binning")
+            out_base = str(Path(args.run_dir))
 
         safe_name = sample.replace('/', '_')
 
