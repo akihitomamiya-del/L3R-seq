@@ -227,10 +227,14 @@ def compute_quality_by_binsize(records):
     return result
 
 
-def compute_threshold_table(records):
-    """Compute quality at each bin size threshold (n>=1 through n>=5)."""
+def compute_threshold_table(records, min_bin=1):
+    """Compute quality at each bin size threshold, starting from min_bin.
+
+    Thresholds below min_bin are omitted because those bins were already
+    excluded at step 04 and never entered the pipeline.
+    """
     rows = []
-    for thresh in range(1, 6):
+    for thresh in range(min_bin, min_bin + 5):
         subset = [(ec, nc, ml) for bs, ec, nc, ml in records if bs >= thresh]
         n = len(subset)
         if n == 0:
@@ -374,7 +378,7 @@ def plot_single(run_dir, sample, quality_records, outpath, method_label="longrea
 
     # ── Panel 4: Threshold table ─────────────────────────────────────────────
 
-    thresh_rows = compute_threshold_table(quality_records)
+    thresh_rows = compute_threshold_table(quality_records, min_bin)
     if thresh_rows:
         ax_tbl = fig.add_subplot(gs[3])
         ax_tbl.axis('off')
@@ -540,8 +544,9 @@ def plot_compare(run_dir1, run_dir2, sample, qrecs1, qrecs2, outpath,
 
     if has_quality and qrecs1 and qrecs2:
         min_bin1 = int(stats1.get('bins_min_bin_size', 3))
-        t1 = compute_threshold_table(qrecs1)
-        t2 = compute_threshold_table(qrecs2)
+        min_bin2 = int(stats2.get('bins_min_bin_size', 3))
+        t1 = compute_threshold_table(qrecs1, min_bin1)
+        t2 = compute_threshold_table(qrecs2, min_bin2)
 
         ax_tbl = fig.add_subplot(gs[3, :])
         ax_tbl.axis('off')
