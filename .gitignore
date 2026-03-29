@@ -28,6 +28,8 @@
 !resources/blast/mock_chrm/**
 !resources/blast/mock_cdna/
 !resources/blast/mock_cdna/**
+!resources/probes/
+!resources/probes/**
 !resources/rpi_barcodes/
 !resources/rpi_barcodes/RPI_Barcode_20nt.fasta
 !tests/
