@@ -485,6 +485,9 @@ echo ""
 T_START=$SECONDS
 DEMO_DIR="$OUTPUT_DIR/demo"
 mkdir -p "$DEMO_DIR"
+cat > "$DEMO_DIR/description.txt" <<'EOF'
+Walk correction demo — Top two tracks: raw UMI-bin reads and their racon consensus for a single bin. Bottom two tracks: bulk walk correction on 120 synthetic reads with C→T editing at positions 580, 606–607. Compare step 07 (mapping) vs step 09 (corrected) — look for soft-clips (colored tails) shrinking after correction as the walk algorithm extends alignments through the editing sites into the poly-A tail.
+EOF
 
 DEMO_BC="barcode01"
 DEMO_RPI="barcode01_RPI_1"
@@ -557,6 +560,21 @@ echo "  ⏱ Demo: $(( SECONDS - T_START ))s"
 echo ""
 
 # ---------------------------------------------------------------------------
+# Pipeline viewer: corrected reads for all samples.
+# Creates a "pipeline" tab in the IGV viewer with every barcode/RPI from
+# the Test 2 pipeline_CT run, showing only the step 09 corrected tracks.
+# ---------------------------------------------------------------------------
+
+PIPE_DIR="$OUTPUT_DIR/pipeline"
+mkdir -p "$PIPE_DIR"
+cat > "$PIPE_DIR/description.txt" <<'EOF'
+Full CT-pattern pipeline — tail-corrected reads (step 09) for all barcode/RPI samples. barcode01 samples contain C→T editing (high EC counts); barcode02 samples contain A→G conversions instead, which are not counted as editing because the pipeline ran with --pattern CT — they appear as noise (NC tag). Try "Group by EC" to see the difference: barcode01 tracks fan out across editing levels, while barcode02 tracks collapse to EC=0.
+EOF
+ln -sfn "$OUT/09_correct" "$PIPE_DIR/09_correct"
+echo "  Pipeline viewer: linked corrected BAMs for all samples"
+echo ""
+
+# ---------------------------------------------------------------------------
 # Test 3: Synthetic SLAM-seq validation (CT + count-pattern TC)
 # ---------------------------------------------------------------------------
 # Validates step 09-10 on synthetic SLAM-seq data using test_gene.fasta.
@@ -571,6 +589,9 @@ echo ""
 SLAM_DATA="$DATA_DIR/slam_test"
 SLAM_OUT="$OUTPUT_DIR/pipeline_SLAM"
 mkdir -p "$SLAM_OUT"
+cat > "$SLAM_OUT/description.txt" <<'EOF'
+SLAM-seq validation — synthetic reads with C→T editing (EC tag) and T→C SLAM labeling (SC tag). 40 reads, EC=96, SC=590, NC=101.
+EOF
 
 "$PIPELINE_DIR/L3Rseq" run \
     --input "$SLAM_DATA" \
@@ -631,6 +652,9 @@ SPLICE_DIR="$DATA_DIR/splice_test"
 
 # Run step 09 with --introns
 mkdir -p "$OUTPUT_DIR/pipeline_splice"
+cat > "$OUTPUT_DIR/pipeline_splice/description.txt" <<'EOF'
+Splice annotation test — reads with known introns annotated with SJ tags (S=spliced, R=retained, –=not spanned). Use "Color by SJ" to visualize splice status.
+EOF
 
 "$PIPELINE_DIR/L3Rseq" run \
     --input "$SPLICE_DIR" \
@@ -711,6 +735,9 @@ MOCK_BLAST_DIR="$PIPELINE_DIR/resources/blast"
 
 # Run steps 09-10 with mock BLAST databases
 mkdir -p "$OUTPUT_DIR/pipeline_blast"
+cat > "$OUTPUT_DIR/pipeline_blast/description.txt" <<'EOF'
+BLAST + walk correction test — validates soft-clip extension via BLAST alignment, chimeric read removal, poly-A detection, and translocation tagging (TL:i:1).
+EOF
 
 "$PIPELINE_DIR/L3Rseq" run \
     --input "$BLAST_DATA" \

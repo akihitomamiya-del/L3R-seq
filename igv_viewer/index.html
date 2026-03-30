@@ -64,12 +64,14 @@
       <input type="checkbox" id="show-all" style="cursor: pointer;"> Show all reads
     </label>
   </header>
-  <div class="info">
-    Tracks show raw mapping (step 07, blue) and tail-corrected reads (step 09, red).
+  <div class="info" id="info-bar">
+    <div id="dataset-desc" style="display:none; margin-bottom: 6px; color: #333; font-weight: 500;"></div>
+    <div>Tracks show raw mapping (step 07, blue) and tail-corrected reads (step 09, red).
     Click a read to see SAM tags: <code>EC</code> = editing count,
     <code>SC</code> = secondary count (SLAM T&rarr;C),
     <code>NC</code> = noise count, <code>3E</code> = 3&prime; end position,
-    <code>SJ</code> = splice status (S=spliced, R=retained, -=not spanned).
+    <code>DS</code> = double-sorter (encodes 3&prime; end &times; 10000 + soft-clip length, so sorting by DS groups reads first by where they end on the reference, then by remaining soft-clip length),
+    <code>SJ</code> = splice status (S=spliced, R=retained, -=not spanned).</div>
   </div>
 
   <div class="controls-bar" id="controls-bar">
@@ -105,7 +107,7 @@
             <option value="tag:NC">NC — noise count</option>
             <option value="tag:3E">3E — 3' end position</option>
             <option value="tag:TL">TL — translocation</option>
-            <option value="tag:DS">DS — double-sorter</option>
+            <option value="tag:DS">DS — double-sorter (3' end + soft-clip length)</option>
             <option value="tag:mL">mL — matched length</option>
             <option value="tag:SJ">SJ — splice status</option>
             <option value="tag:SI">SI — introns spliced</option>
@@ -174,6 +176,7 @@
     var browser = null;  // var so Puppeteer tools can access window.browser
     let references = [];
     let allTracks = [];  // full track configs from API (for toggle)
+    let datasetDescriptions = {};  // name → description string
 
     function showStatus(msg) {
       const el = document.getElementById("status");
@@ -190,6 +193,12 @@
 
       const sel = document.getElementById("dataset");
       sel.innerHTML = '<option value="">-- select dataset --</option>';
+      /* Build description map from datasetInfo */
+      if (config.datasetInfo) {
+        for (const di of config.datasetInfo) {
+          if (di.description) datasetDescriptions[di.name] = di.description;
+        }
+      }
       const names = config.datasets;
       if (names.length === 0) {
         sel.innerHTML = '<option value="">No pipeline output found</option>';
@@ -230,6 +239,16 @@
       if (browser) { igv.removeBrowser(browser); browser = null; }
 
       showStatus("Loading " + name + " ...");
+
+      /* Show dataset description */
+      const descEl = document.getElementById("dataset-desc");
+      const desc = datasetDescriptions[name];
+      if (desc) {
+        descEl.textContent = desc;
+        descEl.style.display = "block";
+      } else {
+        descEl.style.display = "none";
+      }
 
       const res = await fetch("/api/tracks?name=" + encodeURIComponent(name));
       if (!res.ok) { showStatus("Failed to load dataset: " + name); return; }

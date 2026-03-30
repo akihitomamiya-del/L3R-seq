@@ -143,6 +143,22 @@ function discoverTracks(outdir) {
   return tracks;
 }
 
+// Dataset descriptions: shown in the viewer info bar when a dataset is selected.
+// The server reads a description.txt file from the dataset directory if present.
+// To add a description to any run, create a description.txt file in the run's
+// output directory (the one containing 07_map/ or 09_correct/).
+
+function datasetDescription(name, absDir) {
+  // 1. Check for description.txt in the dataset directory
+  if (absDir) {
+    const descFile = path.join(absDir, "description.txt");
+    try {
+      return fs.readFileSync(descFile, "utf8").trim();
+    } catch {}
+  }
+  return null;
+}
+
 // Discover dataset directories (fast — only checks for 07_map/ or 09_correct/,
 // does NOT read any BAM files). Returns { label: absPath } map.
 function discoverDatasets() {
@@ -485,7 +501,8 @@ const server = http.createServer((req, res) => {
         const bIdx = bKey >= 0 ? bKey : order.length;
         return aIdx !== bIdx ? aIdx - bIdx : a.localeCompare(b);
       });
-    const data = { references: discoverReferences(), datasets: names };
+    const dsInfo = names.map(n => ({ name: n, description: datasetDescription(n, datasets[n]) }));
+    const data = { references: discoverReferences(), datasets: names, datasetInfo: dsInfo };
     const json = JSON.stringify(data, null, 2);
     res.writeHead(200, { "Content-Type": "application/json", "Content-Length": Buffer.byteLength(json) });
     res.end(json);
@@ -502,6 +519,7 @@ const server = http.createServer((req, res) => {
     if (!dir) { res.writeHead(404); res.end("Dataset not found"); return; }
     const data = loadDataset(dir);
     if (!data) { res.writeHead(404); res.end("No BAM files found"); return; }
+    data.description = datasetDescription(name, dir);
     const json = JSON.stringify(data, null, 2);
     res.writeHead(200, { "Content-Type": "application/json", "Content-Length": Buffer.byteLength(json) });
     res.end(json);
