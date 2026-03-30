@@ -13,7 +13,7 @@ Example:
 bash examples/run_pipeline.sh    # outputs to runs/<experiment>/
 
 # Generate bin analysis plots
-python3 scripts/plot_umi_bins.py runs/<experiment>/ --quality --outdir runs/figures/
+conda run -n analysis python3 scripts/plot_umi_bins.py runs/<experiment>/ --quality --outdir runs/figures/
 
 # View results
 L3Rseq viewer                    # auto-discovers BAMs in runs/

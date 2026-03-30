@@ -7,18 +7,18 @@ step 10 CSV to compute per-bin-size quality metrics.
 
 Usage:
     # Single sample — bin size histogram only (step 04 data)
-    python3 scripts/plot_umi_bins.py runs/E230426_barcode48 \
+    conda run -n analysis python3 scripts/plot_umi_bins.py runs/E230426_barcode48 \
         --sample barcode48/barcode48_RPI_3
 
     # Single sample — full analysis with quality (needs step 10 CSV)
-    python3 scripts/plot_umi_bins.py runs/E230426_barcode48 \
+    conda run -n analysis python3 scripts/plot_umi_bins.py runs/E230426_barcode48 \
         --sample barcode48/barcode48_RPI_3 --quality
 
     # All samples in a run directory
-    python3 scripts/plot_umi_bins.py runs/E230426_barcode48 --quality
+    conda run -n analysis python3 scripts/plot_umi_bins.py runs/E230426_barcode48 --quality
 
     # Compare two runs (e.g., longread-umi vs UMIC-seq)
-    python3 scripts/plot_umi_bins.py runs/E230426_barcode48 \
+    conda run -n analysis python3 scripts/plot_umi_bins.py runs/E230426_barcode48 \
         --compare runs/E230426_barcode48_UMICseq \
         --sample barcode48/barcode48_RPI_3 --quality
 

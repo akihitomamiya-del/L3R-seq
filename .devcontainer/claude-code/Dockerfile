@@ -75,6 +75,11 @@ RUN sh -c "$(wget -O- https://github.com/deluan/zsh-in-docker/releases/download/
 RUN /opt/miniforge/bin/conda init zsh \
     && sed -i 's/POWERLEVEL9K_LEFT_PROMPT_ELEMENTS=(user/POWERLEVEL9K_LEFT_PROMPT_ELEMENTS=(anaconda user/' ~/.zshrc
 
+# Python plotting dependencies (needed by plot_umi_bins.py; must install at
+# build time because the runtime firewall blocks network access)
+RUN /opt/miniforge/bin/conda create -y -n analysis matplotlib numpy && \
+    /opt/miniforge/bin/conda clean -afy
+
 # Install Claude Code CLI
 ARG CLAUDE_CODE_VERSION=latest
 RUN npm install -g @anthropic-ai/claude-code@${CLAUDE_CODE_VERSION}

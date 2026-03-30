@@ -324,7 +324,7 @@ column -t results/pipeline_summary.tsv
 
 # UMI bin analysis: plot consensus quality vs. min reads per bin
 # (helps you decide whether to adjust the bin size threshold for your data)
-python3 scripts/plot_umi_bins.py results/ --quality --outdir runs/figures/
+conda run -n analysis python3 scripts/plot_umi_bins.py results/ --quality --outdir runs/figures/
 
 # View alignments in browser
 L3Rseq viewer
@@ -530,8 +530,8 @@ Consensus quality depends on reads per UMI bin. Analysis on real data (*Arabidop
 The current default `min_bin_size=3` balances quality and yield. Generate your own bin analysis plots:
 
 ```bash
-python3 scripts/plot_umi_bins.py results/ --quality
-python3 scripts/plot_umi_bins.py results/ --compare results_umic/ --quality  # compare methods
+conda run -n analysis python3 scripts/plot_umi_bins.py results/ --quality
+conda run -n analysis python3 scripts/plot_umi_bins.py results/ --compare results_umic/ --quality  # compare methods
 ```
 
 ## 13. Development
