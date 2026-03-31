@@ -5,6 +5,9 @@ const http = require("http");
 const fs = require("fs");
 const path = require("path");
 const zlib = require("zlib");
+const { execSync } = require("child_process");
+const { PIPELINE_STEPS, BGZF_BUFFER_SIZE, FASTA_WRAP_WIDTH } = require("./config");
+const { generatePileup, SAMTOOLS } = require("./pileup");
 
 // Ignore SIGHUP so the server survives when the parent shell (e.g.
 // devcontainer postStartCommand) exits.  Node terminates on SIGHUP by
@@ -57,8 +60,8 @@ function statSafe(p) {
 function bamReferenceName(bamPath) {
   try {
     const fd = fs.openSync(bamPath, "r");
-    const buf = Buffer.alloc(65536);
-    const n = fs.readSync(fd, buf, 0, 65536, 0);
+    const buf = Buffer.alloc(BGZF_BUFFER_SIZE);
+    const n = fs.readSync(fd, buf, 0, BGZF_BUFFER_SIZE, 0);
     fs.closeSync(fd);
     // BGZF: read BSIZE from first block header to get exact block length
     // Bytes 16-17 (LE) = BSIZE; block length = BSIZE + 1
@@ -94,13 +97,7 @@ function trackUrl(absPath) {
 
 function discoverTracks(outdir) {
   const tracks = [];
-  const steps = [
-    { dir: "01_raw_bin", label: "raw bin reads", color: "#e8d5b7" },
-    { dir: "02_consensus", label: "consensus", color: "#5dade2" },
-    { dir: "07_map", label: "mapping (step 07)", color: "#b0b0b0" },
-    { dir: "09_correct", label: "corrected (step 09)", color: "#f5e6ca" },
-    { dir: "09_correct", file: "chimeric_rightclip.sort.bam", label: "chimeric (removed)", color: "#e74c3c" },
-  ];
+  const steps = PIPELINE_STEPS;
 
   for (const step of steps) {
     const stepDir = path.join(outdir, step.dir);
@@ -223,17 +220,17 @@ function sanitizeFasta(fastaPath) {
     dirty = true;
   }
 
-  // 3. Wrap any sequence lines longer than 80 chars (IGV.js byte-range
-  //    math works best with uniform short lines)
+  // 3. Wrap any sequence lines longer than FASTA_WRAP_WIDTH chars (IGV.js
+  //    byte-range math works best with uniform short lines)
   const lines = data.toString().split("\n");
   let rewrapped = false;
   const out = [];
   for (const line of lines) {
-    if (line.startsWith(">") || line.length <= 80) {
+    if (line.startsWith(">") || line.length <= FASTA_WRAP_WIDTH) {
       out.push(line);
     } else {
-      for (let i = 0; i < line.length; i += 80) {
-        out.push(line.slice(i, i + 80));
+      for (let i = 0; i < line.length; i += FASTA_WRAP_WIDTH) {
+        out.push(line.slice(i, i + FASTA_WRAP_WIDTH));
       }
       rewrapped = true;
     }
@@ -291,166 +288,6 @@ function discoverReferences() {
     refs.push({ id: name, name, fastaURL: `/ref/${f}`, indexURL: `/ref/${f}.fai` });
   }
   return refs;
-}
-
-// ---------------------------------------------------------------------------
-// Text-based pileup view (for CLI / Claude Code feedback)
-// Uses samtools to read BAMs and generates a formatted text representation.
-// ---------------------------------------------------------------------------
-const { execSync } = require("child_process");
-
-// Find samtools in conda environments (not in default PATH for Node.js)
-function findSamtools() {
-  const candidates = [
-    "/opt/miniforge/envs/NanoporeMap/bin/samtools",
-    "/opt/miniforge/envs/longread_umi/bin/samtools",
-    "/opt/miniforge/envs/LoFreq/bin/samtools",
-  ];
-  for (const p of candidates) { if (fs.existsSync(p)) return p; }
-  try { return execSync("which samtools 2>/dev/null", { encoding: "utf8" }).trim(); } catch { return "samtools"; }
-}
-const SAMTOOLS = findSamtools();
-
-
-function generatePileup(outdir, region, width, callback) {
-  try {
-    const tracks = discoverTracks(outdir);
-    if (tracks.length === 0) return callback("No tracks found");
-
-    // Find the reference for this dataset
-    const firstBamPath = resolveTrackPath(tracks[0].url);
-    const refName = bamReferenceName(firstBamPath);
-
-    // Find matching reference FASTA
-    const refDir = path.join(WORKSPACE, "resources/references");
-    let refPath = null;
-    for (const f of readdirSafe(refDir)) {
-      if ((f.endsWith(".fasta") || f.endsWith(".fa")) && f.replace(/\.(fasta|fa)$/, "") === refName) {
-        refPath = path.join(refDir, f);
-        break;
-      }
-    }
-
-    // Determine region: if not specified, auto-detect from first BAM
-    let viewRegion = region;
-    if (!viewRegion && refName) {
-      try {
-        const idxstats = execSync(`${SAMTOOLS} idxstats "${firstBamPath}" 2>/dev/null`, { encoding: "utf8" });
-        const line = idxstats.split("\n").find(l => l.startsWith(refName));
-        if (line) {
-          const refLen = parseInt(line.split("\t")[1], 10);
-          viewRegion = `${refName}:1-${Math.min(refLen, width * 3)}`;
-        }
-      } catch {}
-    }
-
-    const lines = [];
-    lines.push(`Dataset: ${path.basename(outdir)}`);
-    lines.push(`Reference: ${refName || "unknown"}`);
-    lines.push(`Region: ${viewRegion || "full"}`);
-    lines.push("");
-
-    // Per-track: read count, coverage summary, SAM tag stats, sample reads
-    for (const track of tracks) {
-      const bamPath = resolveTrackPath(track.url);
-      if (!fs.existsSync(bamPath)) continue;
-
-      const label = track.name.split(" — ")[1] || track.name;
-      let readCount = 0;
-      try { readCount = parseInt(execSync(`${SAMTOOLS} view -c "${bamPath}" 2>/dev/null`, { encoding: "utf8" }).trim(), 10); } catch {}
-
-      lines.push(`── ${label} (${readCount} reads) ──`);
-
-      if (readCount === 0) { lines.push("  (empty)"); lines.push(""); continue; }
-
-      // SAM tag summary: EC, SC, NC, SJ distributions
-      try {
-        const tagOutput = execSync(
-          `${SAMTOOLS} view "${bamPath}" 2>/dev/null | head -200 | awk -F'\\t' '` +
-          `{ for(i=12;i<=NF;i++) {` +
-          `  if($i~/^EC:i:/) { split($i,a,":"); ec+=a[3]; ecn++ }` +
-          `  if($i~/^SC:i:/) { split($i,a,":"); sc+=a[3]; scn++ }` +
-          `  if($i~/^NC:i:/) { split($i,a,":"); nc+=a[3]; ncn++ }` +
-          `  if($i~/^SJ:Z:S/) sj_s++; if($i~/^SJ:Z:R/) sj_r++; if($i~/^SJ:Z:-/) sj_u++` +
-          `  if($i~/^TL:i:1/) tl++` +
-          `} }` +
-          `END {` +
-          `  if(ecn) printf "  EC: total=%d mean=%.1f\\n", ec, ec/ecn;` +
-          `  if(scn) printf "  SC: total=%d mean=%.1f\\n", sc, sc/scn;` +
-          `  if(ncn) printf "  NC: total=%d mean=%.1f\\n", nc, nc/ncn;` +
-          `  if(sj_s+sj_r+sj_u) printf "  SJ: S=%d R=%d -=%d\\n", sj_s+0, sj_r+0, sj_u+0;` +
-          `  if(tl) printf "  TL: %d translocations\\n", tl;` +
-          `}'`,
-          { encoding: "utf8" }
-        );
-        if (tagOutput.trim()) lines.push(tagOutput.trimEnd());
-      } catch {}
-
-      // CIGAR summary: soft-clip distribution
-      try {
-        const cigarOutput = execSync(
-          `${SAMTOOLS} view "${bamPath}" 2>/dev/null | head -200 | awk -F'\\t' '` +
-          `{ c=$6; ` +
-          `  if(match(c,/^[0-9]+S/)) left_s++;` +
-          `  if(match(c,/[0-9]+S$/)) { s=substr(c,RSTART); gsub(/S/,"",s); if(s+0>5) right_s++; tot_clip+=s+0 }` +
-          `  n++` +
-          `}` +
-          `END { printf "  CIGARs: %d reads, %d with right-clip >5bp", n, right_s+0;` +
-          `  if(right_s) printf " (avg %dbp)", tot_clip/right_s;` +
-          `  printf "\\n" }'`,
-          { encoding: "utf8" }
-        );
-        if (cigarOutput.trim()) lines.push(cigarOutput.trimEnd());
-      } catch {}
-
-      // Show sample reads with key tags
-      try {
-        const sampleOutput = execSync(
-          `${SAMTOOLS} view "${bamPath}" ${viewRegion || ""} 2>/dev/null | head -8 | awk -F'\\t' '` +
-          `{ name=$1; pos=$4; cigar=$6; tags="";` +
-          `  for(i=12;i<=NF;i++) {` +
-          `    if($i~/^(EC|SC|NC|SJ|TL|3E):/) tags=tags " " $i` +
-          `  }` +
-          `  printf "  %-30s pos=%-5s cigar=%-20s%s\\n", substr(name,1,30), pos, cigar, tags` +
-          `}'`,
-          { encoding: "utf8" }
-        );
-        if (sampleOutput.trim()) {
-          lines.push("  Sample reads:");
-          lines.push(sampleOutput.trimEnd());
-        }
-      } catch {}
-
-      // Depth profile (text sparkline) if region specified
-      if (viewRegion && refPath) {
-        try {
-          const depthOutput = execSync(
-            `${SAMTOOLS} depth -r "${viewRegion}" "${bamPath}" 2>/dev/null | awk '` +
-            `BEGIN { max=0 } { d[NR]=$3; pos[NR]=$2; if($3>max) max=$3; n=NR }` +
-            `END {` +
-            `  if(n==0) exit;` +
-            `  step = int(n/${width}) + 1; if(step<1) step=1;` +
-            `  chars = " ▁▂▃▄▅▆▇█";` +
-            `  printf "  Coverage (%dx max): ", max;` +
-            `  for(i=1; i<=n; i+=step) {` +
-            `    lvl = int(d[i] / max * 8); if(lvl>8) lvl=8;` +
-            `    printf "%s", substr(chars, lvl+1, 1)` +
-            `  }` +
-            `  printf "\\n  Region: %s:%d-%d\\n", $1, pos[1], pos[n]` +
-            `}'`,
-            { encoding: "utf8" }
-          );
-          if (depthOutput.trim()) lines.push(depthOutput.trimEnd());
-        } catch {}
-      }
-
-      lines.push("");
-    }
-
-    callback(null, lines.join("\n"));
-  } catch (e) {
-    callback(e.message);
-  }
 }
 
 // ---------------------------------------------------------------------------
@@ -589,11 +426,12 @@ const server = http.createServer((req, res) => {
     const dir = datasets[name];
     if (!dir) { res.writeHead(404); res.end("Dataset not found"); return; }
 
+    const pileupDeps = { discoverTracks, resolveTrackPath, bamReferenceName, readdirSafe, WORKSPACE };
     generatePileup(dir, region, width, (err, text) => {
       if (err) { res.writeHead(500); res.end("Error: " + err); return; }
       res.writeHead(200, { "Content-Type": "text/plain; charset=utf-8" });
       res.end(text);
-    });
+    }, pileupDeps);
     return;
   }
 

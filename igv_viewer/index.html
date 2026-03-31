@@ -178,6 +178,21 @@
     let allTracks = [];  // full track configs from API (for toggle)
     let datasetDescriptions = {};  // name → description string
 
+    const SAMPLING_PARAMS = {
+      NORMAL: {},
+      ALL: { samplingDepth: 10000, visibilityWindow: 1000000, maxRows: 5000 },
+    };
+
+    function buildDropdown(selectEl, options, valueFn, labelFn) {
+      selectEl.innerHTML = "";
+      for (let i = 0; i < options.length; i++) {
+        const opt = document.createElement("option");
+        opt.value = valueFn ? valueFn(options[i], i) : options[i];
+        opt.textContent = labelFn ? labelFn(options[i], i) : options[i];
+        selectEl.appendChild(opt);
+      }
+    }
+
     function showStatus(msg) {
       const el = document.getElementById("status");
       el.style.display = "block";
@@ -192,7 +207,6 @@
       references = config.references;
 
       const sel = document.getElementById("dataset");
-      sel.innerHTML = '<option value="">-- select dataset --</option>';
       /* Build description map from datasetInfo */
       if (config.datasetInfo) {
         for (const di of config.datasetInfo) {
@@ -208,23 +222,14 @@
           'that contains <code>07_map/</code> or <code>09_correct/</code>.</p>';
         return;
       }
-      for (const name of names) {
-        const opt = document.createElement("option");
-        opt.value = name;
-        opt.textContent = name;
-        sel.appendChild(opt);
-      }
+      buildDropdown(sel, names);
+      sel.insertAdjacentHTML("afterbegin", '<option value="">-- select dataset --</option>');
+      sel.value = "";
       sel.onchange = () => loadDataset(sel.value);
 
       /* Populate reference selector */
       const refSel = document.getElementById("ref-select");
-      refSel.innerHTML = "";
-      for (let i = 0; i < references.length; i++) {
-        const opt = document.createElement("option");
-        opt.value = i;
-        opt.textContent = references[i].name;
-        refSel.appendChild(opt);
-      }
+      buildDropdown(refSel, references, (r, i) => i, r => r.name);
       refSel.onchange = () => {
         const dsSel = document.getElementById("dataset");
         if (dsSel.value) loadDataset(dsSel.value);
@@ -558,8 +563,8 @@
         const t = allTracks[parseInt(cb.dataset.trackIdx, 10)];
         if (!t) continue;
         const extra = showAll
-          ? { samplingDepth: 10000, visibilityWindow: 1000000, maxRows: 5000 }
-          : {};
+          ? SAMPLING_PARAMS.ALL
+          : SAMPLING_PARAMS.NORMAL;
         enabled.push({ ...t, ...extra });
       }
       return enabled;
@@ -573,8 +578,8 @@
       if (enabled) {
         const showAll = document.getElementById("show-all").checked;
         const extra = showAll
-          ? { samplingDepth: 10000, visibilityWindow: 1000000, maxRows: 5000 }
-          : {};
+          ? SAMPLING_PARAMS.ALL
+          : SAMPLING_PARAMS.NORMAL;
         const activeGroupBy = document.getElementById("group-by")?.value;
         const groupBy = (activeGroupBy && activeGroupBy !== "none") ? activeGroupBy : undefined;
         const trackCfg = { ...t, ...extra };
