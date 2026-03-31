@@ -15,8 +15,14 @@ run_call_variants() {
     local ref_seq="$2"
     local pattern="$3"
 
-    local ref_base="${pattern:0:1}"
-    local alt_base="${pattern:1:1}"
+    # Build extended regex for primary editing pattern(s) (supports comma-separated, e.g. "CT,AG")
+    local _ec_regex=""
+    IFS=',' read -ra _patterns <<< "$pattern"
+    for _p in "${_patterns[@]}"; do
+        _p="${_p// /}"
+        [ -n "$_ec_regex" ] && _ec_regex="${_ec_regex}|"
+        _ec_regex="${_ec_regex}${_p:0:1}${_p:1:1}"
+    done
 
     local -a fields
     IFS=$'\t' read -ra fields <<< "$read_line"
@@ -50,7 +56,7 @@ run_call_variants() {
         }
     }' /dev/null)
 
-    RESULT_EC=$(echo "$RESULT_variants" | tr ';' '\n' | grep -c "${ref_base}${alt_base}" || true)
+    RESULT_EC=$(echo "$RESULT_variants" | tr ';' '\n' | grep -cE "$_ec_regex" || true)
 
     # Secondary count (count-only pattern, e.g., TC for SLAM-seq)
     local count_pattern="${4:-}"

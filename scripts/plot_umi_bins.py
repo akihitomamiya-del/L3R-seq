@@ -22,7 +22,7 @@ Usage:
         --compare runs/E230426_barcode48_UMICseq \
         --sample barcode48/barcode48_RPI_3 --quality
 
-Output: PNG saved next to step 04 data or in --outdir.
+Output: PNG saved to {run_dir}/figures/ by default, or in --outdir.
 """
 
 import argparse
@@ -32,6 +32,22 @@ import re
 import sys
 from collections import defaultdict
 from pathlib import Path
+
+# Consistent color scheme for nucleotide conversions (Tableau-inspired, colorblind-friendly)
+CONVERSION_COLORS = {
+    'CA': '#4E79A7',  # steel blue
+    'CG': '#59A14F',  # green
+    'CT': '#E15759',  # coral red
+    'AC': '#F28E2B',  # orange
+    'AG': '#B07AA1',  # purple
+    'AT': '#BAB0AC',  # warm grey
+    'GA': '#9C755F',  # brown
+    'GC': '#EDC948',  # gold
+    'GT': '#86BCB6',  # sage
+    'TA': '#FF9DA7',  # pink
+    'TC': '#76B7B2',  # teal
+    'TG': '#FABFD2',  # light pink
+}
 
 def require_matplotlib():
     try:
@@ -169,6 +185,19 @@ def load_bin_size_dist(run_dir, sample):
     return bins
 
 
+def parse_vr(vr_string):
+    """Parse VR tag value into conversion type counts.
+
+    Input: 'VR:Z:11CT;84CT;262AG;' or '11CT;84CT;262AG;'
+    Returns: {'CT': 2, 'AG': 1}
+    """
+    s = re.sub(r'^VR:Z:', '', str(vr_string))
+    counts = defaultdict(int)
+    for m in re.finditer(r'\d+([ACGT]{2})', s):
+        counts[m.group(1)] += 1
+    return dict(counts)
+
+
 def load_csv_quality(run_dir, sample):
     """Load step 10 CSV, return per-read (bin_size, editing_count, noise_count, matched_length)."""
     # Find CSV — naming: barcode_rpi.csv at 10_csv/
@@ -220,6 +249,94 @@ def load_csv_quality(run_dir, sample):
             records.append((bin_size, ec, nc, ml))
 
     return records
+
+
+def load_csv_variants(run_dir, sample):
+    """Load step 10 CSV variant data, return per-read conversion info.
+
+    Returns: [(bin_size, conversions_dict, matched_length), ...] or None.
+    """
+    bc, rpi = sample.split('/')
+    csv_dir = Path(run_dir) / "10_csv"
+    candidates = list(csv_dir.glob(f"*{rpi}*.csv")) if csv_dir.exists() else []
+    if not candidates:
+        csv_dir2 = Path(run_dir) / "10_csv" / bc / rpi
+        candidates = list(csv_dir2.glob("*.csv")) if csv_dir2.exists() else []
+    if not candidates:
+        return None
+
+    csv_path = candidates[0]
+
+    stats_path = Path(run_dir) / "04_umi" / sample / "read_binning" / "umi_binning_stats.txt"
+    bin_sizes = {}
+    if stats_path.exists():
+        with open(stats_path) as f:
+            reader = csv.DictReader(f, delimiter='\t')
+            for row in reader:
+                name = row['umi_name'].split(';')[0]
+                bin_sizes[name] = int(row['read_count'])
+
+    records = []
+    with open(csv_path) as f:
+        reader = csv.DictReader(f)
+        for row in reader:
+            qname = row['QNAME']
+            bin_name_match = re.match(r'(umi\d+)bins', qname)
+            ubs_match = re.search(r'ubs=(\d+)', qname)
+            if not bin_name_match:
+                continue
+            bin_name = bin_name_match.group(1)
+            bin_size = int(ubs_match.group(1)) if ubs_match else bin_sizes.get(bin_name, 0)
+
+            ml_raw = row.get('matched_length', '0')
+            ml = int(re.sub(r'.*:', '', str(ml_raw)) or 0)
+
+            vr = row.get('All_mismatches', '')
+            conversions = parse_vr(vr)
+            records.append((bin_size, conversions, ml))
+
+    return records if records else None
+
+
+def compute_conversion_by_binsize(variant_records, editing_patterns):
+    """Aggregate conversion rates by bin size, split into editing vs noise.
+
+    Returns: {size: {'editing': {conv: rate_per_1k}, 'noise': {conv: rate_per_1k},
+              'editing_counts': {conv: count}, 'noise_counts': {conv: count},
+              'reads': n, 'total_ml': ml}}
+    """
+    editing_set = set(editing_patterns)
+    by_size = defaultdict(lambda: {'editing_counts': defaultdict(int),
+                                   'noise_counts': defaultdict(int),
+                                   'total_ml': 0, 'reads': 0})
+
+    for bs, convs, ml in variant_records:
+        if bs <= 0:
+            continue
+        entry = by_size[bs]
+        entry['reads'] += 1
+        entry['total_ml'] += ml
+        for conv, count in convs.items():
+            if conv in editing_set:
+                entry['editing_counts'][conv] += count
+            else:
+                entry['noise_counts'][conv] += count
+
+    result = {}
+    for size in sorted(by_size):
+        entry = by_size[size]
+        ml = entry['total_ml']
+        result[size] = {
+            'editing': {c: v / ml * 1000 if ml > 0 else 0
+                        for c, v in entry['editing_counts'].items()},
+            'noise': {c: v / ml * 1000 if ml > 0 else 0
+                      for c, v in entry['noise_counts'].items()},
+            'editing_counts': dict(entry['editing_counts']),
+            'noise_counts': dict(entry['noise_counts']),
+            'reads': entry['reads'],
+            'total_ml': ml,
+        }
+    return result
 
 
 def compute_quality_by_binsize(records):
@@ -279,7 +396,8 @@ def compute_threshold_table(records, min_bin=1, cluster_dist=None):
     return rows
 
 
-def plot_single(run_dir, sample, quality_records, outpath, method_label="longread-umi"):
+def plot_single(run_dir, sample, quality_records, outpath, method_label="longread-umi",
+                variant_records=None, editing_patterns=None):
     """Generate a bin analysis plot for a single sample."""
     plt, gridspec, np = require_matplotlib()
 
@@ -292,8 +410,22 @@ def plot_single(run_dir, sample, quality_records, outpath, method_label="longrea
         return
 
     has_quality = quality_records is not None and len(quality_records) > 0
-    nrows = 4 if has_quality else 1  # extra row for threshold table
-    fig_h = 20 if has_quality else 6
+    has_variants = has_quality and variant_records is not None and len(variant_records) > 0
+    if editing_patterns is None:
+        editing_patterns = ['CT']
+
+    # Layout: 6 panels when variant data available, 4 for quality-only, 1 for basic
+    if has_variants:
+        nrows = 6
+        height_ratios = [3, 3, 3, 3, 2, 3]
+        fig_h = 32
+    elif has_quality:
+        nrows = 4
+        height_ratios = [3, 3, 3, 2]
+        fig_h = 20
+    else:
+        nrows = 1
+        fig_h = 6
 
     fig = plt.figure(figsize=(10, fig_h))
     fig.patch.set_facecolor('white')
@@ -306,19 +438,47 @@ def plot_single(run_dir, sample, quality_records, outpath, method_label="longrea
 
     sample_label = sample.replace('/', ' / ')
     fig.suptitle(f'{sample_label} ({method_label}): UMI Bin Analysis',
-                 fontsize=16, fontweight='bold', y=0.98)
+                 fontsize=16, fontweight='bold', y=0.99 if has_variants else 0.98)
 
-    if has_quality:
-        gs = gridspec.GridSpec(nrows, 1, figure=fig,
-                               height_ratios=[3, 3, 3, 2],
+    # ── Parameter header ─────────────────────────────────────────────────────
+    if has_variants:
+        editing_set = set(editing_patterns)
+        pattern_counts = defaultdict(int)
+        total_nc_hdr = 0
+        for _, convs, _ in variant_records:
+            for conv, count in convs.items():
+                if conv in editing_set:
+                    pattern_counts[conv] += count
+                else:
+                    total_nc_hdr += count
+        total_ec_hdr = sum(pattern_counts.values())
+
+        pattern_str = ', '.join(f'{p[0]}\u2192{p[1]}' for p in editing_patterns)
+        ec_detail = ', '.join(f'{p[0]}\u2192{p[1]}: {pattern_counts.get(p, 0)}'
+                              for p in editing_patterns)
+        header = (f'Pattern: {pattern_str}  \u2502  Reads: {len(variant_records)}  \u2502  '
+                  f'Editing: {total_ec_hdr} ({ec_detail})  \u2502  Noise: {total_nc_hdr}')
+        fig.text(0.5, 0.975, header, ha='center', va='top', fontsize=10,
+                 fontfamily='monospace',
+                 bbox=dict(boxstyle='round,pad=0.5', facecolor='#ECF0F1',
+                           edgecolor='#BDC3C7', alpha=0.95))
+
+    # ── GridSpec ─────────────────────────────────────────────────────────────
+    if has_variants:
+        gs = gridspec.GridSpec(nrows, 1, figure=fig, height_ratios=height_ratios,
+                               hspace=0.35, left=0.10, right=0.92, top=0.95, bottom=0.03)
+    elif has_quality:
+        gs = gridspec.GridSpec(nrows, 1, figure=fig, height_ratios=height_ratios,
                                hspace=0.40, left=0.10, right=0.92, top=0.93, bottom=0.05)
     else:
         gs = gridspec.GridSpec(1, 1, figure=fig,
                                left=0.10, right=0.92, top=0.88, bottom=0.12)
 
-    # ── Panel 1: Bin size histogram ──────────────────────────────────────────
+    panel = 0
 
-    ax1 = fig.add_subplot(gs[0])
+    # ── Panel: Bin size histogram ────────────────────────────────────────────
+
+    ax1 = fig.add_subplot(gs[panel]); panel += 1
 
     sizes = sorted(cluster_dist.keys())
     max_size = max(sizes)
@@ -342,7 +502,6 @@ def plot_single(run_dir, sample, quality_records, outpath, method_label="longrea
     ax1.axvline(x=min_bin - 0.5, color='navy', linestyle='--', linewidth=1.5,
                 label=f'min_bin = {min_bin}')
 
-    # Grey count labels above each bar
     for s in x_range:
         count = cluster_dist.get(s, 0)
         if count > 0:
@@ -355,7 +514,6 @@ def plot_single(run_dir, sample, quality_records, outpath, method_label="longrea
     ax1.set_title('Bin Size Distribution (Step 04: UMI clustering)', fontsize=14, fontweight='bold')
     ax1.legend(fontsize=10, loc='upper right')
 
-    # Annotation box
     ann = (f"Total bins: {total_bins:,}\n"
            f"Below n<{min_bin}: {small_bins:,} ({small_bins/total_bins*100:.0f}%)\n"
            f"Kept: {kept_bins:,}\n"
@@ -369,45 +527,100 @@ def plot_single(run_dir, sample, quality_records, outpath, method_label="longrea
         plt.close()
         return
 
-    # ── Panel 2: Noise rate by bin size ──────────────────────────────────────
-
+    # Compute aggregate quality metrics (needed for error-free + threshold)
     qbs = compute_quality_by_binsize(quality_records)
-    q_sizes = sorted(s for s in qbs if s >= min_bin)
 
-    ax2 = fig.add_subplot(gs[1])
-    noise_vals = [qbs[s]['noise_per_1k'] for s in q_sizes]
-    colors_noise = ['#DD8452' if s >= min_bin else '#AAAAAA' for s in q_sizes]
-    ax2.bar(q_sizes, noise_vals, color=colors_noise, edgecolor='black', linewidth=0.3)
-    for s, nv in zip(q_sizes, noise_vals):
-        ax2.text(s, nv, str(qbs[s]['reads']), ha='center', va='bottom',
-                 fontsize=7, color='grey')
-    ax2.set_xlabel('Bin size', fontsize=12)
-    ax2.set_ylabel('Noise rate (per 1,000 bp)', fontsize=12)
-    ax2.set_title('Noise Rate by Bin Size (Step 10: final reads)', fontsize=14, fontweight='bold')
-    ax2.set_xticks(q_sizes)
+    if has_variants:
+        conv_data = compute_conversion_by_binsize(variant_records, editing_patterns)
+        q_sizes = sorted(s for s in conv_data if s >= min_bin)
 
-    # ── Panel 3: Error-free rate by bin size ─────────────────────────────────
+        # ── Panel: Editing rate by conversion ────────────────────────────
+        ax_edit = fig.add_subplot(gs[panel]); panel += 1
 
-    ax3 = fig.add_subplot(gs[2])
-    ef_vals = [qbs[s]['error_free_pct'] for s in q_sizes]
-    colors_ef = ['#4C72B0' if s >= min_bin else '#AAAAAA' for s in q_sizes]
-    ax3.bar(q_sizes, ef_vals, color=colors_ef, edgecolor='black', linewidth=0.3)
-    for s, ev in zip(q_sizes, ef_vals):
+        all_edit_convs = sorted({c for s in q_sizes for c in conv_data[s]['editing']})
+        bottom = np.zeros(len(q_sizes))
+        for conv in all_edit_convs:
+            vals = np.array([conv_data[s]['editing'].get(conv, 0) for s in q_sizes])
+            ax_edit.bar(q_sizes, vals, bottom=bottom,
+                        color=CONVERSION_COLORS.get(conv, '#333333'),
+                        edgecolor='black', linewidth=0.3,
+                        label=f'{conv[0]}\u2192{conv[1]}')
+            bottom += vals
+        for i, s in enumerate(q_sizes):
+            if bottom[i] > 0:
+                ax_edit.text(s, bottom[i], str(conv_data[s]['reads']),
+                             ha='center', va='bottom', fontsize=7, color='grey')
+        ax_edit.set_xlabel('Bin size', fontsize=12)
+        ax_edit.set_ylabel('Editing rate (per 1,000 bp)', fontsize=12)
+        ax_edit.set_title('Editing Rate by Bin Size (Step 10: final reads)',
+                          fontsize=14, fontweight='bold')
+        ax_edit.set_xticks(q_sizes)
+        if all_edit_convs:
+            ax_edit.legend(fontsize=9, loc='upper right', title='Editing')
+
+        # ── Panel: Noise rate by conversion ──────────────────────────────
+        ax_noise = fig.add_subplot(gs[panel]); panel += 1
+
+        all_noise_convs = sorted({c for s in q_sizes for c in conv_data[s]['noise']})
+        bottom = np.zeros(len(q_sizes))
+        for conv in all_noise_convs:
+            vals = np.array([conv_data[s]['noise'].get(conv, 0) for s in q_sizes])
+            ax_noise.bar(q_sizes, vals, bottom=bottom,
+                         color=CONVERSION_COLORS.get(conv, '#333333'),
+                         edgecolor='black', linewidth=0.3,
+                         label=f'{conv[0]}\u2192{conv[1]}')
+            bottom += vals
+        for i, s in enumerate(q_sizes):
+            if bottom[i] > 0:
+                ax_noise.text(s, bottom[i], str(conv_data[s]['reads']),
+                              ha='center', va='bottom', fontsize=7, color='grey')
+        ax_noise.set_xlabel('Bin size', fontsize=12)
+        ax_noise.set_ylabel('Noise rate (per 1,000 bp)', fontsize=12)
+        ax_noise.set_title('Noise Rate by Bin Size (Step 10: final reads)',
+                           fontsize=14, fontweight='bold')
+        ax_noise.set_xticks(q_sizes)
+        if all_noise_convs:
+            ax_noise.legend(fontsize=9, loc='upper right', title='Noise')
+
+    else:
+        # Fallback: aggregate noise panel (no VR data)
+        q_sizes = sorted(s for s in qbs if s >= min_bin)
+        ax2 = fig.add_subplot(gs[panel]); panel += 1
+        noise_vals = [qbs[s]['noise_per_1k'] for s in q_sizes]
+        colors_noise = ['#DD8452' if s >= min_bin else '#AAAAAA' for s in q_sizes]
+        ax2.bar(q_sizes, noise_vals, color=colors_noise, edgecolor='black', linewidth=0.3)
+        for s, nv in zip(q_sizes, noise_vals):
+            ax2.text(s, nv, str(qbs[s]['reads']), ha='center', va='bottom',
+                     fontsize=7, color='grey')
+        ax2.set_xlabel('Bin size', fontsize=12)
+        ax2.set_ylabel('Noise rate (per 1,000 bp)', fontsize=12)
+        ax2.set_title('Noise Rate by Bin Size (Step 10: final reads)',
+                      fontsize=14, fontweight='bold')
+        ax2.set_xticks(q_sizes)
+
+    # ── Panel: Error-free rate ───────────────────────────────────────────────
+
+    q_sizes_ef = sorted(s for s in qbs if s >= min_bin)
+    ax3 = fig.add_subplot(gs[panel]); panel += 1
+    ef_vals = [qbs[s]['error_free_pct'] for s in q_sizes_ef]
+    colors_ef = ['#4C72B0' if s >= min_bin else '#AAAAAA' for s in q_sizes_ef]
+    ax3.bar(q_sizes_ef, ef_vals, color=colors_ef, edgecolor='black', linewidth=0.3)
+    for s, ev in zip(q_sizes_ef, ef_vals):
         ax3.text(s, ev, str(qbs[s]['reads']), ha='center', va='bottom',
                  fontsize=7, color='grey')
     ax3.set_xlabel('Bin size', fontsize=12)
     ax3.set_ylabel('Error-free reads (%)', fontsize=12)
     ax3.set_title('Error-Free Rate (NC=0) by Bin Size (Step 10: final reads)',
                   fontsize=14, fontweight='bold')
-    ax3.set_xticks(q_sizes)
+    ax3.set_xticks(q_sizes_ef)
     ax3.set_ylim(0, 105)
     ax3.axhline(y=90, color='green', linestyle=':', alpha=0.4, linewidth=1)
 
-    # ── Panel 4: Threshold table ─────────────────────────────────────────────
+    # ── Panel: Threshold table ───────────────────────────────────────────────
 
     thresh_rows = compute_threshold_table(quality_records, min_bin, cluster_dist)
     if thresh_rows:
-        ax_tbl = fig.add_subplot(gs[3])
+        ax_tbl = fig.add_subplot(gs[panel]); panel += 1
         ax_tbl.axis('off')
         ax_tbl.set_title(f'Quality at Each Threshold (green = current setting n>={min_bin})',
                          fontsize=13, fontweight='bold')
@@ -455,13 +668,11 @@ def plot_single(run_dir, sample, quality_records, outpath, method_label="longrea
             cell.set_facecolor('#2C3E50')
             cell.set_text_props(color='white', fontweight='bold')
 
-        # Footnote: explain lost bins if any threshold shows < 100% survival
         if has_bins:
             lost_sizes = []
             for r in thresh_rows:
                 lost = r['bins'] - r['reads']
                 if lost > 0 and r['threshold'] == f'n >= {min_bin}':
-                    # Find which bin sizes lost reads
                     for sz in sorted(cluster_dist):
                         if sz >= min_bin:
                             bins_at_sz = cluster_dist.get(sz, 0)
@@ -477,6 +688,53 @@ def plot_single(run_dir, sample, quality_records, outpath, method_label="longrea
                             f' (consensus requires multiple reads for error correction).',
                             transform=ax_tbl.transAxes, fontsize=9, color='#666666',
                             ha='center', va='top', style='italic')
+
+    # ── Panel: Noise pattern breakdown table ─────────────────────────────────
+    if has_variants:
+        import matplotlib.colors as mcolors
+        ax_ntbl = fig.add_subplot(gs[panel]); panel += 1
+        ax_ntbl.axis('off')
+        ax_ntbl.set_title('Noise Pattern Breakdown (aggregate)',
+                          fontsize=13, fontweight='bold')
+
+        total_noise_counts = defaultdict(int)
+        total_ml_all = 0
+        editing_set_tbl = set(editing_patterns)
+        for _, convs, ml in variant_records:
+            total_ml_all += ml
+            for conv, count in convs.items():
+                if conv not in editing_set_tbl:
+                    total_noise_counts[conv] += count
+
+        sorted_noise = sorted(total_noise_counts.items(), key=lambda x: -x[1])
+        total_nc_all = sum(v for v in total_noise_counts.values())
+
+        if sorted_noise:
+            cell_text = []
+            cell_colors = []
+            for conv, count in sorted_noise:
+                rate = count / total_ml_all * 1000 if total_ml_all > 0 else 0
+                pct = count / total_nc_all * 100 if total_nc_all > 0 else 0
+                cell_text.append([f'{conv[0]}\u2192{conv[1]}', str(count),
+                                  f'{rate:.4f}', f'{pct:.1f}%'])
+                rgb = mcolors.to_rgb(CONVERSION_COLORS.get(conv, '#333333'))
+                tint = tuple(0.82 + 0.18 * c for c in rgb)
+                cell_colors.append([tint] * 4)
+
+            ntbl = ax_ntbl.table(
+                cellText=cell_text,
+                colLabels=['Conversion', 'Count', 'Rate (/1kbp)', '% of noise'],
+                cellColours=cell_colors,
+                cellLoc='center', loc='center',
+                colWidths=[0.15, 0.12, 0.15, 0.12],
+            )
+            ntbl.auto_set_font_size(False)
+            ntbl.set_fontsize(10)
+            ntbl.scale(1.0, 1.5)
+            for j in range(4):
+                cell = ntbl[0, j]
+                cell.set_facecolor('#2C3E50')
+                cell.set_text_props(color='white', fontweight='bold')
 
     fig.savefig(outpath, dpi=150, bbox_inches='tight', facecolor='white')
     plt.close()
@@ -686,7 +944,10 @@ def main():
     parser.add_argument('--label2', default='UMIC-seq', help='Label for second run (default: UMIC-seq)')
     parser.add_argument('--quality', action='store_true',
                         help='Include noise/error-free plots (requires step 10 CSV)')
-    parser.add_argument('--outdir', help='Output directory for PNGs (default: next to step 04 data)')
+    parser.add_argument('--pattern', default='CT',
+                        help='Editing pattern(s) to highlight, comma-separated (default: CT). '
+                             'E.g., CT or CT,AG')
+    parser.add_argument('--outdir', help='Output directory for PNGs (default: {run_dir}/figures/)')
     args = parser.parse_args()
 
     if args.sample:
@@ -698,14 +959,16 @@ def main():
             sys.exit(1)
         print(f"Found {len(samples)} sample(s): {', '.join(samples)}")
 
+    editing_patterns = [p.strip().upper() for p in args.pattern.split(',')]
+
     for sample in samples:
         print(f"  Plotting {sample} ...")
 
         if args.outdir:
-            os.makedirs(args.outdir, exist_ok=True)
             out_base = args.outdir
         else:
-            out_base = str(Path(args.run_dir))
+            out_base = str(Path(args.run_dir) / "figures")
+        os.makedirs(out_base, exist_ok=True)
 
         safe_name = sample.replace('/', '_')
 
@@ -717,8 +980,10 @@ def main():
                         outpath, args.label1, args.label2)
         else:
             qrecs = load_csv_quality(args.run_dir, sample) if args.quality else None
+            vrecs = load_csv_variants(args.run_dir, sample) if args.quality else None
             outpath = os.path.join(out_base, f"bin_analysis_{safe_name}.png")
-            plot_single(args.run_dir, sample, qrecs, outpath, args.label1)
+            plot_single(args.run_dir, sample, qrecs, outpath, args.label1,
+                        variant_records=vrecs, editing_patterns=editing_patterns)
 
         print(f"    Saved: {outpath}")
 

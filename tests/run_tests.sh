@@ -186,10 +186,10 @@ if [ "$SKIP_PREPROCESS" -eq 0 ]; then
         --start-at 1 --stop-at 3 \
         --threads 4 > "$OUTPUT_DIR/test1.log" 2>&1
 
-    # Check concat: 840 reads per barcode (2 RPIs × 420)
+    # Check concat: 3440 reads per barcode (2 RPIs × 1720)
     for bc in barcode01 barcode02; do
         got=$(gzip -dc "$OUTPUT_DIR/full_preprocess/01_concat/${bc}.fastq.gz" | awk 'NR%4==1' | wc -l)
-        check_exact "Step 01 concat $bc" "$got" "840"
+        check_exact "Step 01 concat $bc" "$got" "3440"
     done
 
     # Check trim: trim3 should have fewer reads than concat (chimeric reads removed)
@@ -197,8 +197,8 @@ if [ "$SKIP_PREPROCESS" -eq 0 ]; then
         trim3="$OUTPUT_DIR/full_preprocess/02_trim/$bc/${bc}_trim3.fastq.gz"
         if [ -f "$trim3" ]; then
             got=$(gzip -dc "$trim3" | awk 'NR%4==1' | wc -l)
-            # Expect ~730 after trimming (840 - chimeric/no-adapter reads)
-            check_range "Step 02 trim $bc" "$got" "730" "0.10"
+            # Expect ~3330 after trimming (3440 - chimeric/no-adapter reads)
+            check_range "Step 02 trim $bc" "$got" "3330" "0.10"
         else
             fail "Step 02 trim3 missing for $bc"
         fi
@@ -208,8 +208,8 @@ if [ "$SKIP_PREPROCESS" -eq 0 ]; then
     for bc in barcode01 barcode02; do
         for rpi in RPI_1 RPI_2; do
             got=$(( $(wc -l < "$OUTPUT_DIR/full_preprocess/03_demux/$bc/${bc}_${rpi}.fastq") / 4 ))
-            # Expect ~335 after trimming+demux (errors in adapters reduce yield)
-            check_range "Step 03 demux $bc/$rpi" "$got" "335" "0.10"
+            # Expect ~1530 after trimming+demux (errors in adapters reduce yield)
+            check_range "Step 03 demux $bc/$rpi" "$got" "1530" "0.10"
         done
     done
     # Test filter step: run on demux output, check reads retained
@@ -225,9 +225,9 @@ if [ "$SKIP_PREPROCESS" -eq 0 ]; then
     # Each RPI has 20 non-mapping reads with valid adapters — filter should remove these.
     for bc in barcode01 barcode02; do
         if [ -d "$OUTPUT_DIR/full_preprocess/filter/$bc" ]; then
-            for rpi_fq in "$OUTPUT_DIR/full_preprocess/filter/$bc"/${bc}_RPI_*.fastq; do
-                [ -f "$rpi_fq" ] || continue
-                rpi_label=$(basename "$rpi_fq" .fastq | sed "s/^${bc}_//")
+            for rpi_label in RPI_1 RPI_2; do
+                rpi_fq="$OUTPUT_DIR/full_preprocess/filter/$bc/${bc}_${rpi_label}.fastq"
+                [ -f "$rpi_fq" ] || { fail "Filter output missing for $bc/$rpi_label"; continue; }
                 filtered=$(( $(wc -l < "$rpi_fq") / 4 ))
                 demuxed=$(( $(wc -l < "$OUTPUT_DIR/full_preprocess/03_demux/$bc/${bc}_${rpi_label}.fastq") / 4 ))
                 removed=$(( demuxed - filtered ))
@@ -477,6 +477,63 @@ echo "  ⏱ Test 2: $(( SECONDS - T_START ))s"
 echo ""
 
 # ---------------------------------------------------------------------------
+# Test 2b: Steps 08-10 with CT,AG dual pattern (reuses 04-07 from Test 2)
+# ---------------------------------------------------------------------------
+
+if [ "$QUICK" -eq 0 ]; then
+    T_START=$SECONDS
+    echo "[TEST 2b] Steps 08-10: CT,AG dual pattern"
+    echo "  ⏳ Running steps 08-10 with --pattern CT,AG ..."
+
+    OUT_CTAG="$OUTPUT_DIR/pipeline_CTAG"
+    mkdir -p "$OUT_CTAG"
+
+    # Symlink pattern-independent steps from pipeline_CT
+    ln -sfn "$(cd "$OUT" && pwd)/04_umi" "$OUT_CTAG/04_umi"
+    ln -sfn "$(cd "$OUT" && pwd)/05_consensus" "$OUT_CTAG/05_consensus"
+    ln -sfn "$(cd "$OUT" && pwd)/06_extract" "$OUT_CTAG/06_extract"
+    ln -sfn "$(cd "$OUT" && pwd)/07_map" "$OUT_CTAG/07_map"
+
+    "$PIPELINE_DIR/L3Rseq" run \
+        --input "$DATA_DIR/demux" \
+        --outdir "$OUT_CTAG" \
+        --ref "$REF" \
+        --method longread-umi \
+        --pattern CT,AG \
+        --keep-intermediates \
+        --start-at 8 --stop-at 10 \
+        --threads 4 2>&1 | tee "$OUTPUT_DIR/test2b.log" | \
+        awk '/\[Step [0-9]/ && !/Done\./ { printf "  %s\n", $0; fflush() }'
+    echo ""
+
+    for bc in barcode01 barcode02; do
+        for rpi in ${bc}_RPI_1 ${bc}_RPI_2; do
+            echo "  --- $bc/$rpi (CT,AG) ---"
+            expected_final_ctag=$(count_csv_rows "$EXPECTED_DIR/csv_CTAG/${bc}_${rpi}.csv")
+
+            # EC total under dual pattern
+            got_ec_ctag=$(sum_ec_tags "$OUT_CTAG/09_correct/$bc/$rpi/corrected.sam")
+            ec_col_ctag=$(head -1 "$EXPECTED_DIR/csv_CTAG/${bc}_${rpi}.csv" | tr ',' '\n' | grep -n 'editing_count' | cut -d: -f1)
+            expected_ec_ctag=0
+            if [ -n "$ec_col_ctag" ]; then
+                expected_ec_ctag=$(tail -n +2 "$EXPECTED_DIR/csv_CTAG/${bc}_${rpi}.csv" | awk -F',' -v c="$ec_col_ctag" '{v=$c; gsub(/[^0-9]/,"",v); s+=v+0} END{print s+0}')
+            fi
+            if [ "$expected_ec_ctag" -gt 10 ]; then
+                check_range "CT,AG EC total ($rpi)" "$got_ec_ctag" "$expected_ec_ctag" "0.10"
+            else
+                check_range "CT,AG EC total ($rpi)" "$got_ec_ctag" "$expected_ec_ctag" "2.0"
+            fi
+
+            # CSV row count
+            got_rows_ctag=$(count_csv_rows "$OUT_CTAG/10_csv/${bc}_${rpi}.csv")
+            check_exact "CT,AG CSV rows ($rpi)" "$got_rows_ctag" "$expected_final_ctag"
+        done
+    done
+    echo "  ⏱ Test 2b: $(( SECONDS - T_START ))s"
+    echo ""
+fi
+
+# ---------------------------------------------------------------------------
 # Demo viewer: separate dataset with 3 tracks (raw bin, consensus, corrected).
 # Uses pipeline intermediates for raw bin + consensus, then generates a mixed
 # track of walk-corrected + long edited reads showing C→T at position 606.
@@ -568,10 +625,25 @@ echo ""
 PIPE_DIR="$OUTPUT_DIR/pipeline"
 mkdir -p "$PIPE_DIR"
 cat > "$PIPE_DIR/description.txt" <<'EOF'
-Full CT-pattern pipeline — tail-corrected reads (step 09) for all barcode/RPI samples. barcode01 samples contain C→T editing (high EC counts); barcode02 samples contain A→G conversions instead, which are not counted as editing because the pipeline ran with --pattern CT — they appear as noise (NC tag). Try "Group by EC" to see the difference: barcode01 tracks fan out across editing levels, while barcode02 tracks collapse to EC=0.
+CT-pattern pipeline — tail-corrected reads (step 09) for all samples. barcode01/RPI_1 has C→T editing (high EC); barcode01/RPI_2 has A→G (not counted, appears as noise); barcode02/RPI_1 has CT+AG (only CT counted); barcode02/RPI_2 has T→C editing (not counted, appears as noise). Try "Group by EC" to see the difference.
+
+Command: L3Rseq run --pattern CT --method longread-umi --start-at 4 --stop-at 10
 EOF
 ln -sfn "$OUT/09_correct" "$PIPE_DIR/09_correct"
-echo "  Pipeline viewer: linked corrected BAMs for all samples"
+echo "  Pipeline CT viewer: linked corrected BAMs for all samples"
+
+# CT+AG dual-pattern viewer tab
+if [ -d "$OUTPUT_DIR/pipeline_CTAG/09_correct" ]; then
+    PIPE_DUAL_DIR="$OUTPUT_DIR/pipeline_dual"
+    mkdir -p "$PIPE_DUAL_DIR"
+    cat > "$PIPE_DUAL_DIR/description.txt" <<'EOF'
+CT+AG dual-pattern pipeline — same reads, but both C→T and A→G count as editing (EC). Compare with CT tab: barcode01/RPI_2 (AG only) now shows high EC; barcode02/RPI_1 (CT+AG) shows combined EC from both patterns. barcode02/RPI_2 (T→C editing) is unchanged because TC is not in the pattern.
+
+Command: L3Rseq run --pattern CT,AG --method longread-umi --start-at 8 --stop-at 10
+EOF
+    ln -sfn "$(cd "$OUTPUT_DIR/pipeline_CTAG" && pwd)/09_correct" "$PIPE_DUAL_DIR/09_correct"
+    echo "  Pipeline CT+AG viewer: linked corrected BAMs for all samples"
+fi
 echo ""
 
 # ---------------------------------------------------------------------------
@@ -590,7 +662,9 @@ SLAM_DATA="$DATA_DIR/slam_test"
 SLAM_OUT="$OUTPUT_DIR/pipeline_SLAM"
 mkdir -p "$SLAM_OUT"
 cat > "$SLAM_OUT/description.txt" <<'EOF'
-SLAM-seq validation — synthetic reads with C→T editing (EC tag) and T→C SLAM labeling (SC tag). 40 reads, EC=96, SC=590, NC=101.
+SLAM-seq validation — synthetic reads with C→T editing (EC tag) and T→C SLAM labeling (SC tag). 40 reads, EC=96, SC=590, NC=101. Try "Group by EC" or "Group by SC" to see editing vs labeling gradients.
+
+Command: L3Rseq run --pattern CT --count-pattern TC --start-at 9 --stop-at 10
 EOF
 
 "$PIPELINE_DIR/L3Rseq" run \
@@ -654,6 +728,8 @@ SPLICE_DIR="$DATA_DIR/splice_test"
 mkdir -p "$OUTPUT_DIR/pipeline_splice"
 cat > "$OUTPUT_DIR/pipeline_splice/description.txt" <<'EOF'
 Splice annotation test — reads with known introns annotated with SJ tags (S=spliced, R=retained, –=not spanned). Use "Color by SJ" to visualize splice status.
+
+Command: L3Rseq run --pattern CT --introns introns.bed --start-at 9 --stop-at 10
 EOF
 
 "$PIPELINE_DIR/L3Rseq" run \
@@ -736,7 +812,9 @@ MOCK_BLAST_DIR="$PIPELINE_DIR/resources/blast"
 # Run steps 09-10 with mock BLAST databases
 mkdir -p "$OUTPUT_DIR/pipeline_blast"
 cat > "$OUTPUT_DIR/pipeline_blast/description.txt" <<'EOF'
-BLAST + walk correction test — validates soft-clip extension via BLAST alignment, chimeric read removal, poly-A detection, and translocation tagging (TL:i:1).
+BLAST + walk correction test — validates soft-clip extension via BLAST alignment, chimeric read removal, poly-A detection, and translocation tagging (TL:i:1). Try "Group by TL" to separate translocations (TL=1) from normal reads (TL=0), and "Sort by DS" to order by double-sorter priority.
+
+Command: L3Rseq run --pattern CT --blast-db mock_chrm_db --blast-db2 mock_cdna_db --start-at 9 --stop-at 10
 EOF
 
 "$PIPELINE_DIR/L3Rseq" run \

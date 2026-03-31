@@ -98,26 +98,41 @@ MOCK_CDNA_SEQ = (
 # Sites near the 3' end (>550) test walk correction: an edit right before the
 # soft-clip boundary can prevent minimap2 from extending, but the correction
 # algorithm walks through it using the known variant list.
+# Shared position sets for reuse across samples
+_CT_SPEC = {
+    "pattern": "CT",
+    "positions": [85, 260, 440, 580, 606, 607, 820],
+    "boundary_positions": [606, 607],
+    "editing_rate": 0.90,
+}
+_AG_SPEC = {
+    "pattern": "AG",
+    "positions": [95, 270, 455, 590, 616, 617, 835],
+    "boundary_positions": [616, 617],
+    "editing_rate": 0.90,
+}
+_TC_SPEC = {
+    "pattern": "TC",
+    "positions": [90, 265, 445, 585, 610, 612, 825],
+    "boundary_positions": [610, 612],
+    "editing_rate": 0.90,
+}
+
+# Per-(barcode, RPI) variant specifications.
+# Each sample has a "patterns" list (one or more editing patterns) and
+# optional "slam_tc" for T→C SLAM-seq labeling with gradient rates.
 VARIANT_SPECS = {
-    "barcode01": {
-        "pattern": "CT",
-        # Editing sites: spread across the read, with a DENSE burst at 580-600.
-        # Adjacent and near-adjacent sites (580,581,583,585,588,591,595,600)
-        # create a wall of C→T mismatches that forces minimap2 to soft-clip.
-        # Walk correction extends through them using the known variant list.
-        # Fewer, spread-out editing sites.  Positions 606-607 (0-based) are the
-        # key sites: they sit at the 3' boundary where shorter reads end with
-        # poly-A.  Longer reads that span past 607 prove these are real editing
-        # sites (step 08 detects them), enabling walk correction on shorter reads.
-        "positions": [85, 260, 440, 580, 606, 607, 820],
-        "boundary_positions": [606, 607],  # lower editing rate for LoFreq detection
-        "editing_rate": 0.90,
-    },
-    "barcode02": {
-        "pattern": "AG",
-        "positions": [95, 270, 455, 590, 616, 617, 835],
-        "boundary_positions": [616, 617],
-        "editing_rate": 0.90,
+    # CT editing only
+    ("barcode01", "RPI_1"): {"patterns": [_CT_SPEC]},
+    # AG editing only
+    ("barcode01", "RPI_2"): {"patterns": [_AG_SPEC]},
+    # CT + AG dual editing
+    ("barcode02", "RPI_1"): {"patterns": [_CT_SPEC, _AG_SPEC]},
+    # TC editing + T→C SLAM labeling (gradient: 0%, 1.5%, 4%, 8%)
+    ("barcode02", "RPI_2"): {
+        "patterns": [_TC_SPEC],
+        "slam_tc": True,
+        "tc_rates": [0.0, 0.015, 0.04, 0.08],
     },
 }
 
@@ -256,12 +271,12 @@ def load_reference():
 def generate_rpi_data(barcode, rpi_name, ref_seq, manifest):
     """Generate all reads for one barcode/RPI combination."""
     rpi_6bp = RPI_BARCODES[barcode][rpi_name]
-    variant_spec = VARIANT_SPECS[barcode]
+    variant_spec = VARIANT_SPECS[(barcode, rpi_name)]
     reads = []
     rpi_manifest = {
         "barcode": barcode,
         "rpi": rpi_name,
-        "variant_pattern": variant_spec["pattern"],
+        "variant_patterns": [p["pattern"] for p in variant_spec["patterns"]],
         "clusters": [],
         "noise_reads": 0,
         "corrupted_reads": 0,
@@ -310,8 +325,6 @@ def generate_rpi_data(barcode, rpi_name, ref_seq, manifest):
         gene_len = min(gene_len, len(ref_seq) - gene_start - 1)
         gene_body_template = ref_seq[gene_start:gene_start + gene_len]
 
-        editing_rate = variant_spec.get("editing_rate", 0.85)
-
         # Poly-A decision is per-cluster (same molecule → same poly-A status).
         # 30% of clusters have a poly-A tail; all reads in the cluster share
         # the same tail length (±1bp from sequencing noise).
@@ -331,33 +344,39 @@ def generate_rpi_data(barcode, rpi_name, ref_seq, manifest):
                 gene_body = gene_body + "A" * max(0, read_polya)
 
             # Introduce editing at shared variant sites.
+            # Iterates over all pattern entries (supports multi-pattern samples).
             # Each site is independently edited with editing_rate probability,
             # so different reads in the same bin have slightly different editing
             # patterns — matching real heterogeneous RNA editing biology.
-            # The 3' boundary sites (606-607, 0-based) use a lower rate (75%)
-            # so that some consensus reads retain the reference C — this ensures
-            # LoFreq detects them as variants (needs heterogeneity), enabling
-            # walk correction on shorter reads.
-            boundary_positions = variant_spec.get("boundary_positions", [])
-            for vpos in variant_spec["positions"]:
-                # Only edit if this position falls within the gene body
-                rel_pos = vpos - gene_start
-                if rel_pos < 0 or rel_pos >= len(gene_body):
-                    continue
-                # Lower rate at boundary sites ensures LoFreq detection
-                site_rate = 0.75 if vpos in boundary_positions else editing_rate
-                # Per-site, per-read stochastic editing
-                if random.random() < site_rate:
-                    if variant_spec["pattern"] == "CT":
+            for pat_entry in variant_spec["patterns"]:
+                ref_base = pat_entry["pattern"][0]
+                alt_base = pat_entry["pattern"][1]
+                boundary_positions = pat_entry.get("boundary_positions", [])
+                editing_rate = pat_entry.get("editing_rate", 0.85)
+                for vpos in pat_entry["positions"]:
+                    rel_pos = vpos - gene_start
+                    if rel_pos < 0 or rel_pos >= len(gene_body):
+                        continue
+                    site_rate = 0.75 if vpos in boundary_positions else editing_rate
+                    if random.random() < site_rate:
                         gene_body, actual_pos = introduce_variant(
-                            gene_body, rel_pos, "C", "T"
+                            gene_body, rel_pos, ref_base, alt_base
                         )
-                    elif variant_spec["pattern"] == "AG":
-                        gene_body, actual_pos = introduce_variant(
-                            gene_body, rel_pos, "A", "G"
-                        )
-                    if actual_pos is not None and actual_pos not in cluster_info["variant_positions"]:
-                        cluster_info["variant_positions"].append(actual_pos)
+                        if actual_pos is not None and actual_pos not in cluster_info["variant_positions"]:
+                            cluster_info["variant_positions"].append(actual_pos)
+
+            # SLAM-seq T→C labeling: random T→C at all T positions with gradient rate.
+            # Reads are divided into groups with increasing TC rates (models pulse-chase).
+            if variant_spec.get("slam_tc"):
+                tc_rates = variant_spec["tc_rates"]
+                group_idx = min(j * len(tc_rates) // size, len(tc_rates) - 1)
+                tc_rate = tc_rates[group_idx]
+                if tc_rate > 0:
+                    body_list = list(gene_body)
+                    for pos_idx in range(len(body_list)):
+                        if body_list[pos_idx] == "T" and random.random() < tc_rate:
+                            body_list[pos_idx] = "C"
+                    gene_body = "".join(body_list)
 
             # Build the clean read first, then add errors to the ENTIRE read
             # (including adapters, flanks, and UMI — realistic nanopore behavior)
@@ -519,7 +538,7 @@ def main():
             print(f"  Clusters: {clusters} (kept={kept}, small={small}, singleton={singletons})")
             print(f"  Noise reads: {m['noise_reads']}")
             print(f"  Corrupted reads: {m['corrupted_reads']}")
-            print(f"  Variant pattern: {m['variant_pattern']}")
+            print(f"  Variant patterns: {','.join(m['variant_patterns'])}")
 
             # Write demux-style output (single FASTQ per RPI)
             demux_barcode_dir = os.path.join(DEMUX_DIR, barcode)

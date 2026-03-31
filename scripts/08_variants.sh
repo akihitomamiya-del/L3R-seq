@@ -14,12 +14,20 @@ run_step_08() {
 
     mkdir -p "$output_dir/08_variants"
 
-    # Build the bcftools grep pattern from the editing pattern
-    # e.g. "CT" -> grep for lines where REF=C and ALT=T -> pattern "C.*T" in cols 4,5
-    local ref_base="${pattern:0:1}"
-    local alt_base="${pattern:1:1}"
+    # Build grep regex from editing pattern(s) (supports comma-separated, e.g. "CT,AG")
+    local _var_regex=""
+    local _pattern_label=""
+    IFS=',' read -ra _patterns <<< "$pattern"
+    for _p in "${_patterns[@]}"; do
+        _p="${_p// /}"
+        local _rb="${_p:0:1}" _ab="${_p:1:1}"
+        [ -n "$_var_regex" ] && _var_regex="${_var_regex}|"
+        _var_regex="${_var_regex}[0-9]+${_rb}${_ab}"
+        [ -n "$_pattern_label" ] && _pattern_label="${_pattern_label}, "
+        _pattern_label="${_pattern_label}${_rb}>${_ab}"
+    done
 
-    echo "[Step 08] Calling variants (pattern: ${ref_base}>${alt_base}) ..."
+    echo "[Step 08] Calling variants (pattern: ${_pattern_label}) ..."
 
     for barcode_dir in "$input_dir"/*/; do
         [ -d "$barcode_dir" ] || continue
@@ -54,7 +62,7 @@ run_step_08() {
             # Filter for the specified editing pattern
             bcftools view --no-header -i "AF > $min_af" "$odir/variants.vcf" | \
                 awk '{print $2 $4 $5}' | \
-                grep -E "[0-9]+${ref_base}${alt_base}" \
+                grep -E "$_var_regex" \
                 > "$odir/observed_variants.txt" || true
 
         done
@@ -70,7 +78,7 @@ run_step_08() {
         if [ -f "$_vf" ]; then
             local _nvar
             _nvar=$(wc -l < "$_vf")
-            echo "    $_bname/$_rname: $_nvar ${ref_base}>${alt_base} variant positions"
+            echo "    $_bname/$_rname: $_nvar ${_pattern_label} variant positions"
             _summary_append "$output_dir" "$_bname" "$_rname" "08" "variant_positions" "$_nvar" 2>/dev/null || true
         fi
     done

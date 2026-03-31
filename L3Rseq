@@ -616,7 +616,7 @@ Reference & annotation:
 
 UMI & editing:
   --method <str>          UMI method: longread-umi (default) or umic-seq
-  --pattern <str>         Editing pattern, e.g., CT (default), AG
+  --pattern <str>         Editing pattern(s), e.g., CT (default), AG, or CT,AG
   --count-pattern <str>   Secondary count-only pattern, e.g., TC for SLAM-seq
   --umi-flank5 <seq>      5' UMI flanking sequence (longread-umi method)
   --umi-flank3 <seq>      3' UMI flanking sequence (longread-umi method)
