@@ -429,10 +429,14 @@ L3Rseq includes a built-in [IGV.js](https://github.com/igvteam/igv.js) alignment
 **Starting the viewer:**
 
 ```bash
-L3Rseq viewer              # start on default port 8080
-L3Rseq viewer --port 9090  # use a different port
-L3Rseq viewer --stop       # stop the viewer
+L3Rseq viewer                          # start on default port 8080
+L3Rseq viewer --dir tests/output       # scan a specific directory
+L3Rseq viewer --port 9090              # use a different port
+L3Rseq viewer --stop                   # stop the viewer
+L3Rseq viewer --stop && L3Rseq viewer  # restart
 ```
+
+> **Note:** `bash tests/run_tests.sh` temporarily stops the viewer during Test 6 (viewer API checks). It restarts automatically at the end unless `--no-viewer` is used.
 
 In **Codespaces**, the viewer starts automatically — check the **Ports** tab in VS Code for the URL.
 
