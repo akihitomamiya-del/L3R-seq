@@ -1006,6 +1006,63 @@ echo "  ⏱ Test 6: $(( SECONDS - T_START ))s"
 echo ""
 
 # ---------------------------------------------------------------------------
+# Test 7: Plot generation (analysis conda env + plot_umi_bins.py)
+# ---------------------------------------------------------------------------
+
+T_START=$SECONDS
+echo "[TEST 7] Plot generation (analysis env)"
+echo ""
+
+# Check analysis env exists and has matplotlib/numpy
+if conda run -n analysis python -c "import matplotlib; import numpy" 2>/dev/null; then
+    pass "analysis env: matplotlib + numpy importable"
+else
+    fail "analysis env: matplotlib or numpy missing"
+fi
+
+# Generate plots for CT pipeline
+PLOT_DIR="$OUTPUT_DIR/pipeline_CT/figures"
+rm -rf "$PLOT_DIR"
+if conda run -n analysis python3 "$PIPELINE_DIR/scripts/plot_umi_bins.py" \
+    "$OUTPUT_DIR/pipeline_CT" --quality --pattern CT > "$OUTPUT_DIR/test7_ct.log" 2>&1; then
+    pass "plot_umi_bins.py --pattern CT ran successfully"
+else
+    fail "plot_umi_bins.py --pattern CT failed (see test7_ct.log)"
+fi
+
+# Check PNGs were created (4 samples)
+_plot_count=$(find "$PLOT_DIR" -name '*.png' 2>/dev/null | wc -l)
+check_exact "CT plot PNGs generated" "$_plot_count" "4"
+
+# Check plots have non-trivial size (>10KB = real content, not empty/error)
+_small_plots=0
+for _png in "$PLOT_DIR"/*.png; do
+    [ -f "$_png" ] || continue
+    _size=$(wc -c < "$_png")
+    if [ "$_size" -lt 10000 ]; then
+        _small_plots=$((_small_plots + 1))
+    fi
+done
+check_exact "CT plots with valid size (>10KB)" "$_small_plots" "0"
+
+# Generate plots for CT,AG pipeline
+if [ -d "$OUTPUT_DIR/pipeline_CTAG/10_csv" ]; then
+    PLOT_CTAG_DIR="$OUTPUT_DIR/pipeline_CTAG/figures"
+    rm -rf "$PLOT_CTAG_DIR"
+    if conda run -n analysis python3 "$PIPELINE_DIR/scripts/plot_umi_bins.py" \
+        "$OUTPUT_DIR/pipeline_CTAG" --quality --pattern CT,AG > "$OUTPUT_DIR/test7_ctag.log" 2>&1; then
+        pass "plot_umi_bins.py --pattern CT,AG ran successfully"
+    else
+        fail "plot_umi_bins.py --pattern CT,AG failed (see test7_ctag.log)"
+    fi
+    _plot_ctag_count=$(find "$PLOT_CTAG_DIR" -name '*.png' 2>/dev/null | wc -l)
+    check_exact "CT,AG plot PNGs generated" "$_plot_ctag_count" "4"
+fi
+
+echo "  ⏱ Test 7: $(( SECONDS - T_START ))s"
+echo ""
+
+# ---------------------------------------------------------------------------
 # Summary
 # ---------------------------------------------------------------------------
 
