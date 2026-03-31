@@ -1026,6 +1026,27 @@ echo "  ⏱ Test 6: $(( SECONDS - T_START ))s"
 echo ""
 
 # ---------------------------------------------------------------------------
+# Test 8: Shell function unit tests (CIGAR, splice, BLAST)
+# ---------------------------------------------------------------------------
+
+T_START=$SECONDS
+echo "[TEST 8] Shell function unit tests"
+echo ""
+
+_sf_output=$(bash "$SCRIPT_DIR/test_shell_functions.sh" 2>&1)
+_sf_pass=$(echo "$_sf_output" | grep -c '\[PASS\]' || true)
+_sf_fail=$(echo "$_sf_output" | grep -c '\[FAIL\]' || true)
+
+if [ "$_sf_fail" -eq 0 ]; then
+    pass "Shell functions: $_sf_pass passed"
+else
+    fail "Shell functions: $_sf_fail failed ($_sf_pass passed)"
+    echo "$_sf_output" | grep '\[FAIL\]' | head -5
+fi
+echo "  ⏱ Test 8: $(( SECONDS - T_START ))s"
+echo ""
+
+# ---------------------------------------------------------------------------
 # Test 7: Plot generation (analysis conda env + plot_umi_bins.py)
 # ---------------------------------------------------------------------------
 
