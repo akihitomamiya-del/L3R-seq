@@ -222,7 +222,7 @@ For subcommand-specific help: `L3Rseq <subcommand> --help`
 **Analysis capabilities**
 
 - **UMI consensus** — groups reads sharing the same UMI into clusters and polishes each cluster into a single high-accuracy consensus sequence
-- **RNA editing quantification** — counts editing events per read (C-to-U by default; configurable via `--pattern` for other editing types such as A-to-G)
+- **RNA editing quantification** — counts editing events per read (C-to-U by default; configurable via `--pattern` for other editing types such as A-to-G, or comma-separated for dual patterns like `--pattern CT,AG`)
 - **3' tail correction** — CIGAR-walk algorithm corrects 3' soft-clip boundaries that are mis-assigned when edited bases near the transcript end look like mismatches (see [How CIGAR-walk works](#9-how-cigar-walk-works) below)
 - **Splicing detection** — `--introns` classifies reads as spliced/unspliced with per-intron resolution; `discover-introns` can automatically detect intron coordinates from your data without prior annotation
 - **Noise separation** — per-read noise count (NC tag) distinguishes biological editing from residual sequencing errors in the consensus
@@ -283,6 +283,9 @@ L3Rseq run ... --prefilter
 
 # SLAM-seq: track 4sU T-to-C conversions alongside C-to-U editing
 L3Rseq run ... --pattern CT --count-pattern TC
+
+# Dual editing patterns: count both C-to-T and A-to-G as editing (EC)
+L3Rseq run ... --pattern CT,AG
 ```
 
 ### 4.4 Processing specific samples
@@ -408,7 +411,7 @@ L3Rseq ships with default adapter sequences and reference files for the *Arabido
 | BLAST databases | `bash scripts/setup_blast_db.sh --organelle-fasta your_mtDNA.fa --transcriptome-fasta your_cDNA.fa` then `--blast-db` / `--blast-db2` |
 | Adapter sequences | `L3Rseq trim --adapter-fwd ... --adapter-rev ...` (defaults match the protocol in the manuscript; override for different library designs) |
 | Target extraction primers | `L3Rseq extract --target-fwd ... --target-rev ...` (users analyzing shorter amplicons may need to reduce `--min-overlap`) |
-| Editing pattern | `--pattern AG` (for A-to-I editing, which appears as A-to-G in sequencing data) |
+| Editing pattern | `--pattern AG` (for A-to-I editing), or `--pattern CT,AG` to count multiple editing types as primary editing |
 | Known editing positions | `--var known_sites.txt` (use when a control sample with established editing sites is available, in addition to or instead of LoFreq-detected positions) |
 
 ## 8. Alignment viewer
@@ -418,8 +421,9 @@ L3Rseq includes a built-in [IGV.js](https://github.com/igvteam/igv.js) alignment
 **Features:**
 - **Dataset selector** — dropdown lists all samples; any directory containing `07_map/` or `09_correct/` is detected automatically
 - **Before/after tracks** — raw mapping (step 07) and tail-corrected reads (step 09) displayed side by side so you can see the effect of CIGAR-walk correction
-- **Sort reads by SAM tag** — sort by editing count (EC), noise (NC), 3' end position (3E), splice status (SJ), tail length (TL), and more, with ascending/descending toggle
-- **Color reads by SAM tag** — color by splice status (green = spliced, red = retained, gray = unknown), editing count, noise, strand, or tail length, with auto-generated legend
+- **Sort reads by SAM tag** — sort by editing count (EC), noise (NC), 3' end position (3E), splice status (SJ), translocation (TL), double-sorter (DS), and more
+- **Group reads by SAM tag** — group by EC to see editing levels (including EC=0 unedited reads), SJ for splice status, TL for translocations
+- **Color reads by SAM tag** — color by splice status (green = spliced, red = retained, gray = unknown), editing count, noise, strand, or translocation, with auto-generated legend
 - **Click any read** to inspect all [SAM tags](#6-sam-tags) (editing counts, 3' tail sequence, splice junctions, etc.)
 
 **Starting the viewer:**
@@ -475,13 +479,13 @@ L3Rseq run --introns out/candidate_introns.bed ...
 ## 11. Testing
 
 ```bash
-bash tests/run_tests.sh                    # full suite (110 checks, ~2 min)
-bash tests/run_tests.sh --skip-preprocess  # steps 04-10 only (98 checks, ~2 min)
-bash tests/run_tests.sh --quick            # smoke test (62 checks, ~2 min)
+bash tests/run_tests.sh                    # full suite (133 checks, ~65s)
+bash tests/run_tests.sh --skip-preprocess  # steps 04-10 only (~55s)
+bash tests/run_tests.sh --quick            # smoke test (~15s)
 bash tests/run_tests.sh --no-viewer        # skip IGV viewer after tests
 ```
 
-All tests use synthetic data with a 1.5kbp `test_gene` reference — no external data needed.
+All tests use synthetic data with a 1.5kbp `test_gene` reference — no external data needed. Each sample has a distinct editing pattern (CT, AG, CT+AG, TC+SLAM) to test single and dual-pattern counting.
 
 | Test | Steps | What it checks |
 |---|---|---|
@@ -489,9 +493,11 @@ All tests use synthetic data with a 1.5kbp `test_gene` reference — no external
 | Test 1b | filter | Optional filter step removes non-mapping reads |
 | Test 1c | — | Error handling: missing --ref, bad --rpi-fasta, UMIC-seq without --probe |
 | Test 2 | 04-10 | Full CT pipeline: UMI bins, consensus identity (>=99%), mapping, EC/NC tags, CSV |
+| Test 2b | 08-10 | Dual-pattern `--pattern CT,AG`: EC counts increase for AG-containing samples |
 | Test 3 | 09-10 | SLAM-seq: exact EC=96, SC=590, NC=101 on 40 synthetic reads |
 | Test 4 | 09-10 | Splicing: SJ/SI/IR tags, splice pattern counts, intron discovery |
 | Test 5 | 09-10 | BLAST: walk correction CIGARs, ChrM translocation, cDNA chimera filtering |
+| Test 6 | — | IGV viewer API: datasets, tracks, pileup output, IGV.js patches |
 
 ### Docker image verification
 
@@ -531,8 +537,11 @@ The current default `min_bin_size=3` balances quality and yield. Generate your o
 
 ```bash
 conda run -n analysis python3 scripts/plot_umi_bins.py results/ --quality
+conda run -n analysis python3 scripts/plot_umi_bins.py results/ --quality --pattern CT,AG  # show both patterns
 conda run -n analysis python3 scripts/plot_umi_bins.py results/ --compare results_umic/ --quality  # compare methods
 ```
+
+Plots include conversion-colored editing/noise panels (stacked by nucleotide conversion type), a noise pattern breakdown table, and a parameter header showing the pattern and aggregate EC/NC counts. Output goes to `{run_dir}/figures/` by default.
 
 ## 13. Development
 

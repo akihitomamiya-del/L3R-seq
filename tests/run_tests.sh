@@ -1,8 +1,9 @@
 #!/bin/bash
 # run_tests.sh — Run L3Rseq pipeline tests on synthetic data
 #
-# Tests the full pipeline (steps 01-10) with CT pattern using --method
-# longread-umi, then validates SLAM, splice, BLAST, and walk correction.
+# Tests the full pipeline (steps 01-10) with CT and CT,AG patterns using
+# --method longread-umi, then validates SLAM, splice, BLAST, walk correction,
+# and the IGV viewer API.
 #
 # Usage: bash tests/run_tests.sh [--skip-preprocess] [--quick] [--no-viewer]
 #   Default:              tests all steps 01-10, starts IGV viewer after tests
