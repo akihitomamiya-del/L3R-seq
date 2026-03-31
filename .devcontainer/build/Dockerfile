@@ -117,6 +117,12 @@ RUN bash -c "source activate UMIC-seq \
     && rm /tmp/UMIC-seq_fastq_v2.py"
 
 # ============================================================
+# analysis — lightweight env for plot_umi_bins.py
+# ============================================================
+RUN mamba create -y -n analysis -c conda-forge matplotlib numpy \
+    && mamba clean -afy
+
+# ============================================================
 # cutadaptenv
 # ============================================================
 RUN mamba create -y -n cutadaptenv -c conda-forge -c bioconda cutadapt=4.9 \
