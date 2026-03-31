@@ -950,13 +950,16 @@ else
     _ds_json=$(curl -sf http://localhost:8080/api/datasets 2>/dev/null)
     if [ -n "$_ds_json" ]; then
         _ds_count=$(echo "$_ds_json" | python3 -c "import json,sys; print(len(json.load(sys.stdin)['datasets']))" 2>/dev/null)
-        if [ "$_ds_count" -ge 6 ]; then
-            pass "API /datasets: $_ds_count datasets (expected >=6)"
+        _min_ds=$( [ "$QUICK" -eq 1 ] && echo 5 || echo 6 )
+        if [ "$_ds_count" -ge "$_min_ds" ]; then
+            pass "API /datasets: $_ds_count datasets (expected >=$_min_ds)"
         else
-            fail "API /datasets: $_ds_count datasets (expected >=6)"
+            fail "API /datasets: $_ds_count datasets (expected >=$_min_ds)"
         fi
-        # Check key datasets exist
-        for _ds_name in pipeline pipeline_dual pipeline_blast pipeline_SLAM pipeline_splice demo; do
+        # Check key datasets exist (pipeline_dual only in full mode)
+        _ds_names="pipeline pipeline_blast pipeline_SLAM pipeline_splice demo"
+        [ "$QUICK" -eq 0 ] && _ds_names="$_ds_names pipeline_dual"
+        for _ds_name in $_ds_names; do
             if echo "$_ds_json" | python3 -c "import json,sys; ds=json.load(sys.stdin)['datasets']; sys.exit(0 if any('$_ds_name' in d for d in ds) else 1)" 2>/dev/null; then
                 pass "API /datasets: '$_ds_name' found"
             else
@@ -965,10 +968,10 @@ else
         done
         # Check descriptions present
         _desc_count=$(echo "$_ds_json" | python3 -c "import json,sys; print(sum(1 for d in json.load(sys.stdin).get('datasetInfo',[]) if d.get('description')))" 2>/dev/null)
-        if [ "$_desc_count" -ge 6 ]; then
-            pass "API /datasets: $_desc_count descriptions (expected >=6)"
+        if [ "$_desc_count" -ge "$_min_ds" ]; then
+            pass "API /datasets: $_desc_count descriptions (expected >=$_min_ds)"
         else
-            fail "API /datasets: only $_desc_count descriptions (expected >=6)"
+            fail "API /datasets: only $_desc_count descriptions (expected >=$_min_ds)"
         fi
     else
         fail "API /datasets: no response"
@@ -1026,6 +1029,7 @@ echo ""
 # Test 7: Plot generation (analysis conda env + plot_umi_bins.py)
 # ---------------------------------------------------------------------------
 
+if [ "$QUICK" -eq 0 ]; then
 T_START=$SECONDS
 echo "[TEST 7] Plot generation (analysis env)"
 echo ""
@@ -1078,6 +1082,7 @@ fi
 
 echo "  ⏱ Test 7: $(( SECONDS - T_START ))s"
 echo ""
+fi
 
 # ---------------------------------------------------------------------------
 # Summary
