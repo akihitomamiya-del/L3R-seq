@@ -905,6 +905,106 @@ echo "  ⏱ Test 5: $(( SECONDS - T_START ))s"
 echo ""
 
 # ---------------------------------------------------------------------------
+# Test 6: IGV viewer API
+# ---------------------------------------------------------------------------
+
+T_START=$SECONDS
+echo "[TEST 6] IGV viewer API"
+echo ""
+
+# Start viewer on test output, wait for it to be ready
+"$PIPELINE_DIR/L3Rseq" viewer --stop 2>/dev/null
+"$PIPELINE_DIR/L3Rseq" viewer --dir "$OUTPUT_DIR" > /dev/null 2>&1
+VIEWER_UP=0
+for _i in 1 2 3 4 5; do
+    if curl -sf http://localhost:8080/ > /dev/null 2>&1; then
+        VIEWER_UP=1; break
+    fi
+    sleep 1
+done
+
+if [ "$VIEWER_UP" -eq 0 ]; then
+    fail "Viewer failed to start"
+else
+    pass "Viewer started on port 8080"
+
+    # /api/datasets — check dataset count and known names
+    _ds_json=$(curl -sf http://localhost:8080/api/datasets 2>/dev/null)
+    if [ -n "$_ds_json" ]; then
+        _ds_count=$(echo "$_ds_json" | python3 -c "import json,sys; print(len(json.load(sys.stdin)['datasets']))" 2>/dev/null)
+        if [ "$_ds_count" -ge 6 ]; then
+            pass "API /datasets: $_ds_count datasets (expected >=6)"
+        else
+            fail "API /datasets: $_ds_count datasets (expected >=6)"
+        fi
+        # Check key datasets exist
+        for _ds_name in pipeline pipeline_dual pipeline_blast pipeline_SLAM pipeline_splice demo; do
+            if echo "$_ds_json" | python3 -c "import json,sys; ds=json.load(sys.stdin)['datasets']; sys.exit(0 if any('$_ds_name' in d for d in ds) else 1)" 2>/dev/null; then
+                pass "API /datasets: '$_ds_name' found"
+            else
+                fail "API /datasets: '$_ds_name' missing"
+            fi
+        done
+        # Check descriptions present
+        _desc_count=$(echo "$_ds_json" | python3 -c "import json,sys; print(sum(1 for d in json.load(sys.stdin).get('datasetInfo',[]) if d.get('description')))" 2>/dev/null)
+        if [ "$_desc_count" -ge 6 ]; then
+            pass "API /datasets: $_desc_count descriptions (expected >=6)"
+        else
+            fail "API /datasets: only $_desc_count descriptions (expected >=6)"
+        fi
+    else
+        fail "API /datasets: no response"
+    fi
+
+    # /api/tracks — check pipeline tracks
+    _tracks_json=$(curl -sf "http://localhost:8080/api/tracks?name=$(echo "$_ds_json" | python3 -c "import json,sys; ds=json.load(sys.stdin)['datasets']; print(next(d for d in ds if 'pipeline' == d.split('/')[-1]))" 2>/dev/null)" 2>/dev/null)
+    if [ -n "$_tracks_json" ]; then
+        _track_count=$(echo "$_tracks_json" | python3 -c "import json,sys; print(len(json.load(sys.stdin)['tracks']))" 2>/dev/null)
+        check_exact "API /tracks: pipeline track count" "$_track_count" "4"
+    else
+        fail "API /tracks: no response"
+    fi
+
+    # /api/pileup — check pileup has tag summaries (was silently broken before refactor)
+    _pileup_ds=$(echo "$_ds_json" | python3 -c "import json,sys; ds=json.load(sys.stdin)['datasets']; print(next(d for d in ds if 'pipeline' == d.split('/')[-1]))" 2>/dev/null)
+    _pileup=$(curl -sf "http://localhost:8080/api/pileup?name=$_pileup_ds" 2>/dev/null)
+    if [ -n "$_pileup" ]; then
+        _ec_lines=$(echo "$_pileup" | grep -c '  EC: total=' || true)
+        if [ "$_ec_lines" -ge 2 ]; then
+            pass "API /pileup: $_ec_lines tracks with EC summary"
+        else
+            fail "API /pileup: only $_ec_lines EC summaries (expected >=2)"
+        fi
+        _cigar_lines=$(echo "$_pileup" | grep -c '  CIGARs:' || true)
+        check_exact "API /pileup: CIGAR summaries" "$_cigar_lines" "4"
+    else
+        fail "API /pileup: no response"
+    fi
+
+    # IGV.js patches — verify tag value 0 fixes survived
+    _igv_path="$PIPELINE_DIR/igv_viewer/node_modules/igv/dist/igv.min.js"
+    if grep -q 'e.tags()\[n\]??"' "$_igv_path" 2>/dev/null; then
+        pass "IGV.js patch: tag value 0 in getTag"
+    else
+        fail "IGV.js patch: tag value 0 in getTag missing"
+    fi
+    if grep -q 'Tp(r,n,i)??"' "$_igv_path" 2>/dev/null; then
+        pass "IGV.js patch: tag value 0 in group key"
+    else
+        fail "IGV.js patch: tag value 0 in group key missing"
+    fi
+    if grep -q 'this.groupBy&&n!==""){i.save()' "$_igv_path" 2>/dev/null; then
+        pass "IGV.js patch: group label for value 0"
+    else
+        fail "IGV.js patch: group label for value 0 missing"
+    fi
+
+    "$PIPELINE_DIR/L3Rseq" viewer --stop 2>/dev/null
+fi
+echo "  ⏱ Test 6: $(( SECONDS - T_START ))s"
+echo ""
+
+# ---------------------------------------------------------------------------
 # Summary
 # ---------------------------------------------------------------------------
 
