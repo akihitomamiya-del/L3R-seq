@@ -741,7 +741,7 @@ mkdir -p "$OUTPUT_DIR/pipeline_splice"
 cat > "$OUTPUT_DIR/pipeline_splice/description.txt" <<'EOF'
 Splice annotation — intron splicing detection with SJ tags
 
-Reads with known introns annotated with SJ tags (S=spliced, R=retained, –=not spanned). Use "Color by SJ" to visualize splice status.
+Reads with known introns annotated with SJ tags (S=spliced, R=retained, –=not spanned). Use "Group by SJ" to separate spliced, retained, and unspanned reads.
 
 Command:
 L3Rseq run --pattern CT --introns introns.bed --start-at 9 --stop-at 10
