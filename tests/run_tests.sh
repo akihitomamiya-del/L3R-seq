@@ -544,7 +544,9 @@ T_START=$SECONDS
 DEMO_DIR="$OUTPUT_DIR/demo"
 mkdir -p "$DEMO_DIR"
 cat > "$DEMO_DIR/description.txt" <<'EOF'
-Walk correction demo — Top two tracks: raw UMI-bin reads and their racon consensus for a single bin. Bottom two tracks: bulk walk correction on 120 synthetic reads with C→T editing at positions 580, 606–607. Compare step 07 (mapping) vs step 09 (corrected) — look for soft-clips (colored tails) shrinking after correction as the walk algorithm extends alignments through the editing sites into the poly-A tail.
+Walk correction demo
+
+Top two tracks: raw UMI-bin reads and their racon consensus for a single bin. Bottom two tracks: bulk walk correction on 120 synthetic reads with C→T editing at positions 580, 606–607. Compare step 07 (mapping) vs step 09 (corrected) — look for soft-clips (colored tails) shrinking after correction as the walk algorithm extends alignments through the editing sites into the poly-A tail.
 EOF
 
 DEMO_BC="barcode01"
@@ -626,9 +628,12 @@ echo ""
 PIPE_DIR="$OUTPUT_DIR/pipeline"
 mkdir -p "$PIPE_DIR"
 cat > "$PIPE_DIR/description.txt" <<'EOF'
-CT-pattern pipeline — tail-corrected reads (step 09) for all samples. barcode01/RPI_1 has C→T editing (high EC); barcode01/RPI_2 has A→G (not counted, appears as noise); barcode02/RPI_1 has CT+AG (only CT counted); barcode02/RPI_2 has T→C editing (not counted, appears as noise). Try "Group by EC" to see the difference.
+CT-pattern pipeline — only C→T counted as editing
 
-Command: L3Rseq run --pattern CT --method longread-umi --start-at 4 --stop-at 10
+Tail-corrected reads (step 09) for all samples. barcode01/RPI_1 has C→T editing (high EC); barcode01/RPI_2 has A→G (not counted, appears as noise); barcode02/RPI_1 has CT+AG (only CT counted); barcode02/RPI_2 has T→C editing (not counted, appears as noise). Try "Group by EC" to see the difference.
+
+Command:
+L3Rseq run --pattern CT --method longread-umi --start-at 4 --stop-at 10
 EOF
 ln -sfn "$OUT/09_correct" "$PIPE_DIR/09_correct"
 echo "  Pipeline CT viewer: linked corrected BAMs for all samples"
@@ -638,9 +643,12 @@ if [ -d "$OUTPUT_DIR/pipeline_CTAG/09_correct" ]; then
     PIPE_DUAL_DIR="$OUTPUT_DIR/pipeline_dual"
     mkdir -p "$PIPE_DUAL_DIR"
     cat > "$PIPE_DUAL_DIR/description.txt" <<'EOF'
-CT+AG dual-pattern pipeline — same reads, but both C→T and A→G count as editing (EC). Compare with CT tab: barcode01/RPI_2 (AG only) now shows high EC; barcode02/RPI_1 (CT+AG) shows combined EC from both patterns. barcode02/RPI_2 (T→C editing) is unchanged because TC is not in the pattern.
+CT+AG dual-pattern pipeline — both C→T and A→G counted as editing
 
-Command: L3Rseq run --pattern CT,AG --method longread-umi --start-at 8 --stop-at 10
+Same reads as "pipeline" tab, but both C→T and A→G count as editing (EC). Compare: barcode01/RPI_2 (AG only) now shows high EC; barcode02/RPI_1 (CT+AG) shows combined EC from both patterns. barcode02/RPI_2 (T→C editing) is unchanged because TC is not in the pattern.
+
+Command:
+L3Rseq run --pattern CT,AG --method longread-umi --start-at 8 --stop-at 10
 EOF
     ln -sfn "$(cd "$OUTPUT_DIR/pipeline_CTAG" && pwd)/09_correct" "$PIPE_DUAL_DIR/09_correct"
     echo "  Pipeline CT+AG viewer: linked corrected BAMs for all samples"
@@ -663,9 +671,12 @@ SLAM_DATA="$DATA_DIR/slam_test"
 SLAM_OUT="$OUTPUT_DIR/pipeline_SLAM"
 mkdir -p "$SLAM_OUT"
 cat > "$SLAM_OUT/description.txt" <<'EOF'
-SLAM-seq validation — synthetic reads with C→T editing (EC tag) and T→C SLAM labeling (SC tag). 40 reads, EC=96, SC=590, NC=101. Try "Group by EC" or "Group by SC" to see editing vs labeling gradients.
+SLAM-seq validation — C→T editing + T→C metabolic labeling
 
-Command: L3Rseq run --pattern CT --count-pattern TC --start-at 9 --stop-at 10
+Synthetic reads with C→T editing (EC tag) and T→C SLAM labeling (SC tag). 40 reads, EC=96, SC=590, NC=101. Try "Group by EC" or "Group by SC" to see editing vs labeling gradients.
+
+Command:
+L3Rseq run --pattern CT --count-pattern TC --start-at 9 --stop-at 10
 EOF
 
 "$PIPELINE_DIR/L3Rseq" run \
@@ -728,9 +739,12 @@ SPLICE_DIR="$DATA_DIR/splice_test"
 # Run step 09 with --introns
 mkdir -p "$OUTPUT_DIR/pipeline_splice"
 cat > "$OUTPUT_DIR/pipeline_splice/description.txt" <<'EOF'
-Splice annotation test — reads with known introns annotated with SJ tags (S=spliced, R=retained, –=not spanned). Use "Color by SJ" to visualize splice status.
+Splice annotation — intron splicing detection with SJ tags
 
-Command: L3Rseq run --pattern CT --introns introns.bed --start-at 9 --stop-at 10
+Reads with known introns annotated with SJ tags (S=spliced, R=retained, –=not spanned). Use "Color by SJ" to visualize splice status.
+
+Command:
+L3Rseq run --pattern CT --introns introns.bed --start-at 9 --stop-at 10
 EOF
 
 "$PIPELINE_DIR/L3Rseq" run \
@@ -813,9 +827,12 @@ MOCK_BLAST_DIR="$PIPELINE_DIR/resources/blast"
 # Run steps 09-10 with mock BLAST databases
 mkdir -p "$OUTPUT_DIR/pipeline_blast"
 cat > "$OUTPUT_DIR/pipeline_blast/description.txt" <<'EOF'
-BLAST + walk correction test — validates soft-clip extension via BLAST alignment, chimeric read removal, poly-A detection, and translocation tagging (TL:i:1). Try "Group by TL" to separate translocations (TL=1) from normal reads (TL=0), and "Sort by DS" to order by double-sorter priority.
+BLAST + walk correction — soft-clip classification and translocation detection
 
-Command: L3Rseq run --pattern CT --blast-db mock_chrm_db --blast-db2 mock_cdna_db --start-at 9 --stop-at 10
+Validates soft-clip extension via BLAST alignment, chimeric read removal, poly-A detection, and translocation tagging (TL:i:1). Try "Group by TL" to separate translocations (TL=1) from normal reads (TL=0), and "Sort by DS" to order by double-sorter priority.
+
+Command:
+L3Rseq run --pattern CT --blast-db mock_chrm_db --blast-db2 mock_cdna_db --start-at 9 --stop-at 10
 EOF
 
 "$PIPELINE_DIR/L3Rseq" run \

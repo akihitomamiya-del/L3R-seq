@@ -425,6 +425,17 @@ L3Rseq includes a built-in [IGV.js](https://github.com/igvteam/igv.js) alignment
 - **Group reads by SAM tag** — group by EC to see editing levels (including EC=0 unedited reads), SJ for splice status, TL for translocations
 - **Color reads by SAM tag** — color by splice status (green = spliced, red = retained, gray = unknown), editing count, noise, strand, or translocation, with auto-generated legend
 - **Click any read** to inspect all [SAM tags](#6-sam-tags) (editing counts, 3' tail sequence, splice junctions, etc.)
+- **Dataset descriptions** — place a `description.txt` file in any output directory to display a description in the viewer info bar when that dataset is selected. Line breaks are preserved. Example:
+
+  ```
+  results/description.txt:
+    My experiment — C→T editing analysis
+    
+    barcode48/RPI_3: treated sample, barcode48/RPI_4: control
+    
+    Command:
+    L3Rseq run --pattern CT --ref refs/gene.fasta --start-at 4
+  ```
 
 **Starting the viewer:**
 
