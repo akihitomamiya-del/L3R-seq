@@ -28,7 +28,7 @@ fi
 
 # ---------------------------------------------------------------------------
 # Help text
-VERSION="1.0.10"
+VERSION="1.0.11"
 
 # ---------------------------------------------------------------------------
 show_help() {
@@ -595,6 +595,7 @@ cmd_run() {
             --introns)            require_arg "$1" "${2:-}"; introns="$2"; shift 2 ;;
             --target-fwd)         require_arg "$1" "${2:-}"; target_fwd="$2"; shift 2 ;;
             --target-rev)         require_arg "$1" "${2:-}"; target_rev="$2"; shift 2 ;;
+            --no-target-fwd)      target_fwd=""; shift ;;
             --keep-intermediates) keep_intermediates=1; shift ;;
             --help)
                 cat <<'RUNHELP'
@@ -622,6 +623,7 @@ UMI & editing:
   --umi-flank3 <seq>      3' UMI flanking sequence (longread-umi method)
   --target-fwd <seq>      Forward target sequence for extraction (step 06)
   --target-rev <seq>      Reverse target sequence for extraction (step 06)
+  --no-target-fwd         Skip forward primer in extraction; trim reverse only
 
 Pipeline control:
   --start-at <n>          Start at step n (default: 1)

@@ -42,7 +42,21 @@ if (DATA_DIR && fs.existsSync(DATA_DIR)) {
 // Safe filesystem helpers
 // ---------------------------------------------------------------------------
 function readdirSafe(dir) {
-  try { return fs.readdirSync(dir); } catch { return []; }
+  try { return fs.readdirSync(dir).sort(naturalCompare); } catch { return []; }
+}
+
+// Natural sort: "RPI_2" before "RPI_10", "barcode3" before "barcode12"
+function naturalCompare(a, b) {
+  const re = /(\d+)/g;
+  const pa = a.split(re), pb = b.split(re);
+  for (let i = 0; i < Math.min(pa.length, pb.length); i++) {
+    if (pa[i] !== pb[i]) {
+      const na = Number(pa[i]), nb = Number(pb[i]);
+      if (!isNaN(na) && !isNaN(nb)) return na - nb;
+      return pa[i] < pb[i] ? -1 : 1;
+    }
+  }
+  return pa.length - pb.length;
 }
 
 function isDirSafe(p) {
@@ -121,10 +135,13 @@ function discoverTracks(outdir) {
           if (!fs.existsSync(bamPath)) continue;
           const baiPath = bamPath + ".bai";
           if (!fs.existsSync(baiPath)) continue;
+          // Skip header-only BAMs (0 mapped reads) — they cause 416 range errors
+          const bamStat = statSafe(bamPath);
+          if (!bamStat || bamStat.size < 1000) continue;
           const urlBam = trackUrl(bamPath);
           const urlBai = trackUrl(baiPath);
           if (!urlBam || !urlBai) continue;
-          tracks.push({
+          const track = {
             name: `${bc}/${rpi} — ${step.label}`,
             url: urlBam,
             indexURL: urlBai,
@@ -132,7 +149,9 @@ function discoverTracks(outdir) {
             color: step.color, height: 250,
             displayMode: "SQUISHED",
             showSoftClips: true,
-          });
+          };
+          if (step.hidden) track.hidden = true;
+          tracks.push(track);
         }
       }
     }

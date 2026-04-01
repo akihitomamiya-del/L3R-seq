@@ -124,7 +124,7 @@ graph TD
     S4 --> S5["<b>05 consensus</b>"]
     S5 --> S6["<b>06 extract</b>"]
     S6 --> S7["<b>07 map</b>"]
-    S7 -->|"aligned.sort.bam"| S8["<b>08 variants</b>"]
+    S7 -->|"aligned.sort.bam<br>primary.sort.bam"| S8["<b>08 variants</b>"]
     S7 -->|"mapped_only.sam"| S9
     S8 -->|"observed_variants.txt"| S9["<b>09 correct</b>"]
     S9 --> S10["<b>10 export</b>"]
@@ -410,7 +410,7 @@ L3Rseq ships with default adapter sequences and reference files for the *Arabido
 | UMI flanking sequences | `--umi-flank5 NNNNN --umi-flank3 NNNNN` |
 | BLAST databases | `bash scripts/setup_blast_db.sh --organelle-fasta your_mtDNA.fa --transcriptome-fasta your_cDNA.fa` then `--blast-db` / `--blast-db2` |
 | Adapter sequences | `L3Rseq trim --adapter-fwd ... --adapter-rev ...` (defaults match the protocol in the manuscript; override for different library designs) |
-| Target extraction primers | `L3Rseq extract --target-fwd ... --target-rev ...` (users analyzing shorter amplicons may need to reduce `--min-overlap`) |
+| Target extraction primers | `L3Rseq extract --target-fwd ... --target-rev ...` (users analyzing shorter amplicons may need to reduce `--min-overlap`). Use `--no-target-fwd` to skip the forward primer and trim only the reverse (adapter) side — useful for library checks or when the forward primer is unknown |
 | Editing pattern | `--pattern AG` (for A-to-I editing), or `--pattern CT,AG` to count multiple editing types as primary editing |
 | Known editing positions | `--var known_sites.txt` (use when a control sample with established editing sites is available, in addition to or instead of LoFreq-detected positions) |
 
@@ -420,7 +420,7 @@ L3Rseq includes a built-in [IGV.js](https://github.com/igvteam/igv.js) alignment
 
 **Features:**
 - **Dataset selector** — dropdown lists all samples; any directory containing `07_map/` or `09_correct/` is detected automatically
-- **Before/after tracks** — raw mapping (step 07) and tail-corrected reads (step 09) displayed side by side so you can see the effect of CIGAR-walk correction
+- **Before/after tracks** — primary mapping (step 07, excludes secondary/supplementary alignments) and tail-corrected reads (step 09) displayed side by side so you can see the effect of CIGAR-walk correction
 - **Sort reads by SAM tag** — sort by editing count (EC), noise (NC), 3' end position (3E), splice status (SJ), translocation (TL), double-sorter (DS), and more
 - **Group reads by SAM tag** — group by EC to see editing levels (including EC=0 unedited reads), SJ for splice status, TL for translocations
 - **Color reads by SAM tag** — color by splice status (green = spliced, red = retained, gray = unknown), editing count, noise, strand, or translocation, with auto-generated legend

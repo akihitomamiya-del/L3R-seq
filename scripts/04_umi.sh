@@ -84,8 +84,10 @@ run_step_04() {
                         local _sname
                         _sname=$(basename "$_subdir")
                         mkdir -p "$odir/UMIclusterfull/$_sname"
-                        ln "$_subdir"/*bins.fastq "$odir/UMIclusterfull/$_sname/" 2>/dev/null || \
-                            cp "$_subdir"/*bins.fastq "$odir/UMIclusterfull/$_sname/"
+                        if ls "$_subdir"/*bins.fastq &>/dev/null; then
+                            ln "$_subdir"/*bins.fastq "$odir/UMIclusterfull/$_sname/" 2>/dev/null || \
+                                cp "$_subdir"/*bins.fastq "$odir/UMIclusterfull/$_sname/"
+                        fi
                     done
                 fi
             done

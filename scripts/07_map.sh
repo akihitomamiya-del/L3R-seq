@@ -89,10 +89,15 @@ run_step_07() {
             # Flagstat on all reads
             samtools flagstat "$odir/aligned.sam" > "$odir/aligned.flagstat.txt"
 
-            # Convert to sorted BAM + index
+            # Convert to sorted BAM + index (all alignments)
             samtools view -bS "$odir/aligned.sam" > "$odir/aligned.bam"
             samtools sort "$odir/aligned.bam" > "$odir/aligned.sort.bam"
             samtools index "$odir/aligned.sort.bam"
+
+            # Primary-only sorted BAM for viewer (excludes secondary 0x100 + supplementary 0x800)
+            samtools view -bS -F 0x900 "$odir/aligned.sam" > "$odir/primary.bam"
+            samtools sort "$odir/primary.bam" > "$odir/primary.sort.bam"
+            samtools index "$odir/primary.sort.bam"
 
             # Extract mapped-only reads
             samtools view -h -F 4 "$odir/aligned.sam" > "$odir/mapped_only.sam"

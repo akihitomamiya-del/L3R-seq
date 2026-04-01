@@ -87,7 +87,7 @@ run_step_05() {
         _fa=$(find "$_cdir" -maxdepth 1 -name 'consensus_*.fa' 2>/dev/null | head -1)
         if [ -n "$_fa" ] && [ -f "$_fa" ]; then
             local _ncons
-            _ncons=$(grep -c '^>' "$_fa")
+            _ncons=$(grep -c '^>' "$_fa" || true)
             echo "    $_bname/$_rname: $_ncons consensus sequences"
             _summary_append "$output_dir" "$_bname" "$_rname" "05" "consensus_seqs" "$_ncons" 2>/dev/null || true
         fi

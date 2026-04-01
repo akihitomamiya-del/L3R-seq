@@ -47,19 +47,36 @@ run_step_06() {
             mkdir -p "$output_dir/06_extract/$bname/$rpi_name"
             local odir="$output_dir/06_extract/$bname/$rpi_name"
 
-            # Extract with adapters retained (uncut)
-            cutadapt --cores=0 --action=none --rc -e "$error_rate" --discard-untrimmed \
-                -g "^${target_fwd}...${target_rev};min_overlap=${min_overlap}" \
-                -o "$odir/extracted_uncut.fa" \
-                "$consensus_fa" \
-                > "$odir/extracted_uncut.log"
+            if [ -n "$target_fwd" ]; then
+                # Linked adapter: both forward and reverse primers required
+                local adapter_spec="^${target_fwd}...${target_rev};min_overlap=${min_overlap}"
 
-            # Extract with adapters trimmed
-            cutadapt --cores=0 --rc -e "$error_rate" --discard-untrimmed \
-                -g "^${target_fwd}...${target_rev};min_overlap=${min_overlap}" \
-                -o "$odir/extracted_trimmed.fa" \
-                "$consensus_fa" \
-                > "$odir/extracted_trimmed.log"
+                # Extract with adapters retained (uncut)
+                cutadapt --cores=0 --action=none --rc -e "$error_rate" --discard-untrimmed \
+                    -g "$adapter_spec" \
+                    -o "$odir/extracted_uncut.fa" \
+                    "$consensus_fa" \
+                    > "$odir/extracted_uncut.log"
+
+                # Extract with adapters trimmed
+                cutadapt --cores=0 --rc -e "$error_rate" --discard-untrimmed \
+                    -g "$adapter_spec" \
+                    -o "$odir/extracted_trimmed.fa" \
+                    "$consensus_fa" \
+                    > "$odir/extracted_trimmed.log"
+            else
+                # No forward primer: trim only the reverse (adapter) side.
+                # All consensus reads are kept (no --discard-untrimmed).
+                echo "    (no forward primer — trimming reverse adapter only)"
+
+                cp "$consensus_fa" "$odir/extracted_uncut.fa"
+
+                cutadapt --cores=0 --rc -e "$error_rate" \
+                    -a "${target_rev}" \
+                    -o "$odir/extracted_trimmed.fa" \
+                    "$consensus_fa" \
+                    > "$odir/extracted_trimmed.log"
+            fi
 
         done
     done
@@ -72,7 +89,7 @@ run_step_06() {
         _rname=$(basename "$_edir")
         if [ -f "$_edir/extracted_trimmed.fa" ]; then
             local _n
-            _n=$(grep -c '^>' "$_edir/extracted_trimmed.fa")
+            _n=$(grep -c '^>' "$_edir/extracted_trimmed.fa" || true)
             echo "    $_bname/$_rname: $_n extracted"
             _summary_append "$output_dir" "$_bname" "$_rname" "06" "extracted_seqs" "$_n" 2>/dev/null || true
         fi

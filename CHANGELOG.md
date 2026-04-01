@@ -2,6 +2,21 @@
 
 All notable changes are documented here.
 
+## [1.0.11] - 2026-04-01
+
+### Added
+- `--no-target-fwd` flag for `L3Rseq run`: skips the forward primer in step 06 (extract), trimming only the reverse adapter side. Useful for library checks or when the forward primer is unknown.
+- Step 07 now generates `primary.sort.bam` (excludes secondary and supplementary alignments) alongside the existing `aligned.sort.bam`. The viewer defaults to `primary.sort.bam`.
+
+### Fixed
+- Step 04: crash when a sample produces zero UMI bins (empty `bins/` directory caused glob expansion failure in hard-link/copy)
+- Steps 05, 06: `grep -c '^>'` on empty FASTA files returned exit code 1, aborting the pipeline under `set -e`
+- Viewer: 416 Unsatisfiable Range errors caused by header-only BAMs (0 mapped reads); these are now skipped during track discovery
+
+### Changed
+- Viewer: tracks are now listed in natural numeric order (RPI_1, RPI_2, ..., RPI_10 instead of RPI_1, RPI_10, RPI_11, RPI_2)
+- Viewer: step 07 track defaults to `primary.sort.bam`; `aligned.sort.bam` (all alignments) is available as a hidden track
+
 ## [1.0.10] - 2026-03-27
 
 ### Fixed
