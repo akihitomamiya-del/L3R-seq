@@ -35,9 +35,15 @@ git tag v1.0.XX && git push origin v1.0.XX   # triggers .github/workflows/docker
 ```
 
 After CI finishes, rebuild the devcontainer to pick up the new base image.
-The project `/workspace/CLAUDE.md` is gitignored. The committed copy is
-`.devcontainer/claude-code/CLAUDE.md` (copied to `~/.claude/CLAUDE.md` on
-container creation).
+
+### CLAUDE.md copies (keep in sync)
+
+There are three copies of this file — update all three when making changes:
+1. `.devcontainer/claude-code/CLAUDE.md` — **committed** (template, copied on container create)
+2. `~/.claude/CLAUDE.md` — **active** (what Claude reads; on a Docker volume)
+3. `/workspace/CLAUDE.md` — **gitignored** (project-level; may have extra local notes)
+
+Quick sync: `cp .devcontainer/claude-code/CLAUDE.md ~/.claude/CLAUDE.md`
 
 ## Common gotchas
 
@@ -139,6 +145,7 @@ Samples are colored by barcode family. Singletons hidden by default (toggle to s
 - `tests/` — test suite, test data, generators, expected output
 - `tests/data/` — synthetic test datasets
 - `resources/` — reference FASTAs, RPI barcodes, BLAST DBs
+- `docs/` — detailed docs: [advanced](../docs/advanced.md), [testing](../docs/testing.md), [development](../docs/development.md), [requirements](../docs/requirements.md)
 - `runs/` — pipeline output directories (gitignored)
 
 ## Coding conventions
