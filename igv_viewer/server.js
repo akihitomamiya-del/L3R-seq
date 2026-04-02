@@ -135,9 +135,11 @@ function discoverTracks(outdir) {
           if (!fs.existsSync(bamPath)) continue;
           const baiPath = bamPath + ".bai";
           if (!fs.existsSync(baiPath)) continue;
-          // Skip header-only BAMs (0 mapped reads) — they cause 416 range errors
+          // Skip header-only BAMs (0 mapped reads) — they cause 416 range errors.
+          // Threshold 400: a BAM with only a header is ~200-350 bytes; a BAM
+          // with even a single read (e.g. consensus) is ~600+ bytes.
           const bamStat = statSafe(bamPath);
-          if (!bamStat || bamStat.size < 1000) continue;
+          if (!bamStat || bamStat.size < 400) continue;
           const urlBam = trackUrl(bamPath);
           const urlBai = trackUrl(baiPath);
           if (!urlBam || !urlBai) continue;
@@ -154,6 +156,17 @@ function discoverTracks(outdir) {
           tracks.push(track);
         }
       }
+    }
+  }
+  // Promote hidden aligned.sort.bam to visible when primary.sort.bam is absent
+  // (e.g. demo data generated before v1.0.11).
+  const hasPrimary = new Set();
+  for (const t of tracks) {
+    if (t.url.includes("primary.sort.bam")) hasPrimary.add(t.name.split(" —")[0]);
+  }
+  for (const t of tracks) {
+    if (t.hidden && t.url.includes("aligned.sort.bam") && !hasPrimary.has(t.name.split(" —")[0])) {
+      delete t.hidden;
     }
   }
   return tracks;
@@ -358,7 +371,22 @@ const server = http.createServer((req, res) => {
         return aIdx !== bIdx ? aIdx - bIdx : a.localeCompare(b);
       });
     const dsInfo = names.map(n => ({ name: n, description: datasetDescription(n, datasets[n]) }));
-    const data = { references: discoverReferences(), datasets: names, datasetInfo: dsInfo };
+    // Filter references to only those used by discovered datasets (fast: reads
+    // one BAM header per dataset). Prevents large genome refs from cluttering
+    // the dropdown when viewing test data that uses a small synthetic reference.
+    const allRefs = discoverReferences();
+    const usedRefNames = new Set();
+    for (const n of names) {
+      const tracks = discoverTracks(datasets[n]);
+      if (tracks.length > 0) {
+        const rn = bamReferenceName(resolveTrackPath(tracks[0].url));
+        if (rn) usedRefNames.add(rn);
+      }
+    }
+    const refs = usedRefNames.size > 0
+      ? allRefs.filter(r => usedRefNames.has(r.id))
+      : allRefs;
+    const data = { references: refs, datasets: names, datasetInfo: dsInfo };
     const json = JSON.stringify(data, null, 2);
     res.writeHead(200, { "Content-Type": "application/json", "Content-Length": Buffer.byteLength(json) });
     res.end(json);

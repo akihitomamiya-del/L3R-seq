@@ -67,6 +67,10 @@ if [ -z ${THREADS+x} ]; then THREADS=$(nproc 2>/dev/null || echo 1); fi
 ### Source dependencies --------------------------------------------------------
 . $LONGREAD_UMI_PATH/scripts/dependencies.sh
 
+# Suppress tool diagnostic output unless --verbose
+_TOOL_STDERR=/dev/null
+[ "${L3RSEQ_VERBOSE:-0}" = "1" ] && _TOOL_STDERR=/dev/stderr
+
 ### Setup output directories ---------------------------------------------------
 mkdir -p $OUT_DIR
 TRIM_DIR=$OUT_DIR/trim
@@ -116,7 +120,7 @@ echo "[umi_binning_single] Clustering UMIs..."
 # Deduplicate (without -relabel; we sort and relabel deterministically below)
 $USEARCH -fastx_uniques $UMI_DIR/umi.fa \
   -fastaout $UMI_DIR/umi_u_unsorted.fa \
-  -sizeout -minuniquesize 1 -strand both
+  -sizeout -minuniquesize 1 -strand both 2>"$_TOOL_STDERR"
 
 # Sort deterministically: descending size (primary), lexicographic sequence
 # (secondary). This ensures identical umi1, umi2, ... labels regardless of
@@ -147,7 +151,7 @@ $USEARCH -cluster_fast $UMI_DIR/umi_u.fa \
   -id 0.90 \
   -centroids $UMI_DIR/umi_c.fa \
   -uc $UMI_DIR/umi_c.txt \
-  -sizein -sizeout -strand both $USEARCH_MINSIZE_FLAG $USEARCH_MINSEQLENGTH_FLAG
+  -sizein -sizeout -strand both $USEARCH_MINSIZE_FLAG $USEARCH_MINSEQLENGTH_FLAG 2>"$_TOOL_STDERR"
 
 CLUSTER_COUNT=$(grep -c '^>' $UMI_DIR/umi_c.fa)
 echo "[umi_binning_single] $CLUSTER_COUNT UMI clusters after dedup + clustering."
@@ -213,16 +217,16 @@ echo "[umi_binning_single] $REF_COUNT UMI references after singleton removal."
 echo "[umi_binning_single] Mapping UMI references to extracted UMIs..."
 
 # Index per-read extracted UMIs (one UMI per read, named by read)
-$BWA index $UMI_DIR/umi.fa
+$BWA index $UMI_DIR/umi.fa 2>"$_TOOL_STDERR"
 
 # Map UMI references against extracted UMIs
 # -n 2: search radius of 2 mismatches (broad search, ensures reads whose
 #        singleton reference was removed can find the nearest real reference)
 # -N: report all hits (needed for best-match assignment in gawk)
 $BWA aln $UMI_DIR/umi.fa $UMI_DIR/umi_ref.fa \
-  -n 2 -t $THREADS -N > $BINNING_DIR/umi_map.sai
+  -n 2 -t $THREADS -N 2>"$_TOOL_STDERR" > $BINNING_DIR/umi_map.sai
 $BWA samse -n 10000000 $UMI_DIR/umi.fa \
-  $BINNING_DIR/umi_map.sai $UMI_DIR/umi_ref.fa | \
+  $BINNING_DIR/umi_map.sai $UMI_DIR/umi_ref.fa 2>"$_TOOL_STDERR" | \
   $SAMTOOLS view -F 4 - > $BINNING_DIR/umi_map.sam
 
 ### Filter and assign reads to bins --------------------------------------------

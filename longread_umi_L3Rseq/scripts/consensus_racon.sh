@@ -70,6 +70,10 @@ if [ -z ${THREADS+x} ]; then echo "-t is missing. Defaulting to 1 thread."; THRE
 
 ### Usearch centroid and racon polishing --------------------------------------
 
+# Suppress tool diagnostic output unless --verbose
+export _TOOL_STDERR=/dev/null
+[ "${L3RSEQ_VERBOSE:-0}" = "1" ] && export _TOOL_STDERR=/dev/stderr
+
 # Prepare output folders
 if [ -d "$OUT" ]; then
   echo "Output folder exists. Exiting..."
@@ -127,7 +131,7 @@ seed_racon () {
       -t 1 \
       -x $PRESET \
       $OUT/${UMINO}_sr.fa \
-      $RB > $OUT/ovlp.paf
+      $RB > $OUT/ovlp.paf 2>"$_TOOL_STDERR"
 
     $RACON \
       -t 1 \
@@ -138,7 +142,7 @@ seed_racon () {
       $RACON_ARG \
       $RB \
       $OUT/ovlp.paf \
-      $OUT/${UMINO}_sr.fa > $OUT/${UMINO}_tmp.fa
+      $OUT/${UMINO}_sr.fa > $OUT/${UMINO}_tmp.fa 2>"$_TOOL_STDERR"
     mv $OUT/${UMINO}_tmp.fa $OUT/${UMINO}_sr.fa
   done
   
@@ -153,7 +157,6 @@ find $IN -name 'umi*bins.fastq'  |\
   ( [[ -f "${SAMPLE}" ]] && grep -Ff $SAMPLE || cat ) |\
   $GNUPARALLEL \
     --env seed_racon \
-    --progress \
     -j $THREADS \
     "seed_racon {} $OUT $ROUNDS $PRESET $RACON_ARG"
 

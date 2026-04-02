@@ -160,6 +160,10 @@ _init_vsearch() {
 }
 _init_vsearch
 
+# Suppress GNU parallel citation notice (run once at startup, not per-job)
+mkdir -p "${PARALLEL_HOME:-$HOME/.parallel}" 2>/dev/null || true
+touch "${PARALLEL_HOME:-$HOME/.parallel}/will-cite" 2>/dev/null || true
+
 # ---------------------------------------------------------------------------
 # Subcommand: concat
 # ---------------------------------------------------------------------------
@@ -571,6 +575,7 @@ cmd_run() {
     local introns=""
     local target_fwd="$DEFAULT_TARGET_FWD"
     local target_rev="$DEFAULT_TARGET_REV"
+    local verbose=0
 
     while [ $# -gt 0 ]; do
         case "$1" in
@@ -597,6 +602,7 @@ cmd_run() {
             --target-rev)         require_arg "$1" "${2:-}"; target_rev="$2"; shift 2 ;;
             --no-target-fwd)      target_fwd=""; shift ;;
             --keep-intermediates) keep_intermediates=1; shift ;;
+            --verbose)            verbose=1; shift ;;
             --help)
                 cat <<'RUNHELP'
 Usage: L3Rseq run --input <dir> --outdir <dir> [options]
@@ -631,6 +637,7 @@ Pipeline control:
   --threads <n>           Threads for consensus/correction (default: all CPUs)
   --prefilter             Run optional filter step between demux and UMI
   --keep-intermediates    Keep all intermediate files (default: clean up)
+  --verbose               Show full tool diagnostic output (minimap2, racon, bwa, etc.)
   --prefix <str>          Output file prefix for step 01
 
 Adapter/target sequences default to config.sh values. Override per-step
@@ -644,6 +651,9 @@ RUNHELP
     [ -z "$input_dir" ] && { echo "ERROR: --input is required" >&2; return 1; }
     [ -z "$output_dir" ] && { echo "ERROR: --outdir is required" >&2; return 1; }
     validate_introns "$introns" || return 1
+
+    # Export verbose flag for child scripts (consensus_racon, umi_binning_single)
+    export L3RSEQ_VERBOSE="$verbose"
 
     mkdir -p "$output_dir"
 
@@ -688,6 +698,28 @@ RUNHELP
             fi
         fi
     fi
+
+    # Automatic log file: tee all output to a timestamped file
+    local _logfile="$output_dir/l3rseq_$(date +%Y%m%d_%H%M%S).log"
+    exec 3>&1 4>&2
+    exec > >(tee "$_logfile") 2>&1
+
+    # Ensure fd restore on early exit (set -e, signals, etc.)
+    _l3rseq_cleanup() {
+        local _rc=$?
+        # Write failure banner while tee is still capturing
+        if [ "$_rc" -ne 0 ]; then
+            echo ""
+            echo "========================================"
+            echo "ERROR: L3Rseq pipeline failed (exit code $_rc)"
+            echo "========================================"
+            [ -n "${_logfile:-}" ] && echo "Log saved to: $_logfile"
+        fi
+        exec 1>&3 2>&4 3>&- 4>&- 2>/dev/null || true
+        wait 2>/dev/null || true
+        trap - EXIT ERR
+    }
+    trap _l3rseq_cleanup EXIT ERR
 
     echo "========================================"
     echo "L3Rseq pipeline: steps $start_at to $stop_at"
@@ -841,6 +873,10 @@ RUNHELP
     echo "========================================"
     echo "L3Rseq pipeline complete."
     echo "========================================"
+    echo "Log saved to: $_logfile"
+
+    # Restore original file descriptors; wait for tee to flush
+    _l3rseq_cleanup
 }
 
 # ---------------------------------------------------------------------------

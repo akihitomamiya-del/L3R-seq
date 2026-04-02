@@ -19,6 +19,17 @@ run_step_05() {
     echo "[Step 05] Generating consensus sequences ..."
     local _step05_count=0
 
+    # Prefer workspace source (longread_umi_L3Rseq/) over conda env copy,
+    # so fixes take effect without rebuilding the Docker image.
+    local _script_dir
+    _script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+    local _cons_script="$_script_dir/../longread_umi_L3Rseq/scripts/consensus_racon.sh"
+    local _longread_umi_path="$_script_dir/../longread_umi_L3Rseq"
+    if [ ! -f "$_cons_script" ]; then
+        _cons_script="$CONDA_PREFIX/longread_umi/scripts/consensus_racon.sh"
+        _longread_umi_path="$CONDA_PREFIX/longread_umi"
+    fi
+
     for barcode_dir in "$input_dir"/*/; do
         [ -d "$barcode_dir" ] || continue
 
@@ -54,7 +65,8 @@ run_step_05() {
             echo "  Processing $bname / $rpi_name ..."
             mkdir -p "$output_dir/05_consensus/$bname"
 
-            longread_umi consensus_racon \
+            LONGREAD_UMI_PATH="${LONGREAD_UMI_PATH:-$_longread_umi_path}" \
+                bash "$_cons_script" \
                 -d "$cluster_dir" \
                 -o "$_cons_dir" \
                 -t "$threads" \
