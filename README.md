@@ -69,11 +69,13 @@ Install [Docker](https://docs.docker.com/get-docker/) if you don't have it, then
 docker pull ghcr.io/akihitomamiya-del/l3rseq:latest
 ```
 
-The image supports Intel and Apple Silicon Macs, Linux, and Windows (WSL2).
+Tested on macOS (Apple Silicon) and Linux (x86_64).
 
 #### B2. Run the pipeline
 
-**docker run**:
+You can run commands either from the **host** (passing them to `docker run`) or from **inside the container** (interactive shell):
+
+**From the host** (`docker run`):
 ```bash
 docker run --rm \
     --user "$(id -u):$(id -g)" \
@@ -82,6 +84,22 @@ docker run --rm \
     ghcr.io/akihitomamiya-del/l3rseq:latest \
     L3Rseq run --input /data/input --outdir /data/output \
     --ref /data/input/reference.fa --pattern CT
+```
+
+**Inside the container** (interactive shell):
+```bash
+# Start an interactive session
+docker run --rm -it \
+    -v ~/data/fastq:/data/input:ro \
+    -v ~/results:/data/output \
+    ghcr.io/akihitomamiya-del/l3rseq:latest bash
+
+# Now run commands directly
+L3Rseq run --input /data/input --outdir /data/output \
+    --ref /data/input/reference.fa --pattern CT
+
+# View results (access via http://localhost:8080 on your host)
+L3Rseq viewer --dir /data/output
 ```
 
 **docker compose** (for repeated use — saves your paths in a config file):
