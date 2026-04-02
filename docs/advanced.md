@@ -73,6 +73,20 @@ The viewer has two pages:
 - `/umi` — UMI analysis (Chart.js histograms for step 04 bin sizes)
 
 Both share the same dataset dropdown and link to each other in the header.
+Dataset selection is preserved across navigation via `?name=` URL parameter.
+
+### UMI analysis page (`/umi`)
+
+Compares UMI bin size distributions across samples from step 04 output.
+API endpoint: `/api/umi-stats?name=<dataset>` (reads TSV files from
+`04_umi/{barcode}/{rpi}/read_binning/`).
+
+Three view modes:
+- **Overlay** — cumulative curve + histogram, all selected samples on one chart
+- **Grid** — small multiples, one histogram per sample (adaptive layout: 1 sample = full width, 2 = side-by-side, 3-4 = 2 columns, 5-9 = 3 columns, 10+ = compact auto-fill)
+- **Table** — sortable summary metrics (total reads, kept bins, yield %, etc.)
+
+Samples are colored by barcode family. Singletons hidden by default (toggle to show).
 
 ## How CIGAR-walk works
 
