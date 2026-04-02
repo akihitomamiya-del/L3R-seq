@@ -1,5 +1,60 @@
 # L3Rseq — Claude Code Guidelines
 
+## Container environment
+
+This is a **sandboxed devcontainer** with a network firewall. Key constraints:
+
+- **No general internet access.** `apt-get install`, `pip install`, and `curl`
+  to external sites will fail. Only GitHub, npm, and Anthropic APIs are allowed.
+- **Conda environments are pre-built** and read-only. Do not try to create or
+  modify them. Pipeline tools are NOT on the default PATH — you must activate
+  the correct env before running them:
+  - `longread_umi` — samtools, minimap2, bwa, racon, cutadapt, vsearch, parallel
+  - `cutadaptenv` — cutadapt (steps 03, 06)
+  - `NanoporeMap` — minimap2, samtools, bcftools (steps 07, and demo data)
+  - `LoFreq` — lofreq, bcftools (step 08)
+  - `UMIC-seq` — python3, biopython, scikit-bio (alternative UMI method)
+  - `Entrez` — efetch, esearch (fetching NCBI references)
+  - `analysis` — matplotlib, numpy (plotting scripts)
+  Example: `conda activate NanoporeMap && samtools view ...`
+  The `L3Rseq` dispatcher handles env activation automatically for pipeline runs.
+- **The IGV viewer auto-starts** on port 8080 via `postStartCommand`. Use
+  `L3Rseq viewer --stop` / `L3Rseq viewer --dir <dir>` to restart with a
+  different directory. No need to start it manually.
+- **Puppeteer + Chrome** is available for headless screenshots of the viewer
+  (e.g., `node igv_viewer/screenshot.js`). Use `--no-sandbox` flag when
+  launching Puppeteer directly.
+
+## Docker image publishing
+
+The base image is `ghcr.io/akihitomamiya-del/l3rseq`. CI publishes it on
+version tags:
+
+```bash
+git tag v1.0.XX && git push origin v1.0.XX   # triggers .github/workflows/docker-publish.yml
+```
+
+After CI finishes, rebuild the devcontainer to pick up the new base image.
+The project `/workspace/CLAUDE.md` is gitignored. The committed copy is
+`.devcontainer/claude-code/CLAUDE.md` (copied to `~/.claude/CLAUDE.md` on
+container creation).
+
+## Common gotchas
+
+- **Inverted `.gitignore`**: The repo ignores everything (`*`) and allowlists
+  specific paths. New files won't be staged by `git add` unless their path is
+  in `.gitignore` with a `!` prefix. `/workspace/CLAUDE.md` is intentionally
+  gitignored — never commit it. The tracked copy is `.devcontainer/claude-code/CLAUDE.md`.
+- **Viewer restart**: Changes to `umi.html` or `index.html` take effect on
+  browser refresh. Changes to `server.js` or `config.js` require
+  `L3Rseq viewer --stop && L3Rseq viewer --dir <dir>`.
+- **Test flags**: Always use `--no-viewer` when running tests if the viewer is
+  already running (avoids port conflicts). Use `--quick` for fast iteration.
+- **Step 09 error handling**: `09_tail_correct.sh` uses `set +e` (not pipefail)
+  due to complex control flow. Other scripts use `set -euo pipefail`.
+- **Real data test**: Always `rm -rf runs/LibCheck` before re-running
+  `runs/LibCheck_sample.sh` — leftover `03_demux_all/` breaks RPI filtering.
+
 ## Project overview
 
 L3Rseq is a long-read UMI sequencing pipeline for Oxford Nanopore data. The main
@@ -29,12 +84,15 @@ bash tests/run_tests.sh --no-viewer        # Skip IGV viewer auto-start after te
 Tests are fully deterministic — identical results across runs on the same container.
 Output goes to `tests/output/`. Expected values are in `tests/expected/`.
 
-### Docker image tests
+### Docker image tests (host only — do NOT run inside the container)
 
 ```bash
 bash tests/test_docker_image.sh                        # Build + test
 bash tests/test_docker_image.sh --skip-build           # Test existing image
 ```
+
+These require Docker on the host machine. They build/pull the image and run
+the test suite inside a fresh container. Not applicable in devcontainer sessions.
 
 ### Shell function unit tests (standalone)
 
