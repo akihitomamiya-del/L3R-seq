@@ -426,9 +426,9 @@ function renderOverlay(area, samples) {
       },
       scales: {
         y: {
-          type: showSingletons ? "logarithmic" : "linear",
+          type: "linear",
           title: { display: true, text: "Number of clusters" },
-          beginAtZero: !showSingletons,
+          beginAtZero: true,
         },
         x: numericXAxis(maxSize, "Cluster size (reads per UMI)", "full"),
       }
@@ -474,14 +474,15 @@ function renderGrid(area, samples) {
         plugins: { legend: { display: false } },
         scales: {
           y: {
-            type: showSingletons ? "logarithmic" : "linear",
-            title: { display: false },
-            beginAtZero: !showSingletons,
+            type: "linear",
+            title: { display: true, text: "Clusters", font: { size: 10 } },
+            beginAtZero: true,
           },
           x: {
             type: "linear",
             min: 0,
             max: maxSize + 1,
+            title: { display: true, text: "Reads per UMI", font: { size: 10 } },
             ticks: { stepSize: step, font: { size: 10 }, callback: function(v) { return Number.isInteger(v) ? v : null; } },
           },
         }
