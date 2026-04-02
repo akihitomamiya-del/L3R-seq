@@ -443,9 +443,19 @@ function renderGrid(area, samples) {
 
   const wrap = document.createElement("div");
   wrap.className = "grid-wrap";
-  area.appendChild(wrap);
-
+  // Adaptive grid: fewer samples = larger cells
   const nCells = samples.length;
+  if (nCells === 1) {
+    wrap.style.gridTemplateColumns = "1fr";
+  } else if (nCells === 2) {
+    wrap.style.gridTemplateColumns = "1fr 1fr";
+  } else if (nCells <= 4) {
+    wrap.style.gridTemplateColumns = "repeat(2, 1fr)";
+  } else if (nCells <= 9) {
+    wrap.style.gridTemplateColumns = "repeat(3, 1fr)";
+  }
+  // else: default CSS auto-fill minmax(320px, 1fr)
+  area.appendChild(wrap);
   const step = tickStep(maxSize, nCells);
 
   for (const s of samples) {
