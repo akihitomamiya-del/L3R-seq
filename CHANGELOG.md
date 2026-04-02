@@ -2,6 +2,27 @@
 
 All notable changes are documented here.
 
+## [1.0.12] - 2026-04-02
+
+### Added
+- UMI histogram comparison page (`/umi`): interactive Chart.js-based cross-sample comparison of UMI bin size distributions with overlay, grid, and table views
+- `/api/umi-stats` endpoint for serving step 04 TSV data as JSON
+- Navigation links between alignment viewer (`/`) and UMI analysis (`/umi`) with shared dataset selection
+- Puppeteer Chrome in the Claude Code devcontainer for headless UI screenshots
+- Chromium shared libs in base Docker image (required by Puppeteer)
+- `docs/` directory: advanced usage, testing, development, and requirements docs split from README
+
+### Changed
+- Output files in steps 06-09 now include the RPI name as a prefix (e.g., `barcode01_RPI_1_aligned.sort.bam`) for identification outside their directory context. Step 05 and 10 already used this convention.
+- IGV viewer BAM discovery uses suffix matching instead of exact filenames, supporting the new prefixed names
+- README restructured: reduced from 639 to 432 lines; advanced topics moved to `docs/` with cross-linked navigation
+- Devcontainer CLAUDE.md expanded with container environment docs, conda env guide, and common gotchas
+- Platform support table simplified to tested platforms only (macOS Apple Silicon, Linux x86_64)
+
+### Fixed
+- Scheer et al. 2020 DOI link in README (was pointing to wrong book chapter)
+- Chimeric BAM filter in viewer used `startsWith("chimeric_")` which failed with prefixed filenames; now uses `includes("chimeric_")`
+
 ## [1.0.11] - 2026-04-01
 
 ### Added
