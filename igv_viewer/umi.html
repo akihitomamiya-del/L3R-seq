@@ -1,0 +1,597 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <title>L3Rseq — UMI Analysis</title>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body { font-family: system-ui, sans-serif; background: #f5f5f5; }
+    header { background: #2c3e50; color: #fff; padding: 12px 24px;
+             display: flex; align-items: center; gap: 16px; flex-wrap: wrap; }
+    header h1 { font-size: 18px; font-weight: 600; }
+    header select { padding: 4px 8px; border-radius: 4px; font-size: 14px; }
+    header a { color: #aaa; text-decoration: none; font-size: 14px; margin-left: auto; }
+    header a:hover { color: #fff; }
+
+    .panel { margin: 12px 12px 0; padding: 12px 16px; background: #fff;
+             border-radius: 6px; font-size: 13px; }
+    .panel + .panel { margin-top: 8px; }
+    .panel-header { cursor: pointer; display: flex; align-items: center; gap: 8px;
+                    user-select: none; color: #333; font-weight: 600; }
+    .panel-header:hover { color: #000; }
+    .panel-header .arrow { display: inline-block; font-size: 10px;
+                           transition: transform 0.15s; }
+    .panel-header .arrow.open { transform: rotate(90deg); }
+    .panel-body { display: none; padding-top: 10px; }
+    .panel-body.open { display: block; }
+
+    .bc-group { margin-bottom: 6px; }
+    .bc-group-header { font-weight: 600; margin-bottom: 3px; display: flex; align-items: center; gap: 6px; }
+    .bc-group-header .swatch { display: inline-block; width: 10px; height: 10px;
+                                border-radius: 2px; border: 1px solid #999; }
+    .sample-checks { display: flex; flex-wrap: wrap; gap: 2px 12px; margin-left: 18px; }
+    .sample-checks label { cursor: pointer; display: flex; align-items: center; gap: 3px; }
+
+    .controls { margin: 8px 12px; display: flex; flex-wrap: wrap; gap: 8px; align-items: center;
+                font-size: 13px; }
+    .ctrl-btn { padding: 4px 12px; border: 1px solid #ccc; border-radius: 4px;
+                background: #f8f8f8; cursor: pointer; font-size: 13px; }
+    .ctrl-btn:hover { background: #e8e8e8; }
+    .ctrl-btn.active { background: #2c3e50; color: #fff; border-color: #2c3e50; }
+    .ctrl-sep { color: #ccc; margin: 0 4px; }
+
+    .chart-area { margin: 8px 12px 16px; }
+    .chart-container { background: #fff; border-radius: 6px; padding: 16px; margin-bottom: 8px; }
+    .chart-container h3 { font-size: 14px; color: #555; margin-bottom: 8px; }
+    .chart-container canvas { width: 100% !important; }
+
+    .grid-wrap { display: grid; grid-template-columns: repeat(auto-fill, minmax(320px, 1fr));
+                 gap: 8px; }
+    .grid-cell { background: #fff; border-radius: 6px; padding: 12px; }
+    .grid-cell h4 { font-size: 12px; color: #555; margin-bottom: 4px; text-align: center; }
+
+    table.stats { width: 100%; border-collapse: collapse; font-size: 13px; }
+    table.stats th { background: #f0f0f0; padding: 6px 10px; text-align: left;
+                     cursor: pointer; user-select: none; position: sticky; top: 0; }
+    table.stats th:hover { background: #e0e0e0; }
+    table.stats td { padding: 5px 10px; border-top: 1px solid #eee; }
+    table.stats tr:hover td { background: #fafafa; }
+    table.stats .num { text-align: right; font-variant-numeric: tabular-nums; }
+    table.stats .low { color: #e67e22; font-weight: 600; }
+
+    .empty { margin: 24px; color: #888; font-size: 15px; }
+  </style>
+</head>
+<body>
+  <header>
+    <h1>L3Rseq UMI Analysis</h1>
+    <label for="dataset">Dataset:</label>
+    <select id="dataset"><option value="">loading...</option></select>
+    <a href="/">Alignment Viewer</a>
+  </header>
+
+  <div class="panel" id="sample-panel">
+    <div class="panel-header" onclick="togglePanel('sample-panel')">
+      <span class="arrow open">&#9654;</span>
+      <span>Samples</span>
+      <span id="sample-count" style="font-weight:normal; color:#888;"></span>
+    </div>
+    <div class="panel-body open" id="sample-body"></div>
+  </div>
+
+  <div class="controls" id="controls" style="display:none;">
+    <button class="ctrl-btn active" data-view="overlay" onclick="setView('overlay')">Overlay</button>
+    <button class="ctrl-btn" data-view="grid" onclick="setView('grid')">Grid</button>
+    <button class="ctrl-btn" data-view="table" onclick="setView('table')">Table</button>
+    <span class="ctrl-sep">|</span>
+    <label style="cursor:pointer;display:flex;align-items:center;gap:3px;">
+      <input type="checkbox" id="show-singletons"> Show singletons
+    </label>
+  </div>
+
+  <div class="chart-area" id="chart-area"></div>
+
+  <script src="/chartjs/chart.umd.js"></script>
+  <script>
+"use strict";
+
+// --- State ---
+let allData = null;      // raw API response
+let selectedIds = new Set();
+let viewMode = "overlay";
+let chartInstances = [];
+
+// --- Color palette ---
+const BARCODE_HUES = {};
+const HUE_POOL = [210, 140, 25, 280, 350, 60]; // blue, green, orange, purple, red, yellow
+let hueIdx = 0;
+
+function barcodeHue(bc) {
+  if (!(bc in BARCODE_HUES)) BARCODE_HUES[bc] = HUE_POOL[hueIdx++ % HUE_POOL.length];
+  return BARCODE_HUES[bc];
+}
+
+function sampleColor(sample, alpha) {
+  const hue = barcodeHue(sample.barcode);
+  // Spread RPIs across lightness range
+  const barcodeGroup = allData.samples.filter(s => s.barcode === sample.barcode);
+  const idx = barcodeGroup.indexOf(sample);
+  const total = barcodeGroup.length;
+  const lightness = total > 1 ? 35 + (idx / (total - 1)) * 40 : 50;
+  return `hsla(${hue}, 70%, ${lightness}%, ${alpha})`;
+}
+
+// --- Init ---
+async function init() {
+  const sel = document.getElementById("dataset");
+  try {
+    const resp = await fetch("/api/datasets");
+    const data = await resp.json();
+    sel.innerHTML = '<option value="">-- select --</option>';
+    for (const ds of data.datasets) {
+      const opt = document.createElement("option");
+      opt.value = ds; opt.textContent = ds;
+      sel.appendChild(opt);
+    }
+    // Restore from URL param
+    const urlName = new URLSearchParams(location.search).get("name");
+    if (urlName && data.datasets.includes(urlName)) {
+      sel.value = urlName;
+      loadDataset(urlName);
+    }
+  } catch { sel.innerHTML = '<option value="">error loading datasets</option>'; }
+  sel.addEventListener("change", () => {
+    const name = sel.value;
+    history.replaceState(null, "", name ? "?name=" + encodeURIComponent(name) : "/umi");
+    if (name) loadDataset(name); else clearAll();
+    // Update viewer link to preserve dataset
+    document.querySelector("header a").href = name ? "/?name=" + encodeURIComponent(name) : "/";
+  });
+  document.getElementById("show-singletons").addEventListener("change", render);
+}
+
+async function loadDataset(name) {
+  clearAll();
+  try {
+    const resp = await fetch("/api/umi-stats?name=" + encodeURIComponent(name));
+    if (!resp.ok) { showEmpty("No UMI data found for this dataset."); return; }
+    allData = await resp.json();
+    if (!allData.samples.length) { showEmpty("No UMI data found (run step 04 first)."); return; }
+    // Reset hue assignments
+    Object.keys(BARCODE_HUES).forEach(k => delete BARCODE_HUES[k]);
+    hueIdx = 0;
+    // Select all by default
+    selectedIds = new Set(allData.samples.map(s => s.id));
+    buildSampleSelector();
+    document.getElementById("controls").style.display = "flex";
+    render();
+  } catch { showEmpty("Error loading UMI data."); }
+}
+
+function clearAll() {
+  destroyCharts();
+  document.getElementById("chart-area").innerHTML = "";
+  document.getElementById("sample-body").innerHTML = "";
+  document.getElementById("sample-count").textContent = "";
+  document.getElementById("controls").style.display = "none";
+  allData = null;
+}
+
+function showEmpty(msg) {
+  document.getElementById("chart-area").innerHTML = `<p class="empty">${msg}</p>`;
+}
+
+// --- Sample selector ---
+function buildSampleSelector() {
+  const body = document.getElementById("sample-body");
+  const barcodes = [...new Set(allData.samples.map(s => s.barcode))].sort(naturalSort);
+
+  // Select-all checkbox
+  let html = '<div style="margin-bottom:8px;"><label style="cursor:pointer;font-weight:600;">' +
+    '<input type="checkbox" id="check-all" checked onchange="toggleAll(this.checked)"> Select all</label></div>';
+
+  for (const bc of barcodes) {
+    const hue = barcodeHue(bc);
+    const samples = allData.samples.filter(s => s.barcode === bc);
+    html += `<div class="bc-group">`;
+    html += `<div class="bc-group-header">
+      <span class="swatch" style="background:hsl(${hue},70%,50%)"></span>
+      <label style="cursor:pointer"><input type="checkbox" checked
+        onchange="toggleBarcode('${bc}',this.checked)"> ${bc} (${samples.length})</label></div>`;
+    html += `<div class="sample-checks">`;
+    for (const s of samples) {
+      const short = s.rpi.replace(bc + "_", "");
+      html += `<label><input type="checkbox" data-id="${s.id}" data-bc="${bc}" checked
+        onchange="toggleSample('${s.id}',this.checked)"> ${short}</label>`;
+    }
+    html += `</div></div>`;
+  }
+  body.innerHTML = html;
+  updateSampleCount();
+}
+
+function toggleAll(checked) {
+  if (checked) selectedIds = new Set(allData.samples.map(s => s.id));
+  else selectedIds.clear();
+  document.querySelectorAll('#sample-body input[data-id]').forEach(cb => cb.checked = checked);
+  document.querySelectorAll('#sample-body .bc-group-header input').forEach(cb => cb.checked = checked);
+  updateSampleCount(); render();
+}
+
+function toggleBarcode(bc, checked) {
+  document.querySelectorAll(`#sample-body input[data-bc="${bc}"]`).forEach(cb => {
+    cb.checked = checked;
+    if (checked) selectedIds.add(cb.dataset.id); else selectedIds.delete(cb.dataset.id);
+  });
+  syncAllCheckbox(); updateSampleCount(); render();
+}
+
+function toggleSample(id, checked) {
+  if (checked) selectedIds.add(id); else selectedIds.delete(id);
+  // Sync barcode checkbox
+  const bc = allData.samples.find(s => s.id === id)?.barcode;
+  if (bc) {
+    const bcSamples = allData.samples.filter(s => s.barcode === bc);
+    const bcCheckbox = document.querySelector(`#sample-body .bc-group-header input[onchange*="${bc}"]`);
+    if (bcCheckbox) bcCheckbox.checked = bcSamples.every(s => selectedIds.has(s.id));
+  }
+  syncAllCheckbox(); updateSampleCount(); render();
+}
+
+function syncAllCheckbox() {
+  const all = document.getElementById("check-all");
+  if (all) all.checked = selectedIds.size === allData.samples.length;
+}
+
+function updateSampleCount() {
+  document.getElementById("sample-count").textContent =
+    `(${selectedIds.size}/${allData.samples.length} selected)`;
+}
+
+// --- View mode ---
+function setView(mode) {
+  viewMode = mode;
+  document.querySelectorAll(".controls .ctrl-btn[data-view]").forEach(btn =>
+    btn.classList.toggle("active", btn.dataset.view === mode));
+  render();
+}
+
+function togglePanel(id) {
+  const body = document.getElementById(id).querySelector(".panel-body");
+  const arrow = document.getElementById(id).querySelector(".arrow");
+  body.classList.toggle("open");
+  arrow.classList.toggle("open");
+}
+
+// --- Rendering ---
+function getSelected() {
+  return allData.samples.filter(s => selectedIds.has(s.id));
+}
+
+function getMaxSize(samples, includeSingletons) {
+  let max = 0;
+  for (const s of samples) {
+    for (const [size] of Object.entries(s.size_dist)) {
+      const n = parseInt(size);
+      if (!includeSingletons && n === 1) continue;
+      if (n > max) max = n;
+    }
+  }
+  return max;
+}
+
+// Pick a clean tick step based on data range and available chart width.
+// widthHint: "full" (overlay / single grid cell), "grid-N" (N cells in grid)
+function tickStep(maxVal, widthHint) {
+  // Effective range the chart must label
+  const range = maxVal;
+  // How many ticks look comfortable at this width
+  let maxTicks;
+  if (widthHint === "full" || !widthHint) {
+    maxTicks = 25;  // full-width chart can fit many labels
+  } else if (typeof widthHint === "number") {
+    // Grid mode: fewer cells = more space per cell = more ticks
+    maxTicks = widthHint <= 2 ? 20 : widthHint <= 6 ? 12 : widthHint <= 12 ? 8 : 6;
+  } else {
+    maxTicks = 15;
+  }
+  // Pick the smallest clean step that keeps tick count under maxTicks
+  for (const s of [1, 2, 5, 10, 25, 50, 100]) {
+    if (Math.ceil(range / s) <= maxTicks) return s;
+  }
+  return 100;
+}
+
+// Build a numeric x-axis config with clean ticks
+function numericXAxis(maxVal, title, widthHint) {
+  const step = tickStep(maxVal, widthHint);
+  return {
+    type: "linear",
+    min: 0,
+    max: maxVal + 1,
+    title: { display: !!title, text: title || "" },
+    ticks: {
+      stepSize: step,
+      callback: function(v) { return Number.isInteger(v) ? v : null; },
+    },
+  };
+}
+
+// Convert size_dist map to [{x, y}] point array for Chart.js scatter/line
+function distToPoints(dist, startSize, maxSize) {
+  const pts = [];
+  for (let i = startSize; i <= maxSize; i++) {
+    pts.push({ x: i, y: dist[String(i)] || 0 });
+  }
+  return pts;
+}
+
+// Cumulative [{x, y}] — % of clusters with size >= x
+function cumulativePoints(dist, maxSize) {
+  const total = Object.values(dist).reduce((a, b) => a + b, 0);
+  if (total === 0) return [{ x: 1, y: 0 }];
+  const pts = [];
+  for (let i = 1; i <= maxSize; i++) {
+    let gte = 0;
+    for (const [k, v] of Object.entries(dist)) if (parseInt(k) >= i) gte += v;
+    pts.push({ x: i, y: +(gte / total * 100).toFixed(1) });
+  }
+  return pts;
+}
+
+function destroyCharts() {
+  for (const c of chartInstances) c.destroy();
+  chartInstances = [];
+}
+
+function render() {
+  destroyCharts();
+  const area = document.getElementById("chart-area");
+  area.innerHTML = "";
+  const selected = getSelected();
+  if (!selected.length) { showEmpty("No samples selected."); return; }
+
+  if (viewMode === "overlay") renderOverlay(area, selected);
+  else if (viewMode === "grid") renderGrid(area, selected);
+  else renderTable(area, selected);
+}
+
+function renderOverlay(area, samples) {
+  const showSingletons = document.getElementById("show-singletons").checked;
+  const maxSize = getMaxSize(samples, showSingletons);
+  const startSize = showSingletons ? 1 : 2;
+
+  // Cumulative curve
+  const cumDiv = document.createElement("div");
+  cumDiv.className = "chart-container";
+  cumDiv.innerHTML = '<h3>Cumulative: % of UMI clusters with size >= X</h3><canvas></canvas>';
+  area.appendChild(cumDiv);
+
+  const cumMaxSize = getMaxSize(samples, true);
+  chartInstances.push(new Chart(cumDiv.querySelector("canvas"), {
+    type: "scatter",
+    data: {
+      datasets: samples.map(s => ({
+        label: s.id,
+        data: cumulativePoints(s.size_dist, cumMaxSize),
+        borderColor: sampleColor(s, 1),
+        borderWidth: 1.5,
+        showLine: true,
+        fill: false,
+        tension: 0,
+        pointRadius: 0,
+        pointHitRadius: 8,
+      }))
+    },
+    options: {
+      responsive: true,
+      plugins: {
+        tooltip: { mode: "nearest", intersect: false },
+        legend: { display: samples.length <= 12, labels: { boxWidth: 12, font: { size: 11 } } },
+      },
+      scales: {
+        y: { min: 0, max: 100, title: { display: true, text: "% of clusters >= size" } },
+        x: numericXAxis(cumMaxSize, "Minimum cluster size", "full"),
+      }
+    }
+  }));
+
+  // Histogram
+  const histDiv = document.createElement("div");
+  histDiv.className = "chart-container";
+  histDiv.innerHTML = '<h3>Cluster size distribution</h3><canvas></canvas>';
+  area.appendChild(histDiv);
+
+  chartInstances.push(new Chart(histDiv.querySelector("canvas"), {
+    type: "scatter",
+    data: {
+      datasets: samples.map(s => ({
+        label: s.id,
+        data: distToPoints(s.size_dist, startSize, maxSize),
+        borderColor: sampleColor(s, 1),
+        backgroundColor: sampleColor(s, 0.3),
+        borderWidth: 1.5,
+        showLine: true,
+        fill: false,
+        stepped: true,
+        pointRadius: 0,
+        pointHitRadius: 8,
+      }))
+    },
+    options: {
+      responsive: true,
+      plugins: {
+        tooltip: { mode: "nearest", intersect: false },
+        legend: { display: samples.length <= 12, labels: { boxWidth: 12, font: { size: 11 } } },
+      },
+      scales: {
+        y: {
+          type: showSingletons ? "logarithmic" : "linear",
+          title: { display: true, text: "Number of clusters" },
+          beginAtZero: !showSingletons,
+        },
+        x: numericXAxis(maxSize, "Cluster size (reads per UMI)", "full"),
+      }
+    }
+  }));
+}
+
+function renderGrid(area, samples) {
+  const showSingletons = document.getElementById("show-singletons").checked;
+  const maxSize = getMaxSize(samples, showSingletons);
+  const startSize = showSingletons ? 1 : 2;
+
+  const wrap = document.createElement("div");
+  wrap.className = "grid-wrap";
+  area.appendChild(wrap);
+
+  const nCells = samples.length;
+  const step = tickStep(maxSize, nCells);
+
+  for (const s of samples) {
+    const cell = document.createElement("div");
+    cell.className = "grid-cell";
+    const short = s.rpi.replace(s.barcode + "_", "");
+    cell.innerHTML = `<h4>${s.barcode} / ${short}</h4><canvas></canvas>`;
+    wrap.appendChild(cell);
+
+    chartInstances.push(new Chart(cell.querySelector("canvas"), {
+      type: "scatter",
+      data: {
+        datasets: [{
+          data: distToPoints(s.size_dist, startSize, maxSize),
+          backgroundColor: sampleColor(s, 0.6),
+          borderColor: sampleColor(s, 1),
+          borderWidth: 1.5,
+          showLine: true,
+          fill: true,
+          stepped: true,
+          pointRadius: 0,
+        }]
+      },
+      options: {
+        responsive: true,
+        plugins: { legend: { display: false } },
+        scales: {
+          y: {
+            type: showSingletons ? "logarithmic" : "linear",
+            title: { display: false },
+            beginAtZero: !showSingletons,
+          },
+          x: {
+            type: "linear",
+            min: 0,
+            max: maxSize + 1,
+            ticks: { stepSize: step, font: { size: 10 }, callback: function(v) { return Number.isInteger(v) ? v : null; } },
+          },
+        }
+      }
+    }));
+  }
+}
+
+function renderTable(area, samples) {
+  const div = document.createElement("div");
+  div.className = "chart-container";
+  div.style.overflowX = "auto";
+
+  const cols = [
+    { key: "barcode", label: "Barcode", fmt: v => v },
+    { key: "rpi", label: "RPI", fmt: v => v },
+    { key: "total_reads", label: "Total reads", cls: "num", fmt: fmtNum },
+    { key: "umis_extracted", label: "UMIs extracted", cls: "num", fmt: fmtNum },
+    { key: "unique_umis", label: "Unique UMIs", cls: "num", fmt: fmtNum },
+    { key: "singleton_umis", label: "Singletons", cls: "num", fmt: fmtNum },
+    { key: "kept_bins", label: "Kept bins", cls: "num", fmt: fmtNum },
+    { key: "small_bins", label: "Small bins", cls: "num", fmt: fmtNum },
+    { key: "reads_in_kept_bins", label: "Reads in kept", cls: "num", fmt: fmtNum },
+    { key: "yield_pct", label: "Yield %", cls: "num", fmt: v => v.toFixed(1) + "%" },
+    { key: "mean_cluster_size", label: "Mean size", cls: "num", fmt: v => Number(v).toFixed(1) },
+    { key: "max_cluster_size", label: "Max size", cls: "num", fmt: fmtNum },
+    { key: "min_bin_size", label: "Min threshold", cls: "num", fmt: fmtNum },
+  ];
+
+  const rows = samples.map(s => {
+    const st = s.stats;
+    const totalReads = st.total_reads || 0;
+    const readsInKept = st.reads_in_kept_bins || 0;
+    return {
+      barcode: s.barcode,
+      rpi: s.rpi,
+      total_reads: totalReads,
+      umis_extracted: st.umis_extracted || 0,
+      unique_umis: st.unique_umis || 0,
+      singleton_umis: st.singleton_umis || 0,
+      kept_bins: st.kept_bins || 0,
+      small_bins: st.small_bins || 0,
+      reads_in_kept_bins: readsInKept,
+      yield_pct: totalReads > 0 ? (readsInKept / totalReads) * 100 : 0,
+      mean_cluster_size: st.mean_cluster_size || 0,
+      max_cluster_size: st.max_cluster_size || 0,
+      min_bin_size: st.min_bin_size || 0,
+      _sample: s,
+    };
+  });
+
+  let sortCol = "barcode", sortAsc = true;
+
+  function buildTable() {
+    rows.sort((a, b) => {
+      const va = a[sortCol], vb = b[sortCol];
+      const cmp = typeof va === "string" ? naturalSort(va, vb) : va - vb;
+      return sortAsc ? cmp : -cmp;
+    });
+
+    let html = '<table class="stats"><thead><tr>';
+    for (const c of cols) {
+      const arrow = sortCol === c.key ? (sortAsc ? " &#9650;" : " &#9660;") : "";
+      html += `<th data-col="${c.key}">${c.label}${arrow}</th>`;
+    }
+    html += "</tr></thead><tbody>";
+    for (const row of rows) {
+      html += "<tr>";
+      for (const c of cols) {
+        const v = row[c.key];
+        const cls = c.cls || "";
+        const low = (c.key === "kept_bins" && v < 10) || (c.key === "yield_pct" && v < 10) ? " low" : "";
+        html += `<td class="${cls}${low}">${c.fmt(v)}</td>`;
+      }
+      html += "</tr>";
+    }
+    html += "</tbody></table>";
+    div.innerHTML = html;
+
+    div.querySelectorAll("th").forEach(th => {
+      th.addEventListener("click", () => {
+        const col = th.dataset.col;
+        if (sortCol === col) sortAsc = !sortAsc; else { sortCol = col; sortAsc = true; }
+        buildTable();
+      });
+    });
+  }
+
+  buildTable();
+  area.appendChild(div);
+}
+
+// --- Helpers ---
+function fmtNum(n) { return Number(n).toLocaleString(); }
+
+function naturalSort(a, b) {
+  if (typeof a !== "string") return a - b;
+  const re = /(\d+)/g;
+  const pa = a.split(re), pb = b.split(re);
+  for (let i = 0; i < Math.min(pa.length, pb.length); i++) {
+    if (pa[i] !== pb[i]) {
+      const na = Number(pa[i]), nb = Number(pb[i]);
+      if (!isNaN(na) && !isNaN(nb)) return na - nb;
+      return pa[i] < pb[i] ? -1 : 1;
+    }
+  }
+  return pa.length - pb.length;
+}
+
+init();
+  </script>
+</body>
+</html>

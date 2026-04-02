@@ -30,6 +30,7 @@ const MIME = {
 
 const ROUTES = {
   "/igv/": path.join(WORKSPACE, "igv_viewer/node_modules/igv/dist/"),
+  "/chartjs/": path.join(WORKSPACE, "igv_viewer/node_modules/chart.js/dist/"),
   "/ref/": path.join(WORKSPACE, "resources/references/"),
   "/data/": WORKSPACE + "/",
 };
@@ -213,6 +214,57 @@ function discoverDatasets() {
   return results;
 }
 
+// ---------------------------------------------------------------------------
+// Discover UMI bin size statistics from step 04 output.
+// Reads TSV files from read_binning/ under each barcode/RPI directory.
+// ---------------------------------------------------------------------------
+function parseTsv(filePath) {
+  try {
+    const lines = fs.readFileSync(filePath, "utf8").trim().split("\n");
+    if (lines.length < 2) return [];
+    const headers = lines[0].split("\t");
+    return lines.slice(1).map(line => {
+      const vals = line.split("\t");
+      const row = {};
+      headers.forEach((h, i) => row[h] = vals[i]);
+      return row;
+    });
+  } catch { return []; }
+}
+
+function discoverUmiStats(outdir) {
+  const umiDir = path.join(outdir, "04_umi");
+  const result = { samples: [] };
+  if (!isDirSafe(umiDir)) return result;
+
+  for (const bc of readdirSafe(umiDir)) {
+    const bcDir = path.join(umiDir, bc);
+    if (!isDirSafe(bcDir)) continue;
+    for (const rpi of readdirSafe(bcDir)) {
+      const rpiDir = path.join(bcDir, rpi);
+      if (!isDirSafe(rpiDir)) continue;
+      const rbDir = path.join(rpiDir, "read_binning");
+      if (!isDirSafe(rbDir)) continue;
+
+      const sample = { id: bc + "/" + rpi, barcode: bc, rpi, stats: {}, size_dist: {} };
+
+      // Parse umi_cluster_stats.tsv (stage, metric, value)
+      for (const row of parseTsv(path.join(rbDir, "umi_cluster_stats.tsv"))) {
+        const v = row.value;
+        sample.stats[row.metric] = isNaN(Number(v)) ? v : Number(v);
+      }
+
+      // Parse umi_cluster_size_dist.tsv (cluster_size, count)
+      for (const row of parseTsv(path.join(rbDir, "umi_cluster_size_dist.tsv"))) {
+        sample.size_dist[row.cluster_size] = Number(row.count);
+      }
+
+      result.samples.push(sample);
+    }
+  }
+  return result;
+}
+
 // Resolve a track URL (e.g. /data/foo or /extdata/bar) to an absolute filesystem path.
 function resolveTrackPath(url) {
   if (url.startsWith("/extdata/") && DATA_DIR) {
@@ -328,6 +380,9 @@ function discoverReferences() {
 function resolvePath(urlPath) {
   if (urlPath === "/" || urlPath === "/index.html") {
     return path.join(WORKSPACE, "igv_viewer/index.html");
+  }
+  if (urlPath === "/umi" || urlPath === "/umi.html") {
+    return path.join(WORKSPACE, "igv_viewer/umi.html");
   }
   for (const [prefix, base] of Object.entries(ROUTES)) {
     if (urlPath.startsWith(prefix)) {
@@ -479,6 +534,23 @@ const server = http.createServer((req, res) => {
       res.writeHead(200, { "Content-Type": "text/plain; charset=utf-8" });
       res.end(text);
     }, pileupDeps);
+    return;
+  }
+
+  // API: UMI bin size statistics for cross-sample comparison.
+  // Reads TSV files from step 04 output (read_binning/).
+  if (urlPath === "/api/umi-stats") {
+    const params = new URL(req.url, `http://${req.headers.host}`).searchParams;
+    const name = params.get("name");
+    if (!name) { res.writeHead(400); res.end("Missing ?name= parameter"); return; }
+    const datasets = discoverDatasets();
+    const dir = datasets[name];
+    if (!dir) { res.writeHead(404); res.end("Dataset not found"); return; }
+    const data = discoverUmiStats(dir);
+    data.dataset = name;
+    const json = JSON.stringify(data, null, 2);
+    res.writeHead(200, { "Content-Type": "application/json", "Content-Length": Buffer.byteLength(json) });
+    res.end(json);
     return;
   }
 

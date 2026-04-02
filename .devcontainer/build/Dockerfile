@@ -169,6 +169,17 @@ RUN curl -fsSL https://deb.nodesource.com/setup_20.x | bash - \
     && apt-get install -y --no-install-recommends nodejs \
     && apt-get clean && rm -rf /var/lib/apt/lists/*
 
+# ============================================================
+# Chromium libs (for Puppeteer headless screenshots / dev testing)
+# Puppeteer downloads its own Chrome; we just need the shared libs.
+# ============================================================
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    fonts-liberation \
+    libatk-bridge2.0-0 libatk1.0-0 libcups2 libdbus-1-3 \
+    libdrm2 libgbm1 libnspr4 libnss3 libxcomposite1 \
+    libxdamage1 libxrandr2 xdg-utils \
+    && apt-get clean && rm -rf /var/lib/apt/lists/*
+
 # Data mount points for bind-mounted input/output
 RUN mkdir -p /data/input /data/output && chmod 777 /data/output
 

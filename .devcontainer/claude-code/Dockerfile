@@ -12,6 +12,7 @@ ENV TZ="${TZ:-America/Los_Angeles}"
 USER root
 
 # Firewall dependencies + dev tools not in the base image
+# (Puppeteer browser libs are already in the base image)
 RUN apt-get update && apt-get install -y --no-install-recommends \
     iptables \
     ipset \
@@ -23,10 +24,6 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     vim \
     man-db \
     bsdmainutils \
-    # Puppeteer browser libs (IGV viewer screenshots)
-    libnss3 libnspr4 libatk1.0-0 libatk-bridge2.0-0 libcups2 libdrm2 \
-    libxkbcommon0 libxcomposite1 libxdamage1 libxrandr2 libgbm1 \
-    libpango-1.0-0 libcairo2 libasound2 libxshmfence1 \
     && apt-get clean && rm -rf /var/lib/apt/lists/*
 
 # git-delta for better diffs
@@ -52,6 +49,13 @@ COPY .devcontainer/claude-code/init-firewall.sh .devcontainer/claude-code/start-
 RUN chmod +x /usr/local/bin/init-firewall.sh /usr/local/bin/start-firewall.sh && \
     echo "vscode ALL=(root) NOPASSWD: /usr/local/bin/init-firewall.sh, /usr/local/bin/start-firewall.sh" > /etc/sudoers.d/vscode-firewall && \
     chmod 0440 /etc/sudoers.d/vscode-firewall
+
+# Puppeteer Chrome (dev-only — headless screenshots for UI testing).
+# Runs as root so we can write to /opt; shared libs are in the base image.
+RUN cd /workspace/igv_viewer \
+    && PUPPETEER_CACHE_DIR=/opt/puppeteer-cache npx puppeteer browsers install chrome \
+    && chmod -R a+rX /opt/puppeteer-cache
+ENV PUPPETEER_CACHE_DIR=/opt/puppeteer-cache
 
 # ============================================================
 # User-level setup (vscode — matches base image user)

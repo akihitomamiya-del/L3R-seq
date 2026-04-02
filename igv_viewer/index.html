@@ -63,6 +63,7 @@
     <label for="show-all" style="margin-left: 12px; font-size: 14px; cursor: pointer;">
       <input type="checkbox" id="show-all" style="cursor: pointer;"> Show all reads
     </label>
+    <a href="/umi" id="umi-link" style="color: #aaa; text-decoration: none; font-size: 14px; margin-left: auto;">UMI Analysis</a>
   </header>
   <div class="info" id="info-bar">
     <div id="dataset-desc" style="display:none; margin-bottom: 6px; color: #333; font-weight: 500; white-space: pre-line;"></div>
@@ -225,7 +226,11 @@
       buildDropdown(sel, names);
       sel.insertAdjacentHTML("afterbegin", '<option value="">-- select dataset --</option>');
       sel.value = "";
-      sel.onchange = () => loadDataset(sel.value);
+      sel.onchange = () => {
+        loadDataset(sel.value);
+        const umiLink = document.getElementById("umi-link");
+        if (umiLink) umiLink.href = sel.value ? "/umi?name=" + encodeURIComponent(sel.value) : "/umi";
+      };
 
       /* Populate reference selector */
       const refSel = document.getElementById("ref-select");

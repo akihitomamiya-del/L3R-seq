@@ -4,7 +4,7 @@
     "dockerfile": "Dockerfile",
     "context": "../..",
     "args": {
-      "TZ": "${localEnv:TZ:America/Los_Angeles}",
+      "TZ": "${localEnv:TZ:UTC}",
       "CLAUDE_CODE_VERSION": "latest",
       "GIT_DELTA_VERSION": "0.18.2",
       "ZSH_IN_DOCKER_VERSION": "1.2.0"
@@ -49,7 +49,7 @@
   "portsAttributes": {
     "8080": { "label": "IGV Viewer", "onAutoForward": "notify" }
   },
-  "postCreateCommand": "cd /workspace/igv_viewer && npm install --silent",
+  "postCreateCommand": "mkdir -p ~/.claude && cp /workspace/.devcontainer/claude-code/CLAUDE.md ~/.claude/CLAUDE.md; cd /workspace/igv_viewer && npm install --silent",
   "postStartCommand": {
     "firewall": "sudo /usr/local/bin/start-firewall.sh",
     "igv-viewer": "node /workspace/igv_viewer/server.js > /tmp/igv-server.log 2>&1 &"
