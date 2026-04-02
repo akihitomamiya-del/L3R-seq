@@ -125,11 +125,11 @@ function discoverTracks(outdir) {
         if (!isDirSafe(rpiDir)) continue;
         const scanDir = step.subdir ? path.join(rpiDir, step.subdir) : rpiDir;
         if (!isDirSafe(scanDir)) continue;
-        // If step specifies a single file, only look for that; otherwise *.sort.bam
+        // If step specifies a file suffix, find matching files; otherwise *.sort.bam
         // Exclude chimeric BAM from the default scan (it has its own entry)
         const candidates = step.file
-          ? [step.file]
-          : readdirSafe(scanDir).filter(f => f.endsWith(".sort.bam") && !f.startsWith("chimeric_"));
+          ? readdirSafe(scanDir).filter(f => f.endsWith(step.file))
+          : readdirSafe(scanDir).filter(f => f.endsWith(".sort.bam") && !f.includes("chimeric_"));
         for (const f of candidates) {
           const bamPath = path.join(scanDir, f);
           if (!fs.existsSync(bamPath)) continue;

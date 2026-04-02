@@ -185,9 +185,9 @@ run_step_10() {
             local rpi_name
             rpi_name=$(basename "$rpi_dir")
 
-            local corrected_sam="$rpi_dir/corrected.sam"
+            local corrected_sam="$rpi_dir/${rpi_name}_corrected.sam"
             if [ ! -f "$corrected_sam" ]; then
-                echo "  WARNING: No corrected.sam in $bname/$rpi_name, skipping (run step 09 first)"
+                echo "  WARNING: No ${rpi_name}_corrected.sam in $bname/$rpi_name, skipping (run step 09 first)"
                 continue
             fi
 
@@ -232,15 +232,14 @@ run_step_10() {
             echo "    $_bname/$_rname: $_nrows rows exported"
             _summary_append "$output_dir" "$_bname" "$_rname" "10" "csv_rows" "$_nrows" 2>/dev/null || true
         fi
-        local _sam="$_cdir/corrected.sam"
+        local _rpi_prefix="${_rname}_"
+        local _sam="$_cdir/${_rpi_prefix}corrected.sam"
         if [ -f "$_sam" ]; then
             local _corrected _abnormal _ec_sum
             _corrected=$(grep -cv '^@' "$_sam")
             _chimeric=0
-            if [ -f "$_cdir/chimeric_rightclip.sam" ]; then
-                _chimeric=$(grep -cv '^@' "$_cdir/chimeric_rightclip.sam" 2>/dev/null) || _chimeric=0
-            elif [ -f "$_cdir/abnormal_rightclip.sam" ]; then
-                _chimeric=$(grep -cv '^@' "$_cdir/abnormal_rightclip.sam" 2>/dev/null) || _chimeric=0
+            if [ -f "$_cdir/${_rpi_prefix}chimeric_rightclip.sam" ]; then
+                _chimeric=$(grep -cv '^@' "$_cdir/${_rpi_prefix}chimeric_rightclip.sam" 2>/dev/null) || _chimeric=0
             fi
             _ec_sum=$(grep -v '^@' "$_sam" | grep -oE 'EC:i:[0-9]+' | sed 's/EC:i://' | awk '{s+=$1} END{print s+0}')
             _summary_append "$output_dir" "$_bname" "$_rname" "09" "corrected_reads" "$_corrected" 2>/dev/null || true

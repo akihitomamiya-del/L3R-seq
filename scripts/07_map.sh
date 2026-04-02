@@ -68,40 +68,41 @@ run_step_07() {
             local rpi_name
             rpi_name=$(basename "$rpi_dir")
 
-            local input_fa="$rpi_dir/extracted_trimmed.fa"
+            local input_fa="$rpi_dir/${rpi_name}_extracted_trimmed.fa"
             if [ ! -f "$input_fa" ]; then
-                echo "  WARNING: No extracted_trimmed.fa in $bname/$rpi_name, skipping (run step 06 first)"
+                echo "  WARNING: No ${rpi_name}_extracted_trimmed.fa in $bname/$rpi_name, skipping (run step 06 first)"
                 continue
             fi
 
             echo "  Processing $bname / $rpi_name ..."
             mkdir -p "$output_dir/07_map/$bname/$rpi_name"
             local odir="$output_dir/07_map/$bname/$rpi_name"
+            local prefix="${rpi_name}_"
 
             # Align with minimap2
             if ! minimap2 -ax "$preset" "$ref_file" "$input_fa" \
-                > "$odir/aligned.sam" \
-                2> "$odir/aligned.minimap2.log"; then
-                echo "  ERROR: minimap2 failed for $bname/$rpi_name (see $odir/aligned.minimap2.log)" >&2
+                > "$odir/${prefix}aligned.sam" \
+                2> "$odir/${prefix}aligned.minimap2.log"; then
+                echo "  ERROR: minimap2 failed for $bname/$rpi_name (see $odir/${prefix}aligned.minimap2.log)" >&2
                 return 1
             fi
 
             # Flagstat on all reads
-            samtools flagstat "$odir/aligned.sam" > "$odir/aligned.flagstat.txt"
+            samtools flagstat "$odir/${prefix}aligned.sam" > "$odir/${prefix}aligned.flagstat.txt"
 
             # Convert to sorted BAM + index (all alignments)
-            samtools view -bS "$odir/aligned.sam" > "$odir/aligned.bam"
-            samtools sort "$odir/aligned.bam" > "$odir/aligned.sort.bam"
-            samtools index "$odir/aligned.sort.bam"
+            samtools view -bS "$odir/${prefix}aligned.sam" > "$odir/${prefix}aligned.bam"
+            samtools sort "$odir/${prefix}aligned.bam" > "$odir/${prefix}aligned.sort.bam"
+            samtools index "$odir/${prefix}aligned.sort.bam"
 
             # Primary-only sorted BAM for viewer (excludes secondary 0x100 + supplementary 0x800)
-            samtools view -bS -F 0x900 "$odir/aligned.sam" > "$odir/primary.bam"
-            samtools sort "$odir/primary.bam" > "$odir/primary.sort.bam"
-            samtools index "$odir/primary.sort.bam"
+            samtools view -bS -F 0x900 "$odir/${prefix}aligned.sam" > "$odir/${prefix}primary.bam"
+            samtools sort "$odir/${prefix}primary.bam" > "$odir/${prefix}primary.sort.bam"
+            samtools index "$odir/${prefix}primary.sort.bam"
 
             # Extract mapped-only reads
-            samtools view -h -F 4 "$odir/aligned.sam" > "$odir/mapped_only.sam"
-            samtools flagstat "$odir/mapped_only.sam" > "$odir/mapped_only.flagstat.txt"
+            samtools view -h -F 4 "$odir/${prefix}aligned.sam" > "$odir/${prefix}mapped_only.sam"
+            samtools flagstat "$odir/${prefix}mapped_only.sam" > "$odir/${prefix}mapped_only.flagstat.txt"
 
         done
     done
@@ -112,7 +113,8 @@ run_step_07() {
         local _bname _rname
         _bname=$(basename "$(dirname "$_mdir")")
         _rname=$(basename "$_mdir")
-        local _fs="$_mdir/mapped_only.flagstat.txt"
+        local _rpi_prefix="${_rname}_"
+        local _fs="$_mdir/${_rpi_prefix}mapped_only.flagstat.txt"
         if [ -f "$_fs" ]; then
             local _mapped
             _mapped=$(head -1 "$_fs" | awk '{print $1}')

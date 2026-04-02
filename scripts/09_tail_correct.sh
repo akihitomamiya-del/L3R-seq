@@ -218,15 +218,16 @@ run_step_09() {
             local rpi_name
             rpi_name=$(basename "$rpi_dir")
 
-            local input_sam="$rpi_dir/mapped_only.sam"
+            local input_sam="$rpi_dir/${rpi_name}_mapped_only.sam"
             if [ ! -f "$input_sam" ]; then
-                echo "  WARNING: No mapped_only.sam in $bname/$rpi_name, skipping (run step 07 first)"
+                echo "  WARNING: No ${rpi_name}_mapped_only.sam in $bname/$rpi_name, skipping (run step 07 first)"
                 continue
             fi
 
             echo "  Processing $bname / $rpi_name ..."
             mkdir -p "$output_dir/09_correct/$bname/$rpi_name"
             local odir="$output_dir/09_correct/$bname/$rpi_name"
+            local prefix="${rpi_name}_"
             local tmp_dir="$odir/Temp"
             mkdir -p "$tmp_dir"
 
@@ -254,15 +255,15 @@ run_step_09() {
             echo "    $nreads reads to process"
 
             if [ "$nreads" -eq 0 ]; then
-                samtools view -H "$input_sam" > "$odir/corrected.sam" \
+                samtools view -H "$input_sam" > "$odir/${prefix}corrected.sam" \
                     || { echo "ERROR: samtools view failed for $bname/$rpi_name" >&2; return 1; }
-                samtools view -H "$input_sam" > "$odir/chimeric_rightclip.sam" \
+                samtools view -H "$input_sam" > "$odir/${prefix}chimeric_rightclip.sam" \
                     || { echo "ERROR: samtools view failed for $bname/$rpi_name" >&2; return 1; }
-                samtools view -bS "$odir/corrected.sam" > "$odir/corrected.bam" \
+                samtools view -bS "$odir/${prefix}corrected.sam" > "$odir/${prefix}corrected.bam" \
                     || { echo "ERROR: samtools view -bS failed for $bname/$rpi_name" >&2; return 1; }
-                samtools sort "$odir/corrected.bam" > "$odir/corrected.sort.bam" \
+                samtools sort "$odir/${prefix}corrected.bam" > "$odir/${prefix}corrected.sort.bam" \
                     || { echo "ERROR: samtools sort failed for $bname/$rpi_name" >&2; return 1; }
-                samtools index "$odir/corrected.sort.bam" \
+                samtools index "$odir/${prefix}corrected.sort.bam" \
                     || { echo "ERROR: samtools index failed for $bname/$rpi_name" >&2; return 1; }
                 rm -rf "$tmp_dir"
                 continue
@@ -342,8 +343,8 @@ run_step_09() {
             fi
 
             # Initialize output SAM files with headers
-            samtools view -H "$input_sam" > "$odir/corrected.sam"
-            samtools view -H "$input_sam" > "$odir/chimeric_rightclip.sam"
+            samtools view -H "$input_sam" > "$odir/${prefix}corrected.sam"
+            samtools view -H "$input_sam" > "$odir/${prefix}chimeric_rightclip.sam"
 
             # =========================================================
             # Phase 3: Process reads (sequential or parallel)
@@ -388,38 +389,38 @@ run_step_09() {
                 local read_status
                 read_status=$(cat "$tmp_dir/result_${i}.status" 2>/dev/null || echo "MISSING")
                 if [ "$read_status" = "CORRECTED" ]; then
-                    cat "$tmp_dir/result_${i}.line" >> "$odir/corrected.sam"
+                    cat "$tmp_dir/result_${i}.line" >> "$odir/${prefix}corrected.sam"
                 elif [ "$read_status" = "CHIMERIC" ]; then
-                    cat "$tmp_dir/result_${i}.line" >> "$odir/chimeric_rightclip.sam"
+                    cat "$tmp_dir/result_${i}.line" >> "$odir/${prefix}chimeric_rightclip.sam"
                 else
                     echo "    WARNING: Missing result for read $i"
                 fi
             done
 
             # Convert corrected SAM to sorted BAM
-            samtools view -bS "$odir/corrected.sam" > "$odir/corrected.bam" \
+            samtools view -bS "$odir/${prefix}corrected.sam" > "$odir/${prefix}corrected.bam" \
                 || { echo "ERROR: samtools view -bS failed for $bname/$rpi_name" >&2; return 1; }
-            samtools sort "$odir/corrected.bam" > "$odir/corrected.sort.bam" \
+            samtools sort "$odir/${prefix}corrected.bam" > "$odir/${prefix}corrected.sort.bam" \
                 || { echo "ERROR: samtools sort failed for $bname/$rpi_name" >&2; return 1; }
-            samtools index "$odir/corrected.sort.bam" \
+            samtools index "$odir/${prefix}corrected.sort.bam" \
                 || { echo "ERROR: samtools index failed for $bname/$rpi_name" >&2; return 1; }
 
             # Convert chimeric SAM to sorted BAM (for IGV viewer)
-            if [ -s "$odir/chimeric_rightclip.sam" ] && grep -qv '^@' "$odir/chimeric_rightclip.sam"; then
-                samtools view -bS "$odir/chimeric_rightclip.sam" \
-                    | samtools sort -o "$odir/chimeric_rightclip.sort.bam"
-                samtools index "$odir/chimeric_rightclip.sort.bam"
+            if [ -s "$odir/${prefix}chimeric_rightclip.sam" ] && grep -qv '^@' "$odir/${prefix}chimeric_rightclip.sam"; then
+                samtools view -bS "$odir/${prefix}chimeric_rightclip.sam" \
+                    | samtools sort -o "$odir/${prefix}chimeric_rightclip.sort.bam"
+                samtools index "$odir/${prefix}chimeric_rightclip.sort.bam"
             fi
 
             # Preserve BLAST results before cleanup
             if [ -s "$tmp_dir/blast_batch.fa" ]; then
-                cp "$tmp_dir/blast_batch.fa" "$odir/blast_rightclip_queries.fa"
+                cp "$tmp_dir/blast_batch.fa" "$odir/${prefix}blast_rightclip_queries.fa"
             fi
             if [ -s "$tmp_dir/batch_blast_chrm_raw.txt" ]; then
-                cp "$tmp_dir/batch_blast_chrm_raw.txt" "$odir/blast_chrm_results.txt"
+                cp "$tmp_dir/batch_blast_chrm_raw.txt" "$odir/${prefix}blast_chrm_results.txt"
             fi
             if [ -s "$tmp_dir/batch_blast_cdna.txt" ]; then
-                cp "$tmp_dir/batch_blast_cdna.txt" "$odir/blast_cdna_results.txt"
+                cp "$tmp_dir/batch_blast_cdna.txt" "$odir/${prefix}blast_cdna_results.txt"
             fi
 
             # Clean up temp directory and reset trap

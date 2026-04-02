@@ -141,7 +141,8 @@ def main():
     # Write SAM file
     sam_dir = os.path.join(OUT_DIR, "07_map", "slam", "slam_RPI_5")
     os.makedirs(sam_dir, exist_ok=True)
-    sam_path = os.path.join(sam_dir, "mapped_only.sam")
+    prefix = "slam_RPI_5_"
+    sam_path = os.path.join(sam_dir, prefix + "mapped_only.sam")
 
     with open(sam_path, "w") as f:
         f.write(f"@HD\tVN:1.6\tSO:coordinate\n")
@@ -160,8 +161,8 @@ def main():
     if not samtools:
         print("WARNING: samtools not found — BAM files not created")
     else:
-        bam = os.path.join(sam_dir, "aligned.bam")
-        sort_bam = os.path.join(sam_dir, "aligned.sort.bam")
+        bam = os.path.join(sam_dir, prefix + "aligned.bam")
+        sort_bam = os.path.join(sam_dir, prefix + "aligned.sort.bam")
         subprocess.run([samtools, "view", "-bS", sam_path, "-o", bam],
                        check=True, capture_output=True)
         subprocess.run([samtools, "sort", bam, "-o", sort_bam],

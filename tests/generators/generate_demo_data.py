@@ -100,9 +100,10 @@ def main():
             f.write(f"@{name}\n{seq}\n+\n{qual}\n")
 
     # === Map with minimap2 → sorted BAM ===
-    sam_path = os.path.join(map_dir, "mapped_only.sam")
-    bam_path = os.path.join(map_dir, "aligned.bam")
-    sort_path = os.path.join(map_dir, "aligned.sort.bam")
+    prefix = RPI + "_"
+    sam_path = os.path.join(map_dir, prefix + "mapped_only.sam")
+    bam_path = os.path.join(map_dir, prefix + "aligned.bam")
+    sort_path = os.path.join(map_dir, prefix + "aligned.sort.bam")
 
     # minimap2 -a produces SAM; pipe through samtools to get sorted BAM
     subprocess.run(

@@ -316,7 +316,8 @@ def main():
     # ==================================================================
     sam_dir = os.path.join(OUT_DIR, "07_map", "barcode_blast", "barcode_blast_RPI_1")
     os.makedirs(sam_dir, exist_ok=True)
-    sam_path = os.path.join(sam_dir, "mapped_only.sam")
+    prefix = "barcode_blast_RPI_1_"
+    sam_path = os.path.join(sam_dir, prefix + "mapped_only.sam")
 
     with open(sam_path, "w") as f:
         # SAM header (all @-lines must precede alignment records)
@@ -345,8 +346,8 @@ def main():
             f.write(f"{qname}\t0\t{REF_NAME}\t{pos}\t60\t{cigar}\t*\t0\t0\t{seq}\t*\n")
 
     # Create sorted BAM + index
-    bam_path = os.path.join(sam_dir, "aligned.bam")
-    sort_path = os.path.join(sam_dir, "aligned.sort.bam")
+    bam_path = os.path.join(sam_dir, prefix + "aligned.bam")
+    sort_path = os.path.join(sam_dir, prefix + "aligned.sort.bam")
     subprocess.run(f"samtools view -bS {sam_path} > {bam_path}",
                    shell=True, capture_output=True)
     subprocess.run(f"samtools sort {bam_path} > {sort_path}",

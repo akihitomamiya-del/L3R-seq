@@ -221,8 +221,8 @@ if [ -n "$READS_FILE" ]; then
         # Starting at step 7 or earlier from extracted reads
         EXTRACT_DIR="$OUTDIR/06_extract/$BARCODE/${BARCODE}_${RPI}"
         mkdir -p "$EXTRACT_DIR"
-        ln -sf "$ABS_READS" "$EXTRACT_DIR/extracted_trimmed.fa"
-        echo "  → Linked as 06_extract/$BARCODE/${BARCODE}_${RPI}/extracted_trimmed.fa"
+        ln -sf "$ABS_READS" "$EXTRACT_DIR/${BARCODE}_${RPI}_extracted_trimmed.fa"
+        echo "  → Linked as 06_extract/$BARCODE/${BARCODE}_${RPI}/${BARCODE}_${RPI}_extracted_trimmed.fa"
         # Adjust start to 7 minimum (can't run step 6 from a symlink)
         if [ "$START_AT" -lt 7 ]; then
             echo "  → Adjusting --start-at to 7 (reads already extracted)"
@@ -232,8 +232,8 @@ if [ -n "$READS_FILE" ]; then
         # Starting at step 9 from pre-mapped reads
         MAP_DIR="$OUTDIR/07_map/$BARCODE/${BARCODE}_${RPI}"
         mkdir -p "$MAP_DIR"
-        ln -sf "$ABS_READS" "$MAP_DIR/mapped_only.sam"
-        echo "  → Linked as 07_map/$BARCODE/${BARCODE}_${RPI}/mapped_only.sam"
+        ln -sf "$ABS_READS" "$MAP_DIR/${BARCODE}_${RPI}_mapped_only.sam"
+        echo "  → Linked as 07_map/$BARCODE/${BARCODE}_${RPI}/${BARCODE}_${RPI}_mapped_only.sam"
     fi
 
     # Create empty variant file so step 09 doesn't complain
@@ -309,16 +309,16 @@ for bc_dir in "$OUTDIR"/09_correct/*/; do
         echo "  --- $bc / $rpi ---"
 
         # Corrected SAM exists
-        SAM="$rpi_dir/corrected.sam"
+        SAM="$rpi_dir/${rpi}_corrected.sam"
         if [ -f "$SAM" ]; then
-            pass "corrected.sam exists"
+            pass "${rpi}_corrected.sam exists"
         else
-            fail "corrected.sam missing"
+            fail "${rpi}_corrected.sam missing"
             continue
         fi
 
         # Sorted BAM + index exist
-        if [ -f "$rpi_dir/corrected.sort.bam" ] && [ -f "$rpi_dir/corrected.sort.bam.bai" ]; then
+        if [ -f "$rpi_dir/${rpi}_corrected.sort.bam" ] && [ -f "$rpi_dir/${rpi}_corrected.sort.bam.bai" ]; then
             pass "Sorted BAM + index exist"
         else
             fail "Missing sorted BAM or index"
@@ -380,7 +380,7 @@ for bc_dir in "$OUTDIR"/09_correct/*/; do
 
         # BLAST outputs (only when --blast-db provided)
         if [ -n "$BLAST_DB" ]; then
-            CHIM_SAM="$rpi_dir/chimeric_rightclip.sam"
+            CHIM_SAM="$rpi_dir/${rpi}_chimeric_rightclip.sam"
             if [ -f "$CHIM_SAM" ]; then
                 CHIM_COUNT=$(grep -cv '^@' "$CHIM_SAM" 2>/dev/null || echo 0)
                 echo "    Chimeric reads removed: $CHIM_COUNT"

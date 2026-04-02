@@ -32,9 +32,9 @@ run_discover_introns() {
             local rpi_name
             rpi_name=$(basename "$rpi_dir")
 
-            local input_sam="$rpi_dir/mapped_only.sam"
+            local input_sam="$rpi_dir/${rpi_name}_mapped_only.sam"
             if [ ! -f "$input_sam" ]; then
-                echo "  WARNING: No mapped_only.sam in $bname/$rpi_name, skipping (run step 07 first)"
+                echo "  WARNING: No ${rpi_name}_mapped_only.sam in $bname/$rpi_name, skipping (run step 07 first)"
                 continue
             fi
 

@@ -365,15 +365,15 @@ for bc in $TEST2_BARCODES; do
         check_exact "Step 05 consensus seqs" "$got_cons" "$got_bins"
 
         # Step 06: extracted sequence count (≥ final reads)
-        got_extracted=$(count_fasta_seqs "$OUT/06_extract/$bc/$rpi/extracted_trimmed.fa")
+        got_extracted=$(count_fasta_seqs "$OUT/06_extract/$bc/$rpi/${rpi}_extracted_trimmed.fa")
         check_exact "Step 06 extracted seqs" "$got_extracted" "$expected_final"
 
         # Step 07: mapped reads (exact match with final)
-        got_mapped=$(count_sam_reads "$OUT/07_map/$bc/$rpi/mapped_only.sam")
+        got_mapped=$(count_sam_reads "$OUT/07_map/$bc/$rpi/${rpi}_mapped_only.sam")
         check_exact "Step 07 mapped reads" "$got_mapped" "$expected_final"
 
         # Step 09: EC total (tolerant)
-        got_ec=$(sum_ec_tags "$OUT/09_correct/$bc/$rpi/corrected.sam")
+        got_ec=$(sum_ec_tags "$OUT/09_correct/$bc/$rpi/${rpi}_corrected.sam")
         ec_col=$(head -1 "$EXPECTED_DIR/csv_CT/${bc}_${rpi}.csv" | tr ',' '\n' | grep -n 'editing_count' | cut -d: -f1)
         expected_ec=0
         if [ -n "$ec_col" ]; then
@@ -386,11 +386,11 @@ for bc in $TEST2_BARCODES; do
         fi
 
         # Step 09: NC tag present on all reads
-        nc_count=$(grep -v '^@' "$OUT/09_correct/$bc/$rpi/corrected.sam" 2>/dev/null | grep -c 'NC:i:' || true)
+        nc_count=$(grep -v '^@' "$OUT/09_correct/$bc/$rpi/${rpi}_corrected.sam" 2>/dev/null | grep -c 'NC:i:' || true)
         check_exact "Step 09 NC tag present" "$nc_count" "$got_mapped"
 
         # Step 09: no SC tag when --count-pattern not used
-        sc_count=$(grep -v '^@' "$OUT/09_correct/$bc/$rpi/corrected.sam" 2>/dev/null | grep -c 'SC:i:' || true)
+        sc_count=$(grep -v '^@' "$OUT/09_correct/$bc/$rpi/${rpi}_corrected.sam" 2>/dev/null | grep -c 'SC:i:' || true)
         check_exact "Step 09 no SC tag (no count-pattern)" "$sc_count" "0"
 
         # Step 10: CSV row count (exact match)
@@ -513,7 +513,7 @@ if [ "$QUICK" -eq 0 ]; then
             expected_final_ctag=$(count_csv_rows "$EXPECTED_DIR/csv_CTAG/${bc}_${rpi}.csv")
 
             # EC total under dual pattern
-            got_ec_ctag=$(sum_ec_tags "$OUT_CTAG/09_correct/$bc/$rpi/corrected.sam")
+            got_ec_ctag=$(sum_ec_tags "$OUT_CTAG/09_correct/$bc/$rpi/${rpi}_corrected.sam")
             ec_col_ctag=$(head -1 "$EXPECTED_DIR/csv_CTAG/${bc}_${rpi}.csv" | tr ',' '\n' | grep -n 'editing_count' | cut -d: -f1)
             expected_ec_ctag=0
             if [ -n "$ec_col_ctag" ]; then
@@ -610,8 +610,8 @@ if [ -n "$LARGEST_BIN" ] && [ "$MAX_READS" -gt 0 ]; then
 
     RAW_COUNT=$(samtools view -c "$RAW_DIR/raw_reads.sort.bam" 2>/dev/null)
     CONS_COUNT=$(samtools view -c "$CONS_OUT_DIR/consensus.sort.bam" 2>/dev/null)
-    WALK_MAP=$(samtools view -c "$DEMO_DIR/07_map/demo/demo_demo_RPI_1/aligned.sort.bam" 2>/dev/null)
-    WALK_COR=$(samtools view -c "$DEMO_DIR/09_correct/demo/demo_demo_RPI_1/corrected.sort.bam" 2>/dev/null)
+    WALK_MAP=$(samtools view -c "$DEMO_DIR/07_map/demo/demo_demo_RPI_1/demo_demo_RPI_1_aligned.sort.bam" 2>/dev/null)
+    WALK_COR=$(samtools view -c "$DEMO_DIR/09_correct/demo/demo_demo_RPI_1/demo_demo_RPI_1_corrected.sort.bam" 2>/dev/null)
     echo "  Demo viewer: raw_bin=$RAW_COUNT reads ($BIN_NAME), consensus=$CONS_COUNT seq, walk=$WALK_MAP→$WALK_COR reads"
 
     conda deactivate 2>/dev/null
@@ -689,7 +689,7 @@ EOF
     --start-at 9 --stop-at 10 \
     --threads 4 > "$OUTPUT_DIR/test4b.log" 2>&1
 
-SLAM_SAM="$SLAM_OUT/09_correct/slam/slam_RPI_5/corrected.sam"
+SLAM_SAM="$SLAM_OUT/09_correct/slam/slam_RPI_5/slam_RPI_5_corrected.sam"
 SLAM_CSV="$SLAM_OUT/10_csv/slam_slam_RPI_5.csv"
 
 # Read count
@@ -757,7 +757,7 @@ EOF
     --start-at 9 --stop-at 10 \
     --threads 4 > "$OUTPUT_DIR/test5.log" 2>&1
 
-SPLICE_SAM="$OUTPUT_DIR/pipeline_splice/09_correct/barcode_splice/barcode_splice_RPI_1/corrected.sam"
+SPLICE_SAM="$OUTPUT_DIR/pipeline_splice/09_correct/barcode_splice/barcode_splice_RPI_1/barcode_splice_RPI_1_corrected.sam"
 
 # SJ tags should be present on all reads
 sj_count=$(grep -v '^@' "$SPLICE_SAM" | grep -c 'SJ:Z:') || sj_count=0
@@ -845,8 +845,8 @@ EOF
     --start-at 9 --stop-at 10 \
     --threads 4 > "$OUTPUT_DIR/test6.log" 2>&1
 
-BLAST_SAM="$OUTPUT_DIR/pipeline_blast/09_correct/barcode_blast/barcode_blast_RPI_1/corrected.sam"
-CHIM_SAM="$OUTPUT_DIR/pipeline_blast/09_correct/barcode_blast/barcode_blast_RPI_1/chimeric_rightclip.sam"
+BLAST_SAM="$OUTPUT_DIR/pipeline_blast/09_correct/barcode_blast/barcode_blast_RPI_1/barcode_blast_RPI_1_corrected.sam"
+CHIM_SAM="$OUTPUT_DIR/pipeline_blast/09_correct/barcode_blast/barcode_blast_RPI_1/barcode_blast_RPI_1_chimeric_rightclip.sam"
 BLAST_ODIR="$OUTPUT_DIR/pipeline_blast/09_correct/barcode_blast/barcode_blast_RPI_1"
 BLAST_CSV="$OUTPUT_DIR/pipeline_blast/10_csv/barcode_blast_barcode_blast_RPI_1.csv"
 
@@ -910,7 +910,7 @@ check_exact "Corrected read count" "$corrected_count" "28"
 csv_rows=$(tail -n+2 "$BLAST_CSV" | wc -l | tr -d ' ')
 check_exact "CSV row count" "$csv_rows" "28"
 
-if [ -s "$BLAST_ODIR/blast_rightclip_queries.fa" ]; then
+if [ -s "$BLAST_ODIR/barcode_blast_RPI_1_blast_rightclip_queries.fa" ]; then
     pass "BLAST query FASTA exists and non-empty"
 else
     fail "BLAST query FASTA missing or empty"

@@ -41,9 +41,9 @@ run_step_08() {
             local rpi_name
             rpi_name=$(basename "$rpi_dir")
 
-            local sort_bam="$rpi_dir/aligned.sort.bam"
+            local sort_bam="$rpi_dir/${rpi_name}_aligned.sort.bam"
             if [ ! -f "$sort_bam" ]; then
-                echo "  WARNING: No aligned.sort.bam in $bname/$rpi_name, skipping (run step 07 first)"
+                echo "  WARNING: No ${rpi_name}_aligned.sort.bam in $bname/$rpi_name, skipping (run step 07 first)"
                 continue
             fi
 

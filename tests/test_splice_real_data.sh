@@ -158,9 +158,9 @@ MAP_DIR="$OUTDIR/07_map/$BARCODE/$RPI"
 mkdir -p "$MAP_DIR"
 samtools faidx "$REF" 2>/dev/null
 minimap2 -ax lr:hq "$REF" "$READS" 2>/dev/null \
-    | samtools view -F 4 -h -o "$MAP_DIR/mapped_only.sam"
+    | samtools view -F 4 -h -o "$MAP_DIR/${RPI}_mapped_only.sam"
 
-MAPPED=$(samtools view -c "$MAP_DIR/mapped_only.sam")
+MAPPED=$(samtools view -c "$MAP_DIR/${RPI}_mapped_only.sam")
 echo "  Mapped reads: $MAPPED"
 
 if [ "$MAPPED" -gt 0 ]; then
@@ -172,9 +172,9 @@ else
 fi
 
 # Create sorted BAM
-samtools view -bS "$MAP_DIR/mapped_only.sam" > "$MAP_DIR/aligned.bam" 2>/dev/null
-samtools sort "$MAP_DIR/aligned.bam" > "$MAP_DIR/aligned.sort.bam" 2>/dev/null
-samtools index "$MAP_DIR/aligned.sort.bam" 2>/dev/null
+samtools view -bS "$MAP_DIR/${RPI}_mapped_only.sam" > "$MAP_DIR/${RPI}_aligned.bam" 2>/dev/null
+samtools sort "$MAP_DIR/${RPI}_aligned.bam" > "$MAP_DIR/${RPI}_aligned.sort.bam" 2>/dev/null
+samtools index "$MAP_DIR/${RPI}_aligned.sort.bam" 2>/dev/null
 
 # ── Step 2: Discover introns ──────────────────────────────────────────
 echo ""
@@ -237,7 +237,7 @@ run_step_09 \
     "$INTRON_START-$INTRON_END" \
     2>&1 | sed 's/^/  /'
 
-CORRECTED_SAM="$OUTDIR/09_correct/$BARCODE/$RPI/corrected.sam"
+CORRECTED_SAM="$OUTDIR/09_correct/$BARCODE/$RPI/${RPI}_corrected.sam"
 if [ -f "$CORRECTED_SAM" ]; then
     ok "corrected.sam exists"
 else
@@ -297,8 +297,8 @@ if [ -n "$SAMPLE_R" ]; then
 fi
 
 # Verify sorted BAM exists
-if [ -f "$OUTDIR/09_correct/$BARCODE/$RPI/corrected.sort.bam" ] && \
-   [ -f "$OUTDIR/09_correct/$BARCODE/$RPI/corrected.sort.bam.bai" ]; then
+if [ -f "$OUTDIR/09_correct/$BARCODE/$RPI/${RPI}_corrected.sort.bam" ] && \
+   [ -f "$OUTDIR/09_correct/$BARCODE/$RPI/${RPI}_corrected.sort.bam.bai" ]; then
     ok "Sorted BAM + index exist"
 else
     fail "Missing sorted BAM or index"
@@ -361,7 +361,7 @@ run_step_09 \
     "" \
     2>&1 | sed 's/^/  /'
 
-BC_SAM="$BC_DIR/09_correct/$BARCODE/$RPI/corrected.sam"
+BC_SAM="$BC_DIR/09_correct/$BARCODE/$RPI/${RPI}_corrected.sam"
 BC_SJ=$(grep -c "SJ:Z:" "$BC_SAM" 2>/dev/null || true)
 if [ "$BC_SJ" -eq 0 ]; then
     ok "No SJ tags when --introns not provided (backward compatible)"
