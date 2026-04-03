@@ -54,8 +54,8 @@ Quick sync: `cp .devcontainer/claude-code/CLAUDE.md ~/.claude/CLAUDE.md`
 - **Viewer restart**: Changes to `umi.html` or `index.html` take effect on
   browser refresh. Changes to `server.js` or `config.js` require
   `L3Rseq viewer --stop && L3Rseq viewer --dir <dir>`.
-- **Test flags**: Always use `--no-viewer` when running tests if the viewer is
-  already running (avoids port conflicts). Use `--quick` for fast iteration.
+- **Test flags**: Do not add `--no-viewer` by default — the test suite handles
+  viewer restart automatically. Use `--quick` for fast iteration.
 - **Step 09 error handling**: `09_tail_correct.sh` uses `set +e` (not pipefail)
   due to complex control flow. Other scripts use `set -euo pipefail`.
 - **Real data test**: Always `rm -rf runs/LibCheck` before re-running
