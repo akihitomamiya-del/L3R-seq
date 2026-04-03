@@ -38,7 +38,8 @@
     "NODE_OPTIONS": "--max-old-space-size=4096",
     "CLAUDE_CONFIG_DIR": "/home/vscode/.claude",
     "POWERLEVEL9K_DISABLE_GITSTATUS": "true",
-    "IGV_DATA_DIR": "/data/output"
+    "IGV_DATA_DIR": "/data/output",
+    "PUPPETEER_SKIP_DOWNLOAD": "true"
   },
   "remoteEnv": {
     "ANTHROPIC_API_KEY": "${localEnv:ANTHROPIC_API_KEY}"
@@ -49,7 +50,7 @@
   "portsAttributes": {
     "8080": { "label": "IGV Viewer", "onAutoForward": "notify" }
   },
-  "postCreateCommand": "mkdir -p ~/.claude && cp /workspace/.devcontainer/claude-code/CLAUDE.md ~/.claude/CLAUDE.md; cd /workspace/igv_viewer && npm install --silent",
+  "postCreateCommand": "mkdir -p ~/.claude && cp /workspace/.devcontainer/claude-code/CLAUDE.md ~/.claude/CLAUDE.md; cd /workspace/igv_viewer && npm install",
   "postStartCommand": {
     "firewall": "sudo /usr/local/bin/start-firewall.sh",
     "igv-viewer": "node /workspace/igv_viewer/server.js > /tmp/igv-server.log 2>&1 &"
