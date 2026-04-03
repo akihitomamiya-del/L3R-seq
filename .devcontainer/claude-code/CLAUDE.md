@@ -51,9 +51,30 @@ Quick sync: `cp .devcontainer/claude-code/CLAUDE.md ~/.claude/CLAUDE.md`
   specific paths. New files won't be staged by `git add` unless their path is
   in `.gitignore` with a `!` prefix. `/workspace/CLAUDE.md` is intentionally
   gitignored — never commit it. The tracked copy is `.devcontainer/claude-code/CLAUDE.md`.
-- **Viewer restart**: Changes to `umi.html` or `index.html` take effect on
-  browser refresh. Changes to `server.js` or `config.js` require
-  `L3Rseq viewer --stop && L3Rseq viewer --dir <dir>`.
+- **Viewer development — strict cycle**: Every viewer change must follow:
+  1. **Edit** the file(s) — apply fixes to ALL 3 pages (index/umi/genes) when relevant
+  2. **Restart** the viewer: `L3Rseq viewer --stop && L3Rseq viewer --dir <dir>`
+  3. **Screenshot-verify** with Puppeteer (`LD_LIBRARY_PATH="/opt/miniforge/envs/analysis/lib"`)
+  4. **Test the exact user scenario** end-to-end (click buttons, navigate pages, come back)
+  5. **Read the screenshots** and confirm the UI is correct before telling the user
+  Never rely solely on API responses or JS state — screenshots are the only
+  reliable way to catch caching, layout, and navigation bugs.
+- **Viewer — apply fixes across all 3 pages**: Sticky headers, nav link syncing,
+  state persistence, auto-select — all need to be applied to index.html, umi.html,
+  AND genes.html. Fixing one page and forgetting the others causes repeated reports.
+- **Viewer — state architecture**: Pages share dataset via `?name=` URL param.
+  The genes page stores view state in URL hash (`#v=table&sel=GENE&g=FILTER`).
+  Nav links are set by inline `<script>` in `<header>` (immediate, before async
+  init) and by `syncNavLinks()` (after dataset loads). The inline script is
+  critical for the alignment page which is slow to initialize (30+ BAM tracks).
+  URL hash is the primary state channel; sessionStorage is backup for sample
+  selections. Gene clicks update the header link instead of navigating away
+  (`target="_blank"` doesn't work in VS Code Simple Browser).
+- **Viewer — known fixes baked in**: `Cache-Control: no-cache` on HTML files;
+  `loadDefaultGenomes: false` in IGV.js config; BAI content inspection for
+  empty BAM filtering; skip `sanitizeFasta` for >10MB files; `{ samtools ... || true; }`
+  pipes to prevent pipefail crashes on missing chromosomes; hidden tracks start
+  unchecked in `buildTrackToggles`; multi-chromosome reference matching via FAI.
 - **Test flags**: Do not add `--no-viewer` by default — the test suite handles
   viewer restart automatically. Use `--quick` for fast iteration.
 - **Step 09 error handling**: `09_tail_correct.sh` uses `set +e` (not pipefail)
@@ -65,8 +86,8 @@ Quick sync: `cp .devcontainer/claude-code/CLAUDE.md ~/.claude/CLAUDE.md`
 
 L3Rseq is a long-read UMI sequencing pipeline for Oxford Nanopore data. The main
 entry point is the `L3Rseq` script (bash), which dispatches subcommands: `run`,
-`concat`, `viewer`, etc. Pipeline steps live in `scripts/01_concat.sh` through
-`scripts/10_export_csv.sh`. UMI-specific logic is in `longread_umi_L3Rseq/scripts/`.
+`concat`, `regions`, `count`, `viewer`, etc. Pipeline steps live in `scripts/01_concat.sh`
+through `scripts/11_count.sh`. UMI-specific logic is in `longread_umi_L3Rseq/scripts/`.
 
 Analyzes RNA editing, splicing, 3' end cleavage, poly(A) tails on single molecules using nanopore long reads.
 
@@ -81,9 +102,9 @@ Analyzes RNA editing, splicing, 3' end cleavage, poly(A) tails on single molecul
 ### Synthetic test suite (primary)
 
 ```bash
-bash tests/run_tests.sh                    # Full suite (140 checks, ~42s)
+bash tests/run_tests.sh                    # Full suite (156 checks, ~45s)
 bash tests/run_tests.sh --skip-preprocess  # Steps 04-10 only (~30s)
-bash tests/run_tests.sh --quick            # Smoke test (~15s, for CI)
+bash tests/run_tests.sh --quick            # Smoke test (~26s, for CI)
 bash tests/run_tests.sh --no-viewer        # Skip IGV viewer auto-start after tests
 ```
 
@@ -116,11 +137,12 @@ L3Rseq viewer --stop                        # Stop
 The viewer auto-starts after `tests/run_tests.sh` unless `--no-viewer` is passed.
 In Codespaces/remote, check the Ports tab to open in browser.
 
-Two pages:
+Three pages:
 - `/` — Alignment viewer (IGV.js BAM tracks for steps 07/09)
 - `/umi` — UMI analysis (Chart.js histograms for step 04 bin sizes)
+- `/genes` — Gene counts (qPCR-style molecule counting from step 11)
 
-Both share the same dataset dropdown and link to each other in the header.
+All pages share the same dataset dropdown and link to each other in the header.
 Dataset selection is preserved across navigation via `?name=` URL parameter.
 
 ### UMI analysis page (`/umi`)
@@ -136,12 +158,58 @@ Three view modes:
 
 Samples are colored by barcode family. Singletons hidden by default (toggle to show).
 
+### Gene counts page (`/genes`)
+
+qPCR-style molecule counting from `L3Rseq count` output. Since each UMI-consensus
+read represents a single original RNA molecule, counting reads per gene gives
+accurate molecule counts analogous to qPCR — with the added benefit of per-isoform
+resolution from splice patterns.
+
+Four view modes:
+- **Table** — sortable counts with heatmap shading; toggle per-isoform rows
+- **Chart** — grouped bar chart of counts/ratios across samples
+- **Isoforms** — stacked bar showing splice-pattern composition per sample
+- **Coverage** — per-base read depth line chart
+
+Controls: housekeeping gene selector (for normalization), gene filter, sample checkboxes.
+API endpoints: `/api/gene-counts?name=<dataset>`, `/api/gene-coverage?name=<dataset>&gene=<gene>&sample=<sample>`.
+
+## Gene-level counting (qPCR-style)
+
+Standalone post-analysis subcommands for molecule quantification. Not part of
+`L3Rseq run` — run after the main pipeline completes.
+
+```bash
+# Auto-discover gene regions from BAMs + GFF (recommended)
+L3Rseq regions --gff annotation.gff3 --discover-from out/ --output regions.tsv --min-reads 5
+
+# Or define manually (GFF, BED, coordinates, --append to build incrementally)
+L3Rseq regions --gff annotation.gff3 --output regions.tsv
+L3Rseq regions --coordinates "gene1:chr:start-end" --output regions.tsv
+L3Rseq regions --bed genes.bed --output regions.tsv --append
+
+# Count molecules per gene from step 07 BAMs
+L3Rseq count --input out/ --outdir out/ --regions regions.tsv
+L3Rseq count ... --housekeeping GENE_NAME    # normalize against housekeeping gene
+L3Rseq count ... --min-frac 0.95             # overlap threshold (default)
+L3Rseq count ... --min-mapq 20               # filter multi-mappers (homologue families)
+```
+
+Output in `11_count/`: per-sample counts, merged counts with per-isoform
+breakdown, pooled isoform discovery (per barcode), housekeeping normalization,
+and per-base coverage depth files.
+
+**Strand note**: Gene counting is strand-agnostic (counts all primary alignments).
+Step 09 CIGAR-walk correction assumes reads map to + strand (3' tail = right clip).
+For genome-wide mapping, minus-strand genes need left-clip correction instead —
+not yet implemented. Use per-gene references for 3' tail analysis.
+
 ## Key directories
 
 - `L3Rseq` — main entry point (bash script, not a directory)
-- `scripts/` — pipeline step scripts (01-10)
+- `scripts/` — pipeline step scripts (01-10) + regions.sh, 11_count.sh
 - `longread_umi_L3Rseq/scripts/` — UMI binning and consensus scripts
-- `igv_viewer/` — Node.js viewer (IGV.js alignment viewer + Chart.js UMI analysis)
+- `igv_viewer/` — Node.js viewer (IGV.js alignment + Chart.js UMI analysis + gene counts)
 - `tests/` — test suite, test data, generators, expected output
 - `tests/data/` — synthetic test datasets
 - `resources/` — reference FASTAs, RPI barcodes, BLAST DBs
@@ -170,3 +238,10 @@ Examples:
 
 The IGV viewer discovers BAM files by suffix matching (e.g., files ending in
 `primary.sort.bam`), so the prefix does not affect viewer discovery.
+
+Step 11 (gene counting) outputs:
+- `11_count/{bname}_{rpi}_gene_counts.tsv` — per-sample counts
+- `11_count/gene_counts_all.tsv` — merged counts (gene x sample x splice pattern)
+- `11_count/isoform_discovery.tsv` — pooled isoform patterns per barcode
+- `11_count/gene_counts_normalized.tsv` — housekeeping-normalized ratios
+- `11_count/coverage/{bname}_{rpi}_{gene}.depth.tsv` — per-base coverage

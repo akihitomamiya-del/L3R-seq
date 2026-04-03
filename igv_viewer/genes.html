@@ -1,0 +1,1022 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <title>L3Rseq — Gene Counts</title>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body { font-family: system-ui, sans-serif; background: #f5f5f5; }
+    header { background: #2c3e50; color: #fff; padding: 12px 24px;
+             display: flex; align-items: center; gap: 16px; flex-wrap: wrap;
+             position: sticky; top: 0; z-index: 100; }
+    header h1 { font-size: 18px; font-weight: 600; }
+    header select { padding: 4px 8px; border-radius: 4px; font-size: 14px; }
+    header a { color: #aaa; text-decoration: none; font-size: 14px; margin-left: auto; }
+    header a + a { margin-left: 0; }
+    header a:hover { color: #fff; }
+
+    .panel { margin: 12px 12px 0; padding: 12px 16px; background: #fff;
+             border-radius: 6px; font-size: 13px; }
+    .panel + .panel { margin-top: 8px; }
+    .panel-header { cursor: pointer; display: flex; align-items: center; gap: 8px;
+                    user-select: none; color: #333; font-weight: 600; }
+    .panel-header:hover { color: #000; }
+    .panel-header .arrow { display: inline-block; font-size: 10px;
+                           transition: transform 0.15s; }
+    .panel-header .arrow.open { transform: rotate(90deg); }
+    .panel-body { display: none; padding-top: 10px; }
+    .panel-body.open { display: block; }
+
+    .bc-group { margin-bottom: 6px; }
+    .bc-group-header { font-weight: 600; margin-bottom: 3px; display: flex; align-items: center; gap: 6px; }
+    .bc-group-header .swatch { display: inline-block; width: 10px; height: 10px;
+                                border-radius: 2px; border: 1px solid #999; }
+    .sample-checks { display: flex; flex-wrap: wrap; gap: 2px 12px; margin-left: 18px; }
+    .sample-checks label { cursor: pointer; display: flex; align-items: center; gap: 3px; }
+
+    .controls { margin: 8px 12px; display: flex; flex-wrap: wrap; gap: 8px; align-items: center;
+                font-size: 13px; }
+    .ctrl-btn { padding: 4px 12px; border: 1px solid #ccc; border-radius: 4px;
+                background: #f8f8f8; cursor: pointer; font-size: 13px; }
+    .ctrl-btn:hover { background: #e8e8e8; }
+    .ctrl-btn.active { background: #2c3e50; color: #fff; border-color: #2c3e50; }
+    .ctrl-sep { color: #ccc; margin: 0 4px; }
+
+    .chart-area { margin: 8px 12px 16px; }
+    .chart-container { background: #fff; border-radius: 6px; padding: 16px; margin-bottom: 8px; }
+    .chart-container h3 { font-size: 14px; color: #555; margin-bottom: 8px; }
+    .chart-container canvas { width: 100% !important; }
+
+    table.stats { width: 100%; border-collapse: collapse; font-size: 13px; }
+    table.stats th { background: #f0f0f0; padding: 6px 10px; text-align: left;
+                     cursor: pointer; user-select: none; position: sticky; top: 0; }
+    table.stats th:hover { background: #e0e0e0; }
+    table.stats td { padding: 5px 10px; border-top: 1px solid #eee; }
+    table.stats tr:hover td { background: #fafafa; }
+    table.stats .num { text-align: right; font-variant-numeric: tabular-nums; }
+    .heatcell { transition: background 0.1s; }
+
+    .isoform-legend { margin: 8px 0; display: flex; flex-wrap: wrap; gap: 6px 14px; font-size: 12px; }
+    .isoform-legend span { display: inline-flex; align-items: center; gap: 3px; }
+    .iso-swatch { display: inline-block; width: 12px; height: 12px; border-radius: 2px; border: 1px solid #ccc; }
+
+    .discovery-panel { background: #f9f9f9; border: 1px solid #eee; border-radius: 6px;
+                       padding: 12px; margin-bottom: 12px; font-size: 12px; }
+    .discovery-panel h4 { font-size: 13px; margin-bottom: 6px; color: #555; }
+
+    .empty { margin: 24px; color: #888; font-size: 15px; line-height: 1.6; }
+    .empty code { background: #eee; padding: 2px 6px; border-radius: 3px; }
+  </style>
+</head>
+<body>
+  <header>
+    <h1>L3Rseq Gene Counts</h1>
+    <label for="dataset">Dataset:</label>
+    <select id="dataset"><option value="">loading...</option></select>
+    <a href="/" id="viewer-link">Alignment Viewer</a>
+    <span id="locus-badge" style="display:none; font-size:12px; background:#3498db; color:#fff;
+          padding:2px 8px; border-radius:10px; margin-left:-8px; cursor:default;"
+          title="Click a gene name to set locus, then click Alignment Viewer to go there"></span>
+    <a href="/umi" id="umi-link">UMI Analysis</a>
+  </header>
+  <script>
+    (function() {
+      var n = new URLSearchParams(location.search).get("name");
+      if (n) {
+        var e = encodeURIComponent(n);
+        document.getElementById("viewer-link").href = "/?name=" + e;
+        document.getElementById("umi-link").href = "/umi?name=" + e;
+      }
+    })();
+  </script>
+
+  <div class="panel" id="sample-panel">
+    <div class="panel-header" onclick="togglePanel('sample-panel')">
+      <span class="arrow open">&#9654;</span>
+      <span>Samples</span>
+      <span id="sample-count" style="font-weight:normal; color:#888;"></span>
+    </div>
+    <div class="panel-body open" id="sample-body"></div>
+  </div>
+
+  <div class="controls" id="controls" style="display:none;">
+    <button class="ctrl-btn active" data-view="chart" onclick="setView('chart')">Chart</button>
+    <button class="ctrl-btn" id="zoom-btn" style="display:none;" onclick="toggleChartZoom()"></button>
+    <button class="ctrl-btn" data-view="table" onclick="setView('table')">Table</button>
+    <button class="ctrl-btn" data-view="isoforms" onclick="setView('isoforms')">Isoforms</button>
+    <button class="ctrl-btn" data-view="coverage" onclick="setView('coverage')">Coverage</button>
+    <span class="ctrl-sep">|</span>
+    <label style="font-weight:600; font-size:12px;">Housekeeping:</label>
+    <select id="hk-gene" style="padding:3px 6px; border:1px solid #ccc; border-radius:4px; font-size:13px;">
+      <option value="">None</option>
+    </select>
+    <span class="ctrl-sep">|</span>
+    <label style="font-weight:600; font-size:12px;">Gene:</label>
+    <select id="gene-select" style="padding:3px 6px; border:1px solid #ccc; border-radius:4px; font-size:13px;">
+      <option value="">All</option>
+    </select>
+    <span class="ctrl-sep">|</span>
+    <label style="font-weight:600; font-size:12px;">Show:</label>
+    <select id="top-genes" style="padding:3px 6px; border:1px solid #ccc; border-radius:4px; font-size:13px;">
+      <option value="10">Top 10</option>
+      <option value="20" selected>Top 20</option>
+      <option value="50">Top 50</option>
+      <option value="0">All genes</option>
+    </select>
+    <span class="ctrl-sep">|</span>
+    <label style="cursor:pointer;display:flex;align-items:center;gap:3px;">
+      <input type="checkbox" id="show-isoforms"> Per-isoform rows
+    </label>
+  </div>
+
+  <div class="chart-area" id="chart-area"></div>
+
+  <script src="/chartjs/chart.umd.js"></script>
+  <script>
+"use strict";
+
+let allData = null;
+let selectedIds = new Set();
+let viewMode = "chart";
+let chartInstances = [];
+let selectedGene = null;  // gene selected for alignment viewer
+let chartZoomed = false;  // whether chart is zoomed to single gene
+
+// --- Color palette (reuse UMI page pattern) ---
+const BARCODE_HUES = {};
+const HUE_POOL = [210, 140, 25, 280, 350, 60];
+let hueIdx = 0;
+
+function barcodeHue(bc) {
+  if (!(bc in BARCODE_HUES)) BARCODE_HUES[bc] = HUE_POOL[hueIdx++ % HUE_POOL.length];
+  return BARCODE_HUES[bc];
+}
+
+function sampleColor(sampleId, alpha) {
+  const bc = sampleId.split("/")[0];
+  const hue = barcodeHue(bc);
+  const bcSamples = allData.samples.filter(s => s.startsWith(bc + "/"));
+  const idx = bcSamples.indexOf(sampleId);
+  const total = bcSamples.length;
+  const lightness = total > 1 ? 35 + (idx / (total - 1)) * 40 : 50;
+  return `hsla(${hue}, 70%, ${lightness}%, ${alpha})`;
+}
+
+// Distinct hues for isoform splice patterns
+const ISO_HUES = [210, 25, 140, 350, 280, 60, 180, 310, 100, 45];
+function isoformColor(idx, alpha) {
+  const hue = ISO_HUES[idx % ISO_HUES.length];
+  return `hsla(${hue}, 65%, 55%, ${alpha})`;
+}
+
+// --- State persistence (survives page navigation) ---
+// Uses both URL hash (for view mode — visible in nav links) and
+// sessionStorage (for sample selections — too large for URL).
+function stateKey() {
+  const ds = document.getElementById("dataset").value;
+  return ds ? "l3rseq_genes_" + ds : null;
+}
+
+function saveState() {
+  const key = stateKey();
+  if (!key || !allData) return;
+  // Save view mode + gene filter + selected gene in URL hash so nav links carry it
+  const hashParts = ["v=" + viewMode];
+  const gf = document.getElementById("gene-select").value;
+  if (gf) hashParts.push("g=" + encodeURIComponent(gf));
+  const hk = document.getElementById("hk-gene").value;
+  if (hk) hashParts.push("hk=" + encodeURIComponent(hk));
+  if (document.getElementById("show-isoforms").checked) hashParts.push("iso=1");
+  if (selectedGene) hashParts.push("sel=" + encodeURIComponent(selectedGene));
+  const hashStr = "#" + hashParts.join("&");
+  history.replaceState(null, "", location.pathname + location.search + hashStr);
+
+  // Save hash separately so other pages (alignment, UMI) can build nav links with it
+  try { sessionStorage.setItem("l3rseq_genes_hash_" + document.getElementById("dataset").value, hashStr); } catch {}
+
+  // Save full state (including sample selection) in sessionStorage
+  try {
+    sessionStorage.setItem(key, JSON.stringify({
+      selectedIds: [...selectedIds],
+      viewMode,
+      hkGene: hk,
+      geneFilter: gf,
+      showIsoforms: document.getElementById("show-isoforms").checked,
+      topGenes: document.getElementById("top-genes").value,
+      selectedGene: selectedGene,
+      chartZoomed: chartZoomed,
+      scrollY: window.scrollY,
+    }));
+  } catch {}
+}
+
+function restoreState() {
+  // 1. Read view settings from URL hash (most reliable — survives nav links)
+  const hash = location.hash.replace(/^#/, "");
+  const hp = {};
+  if (hash) {
+    for (const part of hash.split("&")) {
+      const [k, v] = part.split("=");
+      if (k && v !== undefined) hp[k] = decodeURIComponent(v);
+    }
+  }
+
+  // 2. Read sample selections from sessionStorage (too large for URL)
+  const key = stateKey();
+  let s = null;
+  if (key) {
+    try {
+      const raw = sessionStorage.getItem(key);
+      if (raw) s = JSON.parse(raw);
+    } catch {}
+  }
+
+  const hasHash = !!hp.v;
+  const hasStorage = !!s;
+  if (!hasHash && !hasStorage) return false;
+
+  // Restore sample selection from sessionStorage
+  if (s && s.selectedIds && allData) {
+    const valid = new Set(allData.samples);
+    selectedIds = new Set(s.selectedIds.filter(id => valid.has(id)));
+    document.querySelectorAll('#sample-body input[data-id]').forEach(cb => {
+      cb.checked = selectedIds.has(cb.dataset.id);
+    });
+    document.querySelectorAll('#sample-body .bc-group-header input').forEach(cb => {
+      const bc = cb.getAttribute("onchange").match(/'([^']+)'/)?.[1];
+      if (bc) {
+        const bcSamples = allData.samples.filter(sm => sm.startsWith(bc + "/"));
+        cb.checked = bcSamples.every(sm => selectedIds.has(sm));
+      }
+    });
+    syncAllCheckbox();
+    updateSampleCount();
+  }
+
+  // Restore view mode — URL hash takes priority over sessionStorage
+  const savedView = hp.v || (s && s.viewMode);
+  if (savedView) {
+    viewMode = savedView;
+    document.querySelectorAll(".controls .ctrl-btn[data-view]").forEach(btn =>
+      btn.classList.toggle("active", btn.dataset.view === viewMode));
+  }
+
+  // Restore dropdowns — URL hash priority
+  const gf = hp.g || (s && s.geneFilter) || "";
+  document.getElementById("gene-select").value = gf;
+  const hk = hp.hk || (s && s.hkGene) || "";
+  document.getElementById("hk-gene").value = hk;
+  const iso = hp.iso === "1" || (s && s.showIsoforms) || false;
+  document.getElementById("show-isoforms").checked = iso;
+  if (s && s.topGenes) document.getElementById("top-genes").value = s.topGenes;
+
+  // Restore selected gene + zoom state
+  const selGene = hp.sel || (s && s.selectedGene) || null;
+  if (s && s.chartZoomed) chartZoomed = true;
+  if (selGene) setTimeout(() => { selectGeneLocus(selGene); if (chartZoomed) { chartZoomed = true; updateZoomButton(); if (viewMode === "chart") render(); } }, 50);
+
+  // Restore scroll
+  if (s && s.scrollY) setTimeout(() => window.scrollTo(0, s.scrollY), 150);
+  return true;
+}
+
+function syncNavLinks(name) {
+  document.getElementById("viewer-link").href = name ? "/?name=" + encodeURIComponent(name) : "/";
+  document.getElementById("umi-link").href = name ? "/umi?name=" + encodeURIComponent(name) : "/umi";
+}
+
+// --- Init ---
+async function init() {
+  const sel = document.getElementById("dataset");
+  try {
+    const resp = await fetch("/api/datasets");
+    const data = await resp.json();
+    sel.innerHTML = '<option value="">-- select --</option>';
+    for (const ds of data.datasets) {
+      const opt = document.createElement("option");
+      opt.value = ds; opt.textContent = ds;
+      sel.appendChild(opt);
+    }
+    // Auto-select: URL param first, then single-dataset auto-pick
+    const urlName = new URLSearchParams(location.search).get("name");
+    let pick = null;
+    if (urlName && data.datasets.includes(urlName)) pick = urlName;
+    else if (data.datasets.length === 1) pick = data.datasets[0];
+    // Wire up event listeners before loading data
+    sel.addEventListener("change", () => {
+      const name = sel.value;
+      syncNavLinks(name);
+      if (name) loadDataset(name); else clearAll();
+    });
+    document.getElementById("hk-gene").addEventListener("change", () => { render(); saveState(); });
+    document.getElementById("gene-select").addEventListener("change", () => { render(); saveState(); });
+    document.getElementById("show-isoforms").addEventListener("change", () => { render(); saveState(); });
+    document.getElementById("top-genes").addEventListener("change", () => { render(); saveState(); });
+
+    // Auto-load dataset (awaited so state restore completes before init returns)
+    if (pick) {
+      sel.value = pick;
+      syncNavLinks(pick);
+      await loadDataset(pick);
+    }
+  } catch { sel.innerHTML = '<option value="">error loading datasets</option>'; }
+}
+
+async function loadDataset(name) {
+  clearAll();
+  try {
+    const resp = await fetch("/api/gene-counts?name=" + encodeURIComponent(name));
+    if (!resp.ok) { showEmpty("Failed to load gene count data."); return; }
+    allData = await resp.json();
+    if (!allData.hasData) {
+      showEmpty("No gene count data found for this dataset.<br><br>" +
+        "Run counting first:<br>" +
+        "<code>L3Rseq regions --coordinates \"gene:chr:start-end\" --output regions.tsv</code><br>" +
+        "<code>L3Rseq count --input &lt;dir&gt; --outdir &lt;dir&gt; --regions regions.tsv</code>");
+      return;
+    }
+    Object.keys(BARCODE_HUES).forEach(k => delete BARCODE_HUES[k]);
+    hueIdx = 0;
+    selectedIds = new Set(allData.samples);
+    buildSampleSelector();
+    buildGeneSelector();
+    buildHkSelector();
+    document.getElementById("controls").style.display = "flex";
+    restoreState();  // restore previous selections if returning to this page
+    render();
+    saveState();    // persist immediately so navigating away and back always works
+  } catch { showEmpty("Error loading gene count data."); }
+}
+
+function clearAll() {
+  destroyCharts();
+  document.getElementById("chart-area").innerHTML = "";
+  document.getElementById("sample-body").innerHTML = "";
+  document.getElementById("sample-count").textContent = "";
+  document.getElementById("controls").style.display = "none";
+  allData = null;
+}
+
+function showEmpty(msg) {
+  document.getElementById("chart-area").innerHTML = `<p class="empty">${msg}</p>`;
+}
+
+// --- Sample selector ---
+function buildSampleSelector() {
+  const body = document.getElementById("sample-body");
+  const barcodes = [...new Set(allData.samples.map(s => s.split("/")[0]))].sort(naturalSort);
+
+  let html = '<div style="margin-bottom:8px;"><label style="cursor:pointer;font-weight:600;">' +
+    '<input type="checkbox" id="check-all" checked onchange="toggleAll(this.checked)"> Select all</label></div>';
+
+  for (const bc of barcodes) {
+    const hue = barcodeHue(bc);
+    const samples = allData.samples.filter(s => s.startsWith(bc + "/"));
+    html += '<div class="bc-group">';
+    html += `<div class="bc-group-header">
+      <span class="swatch" style="background:hsl(${hue},70%,50%)"></span>
+      <label style="cursor:pointer"><input type="checkbox" checked
+        onchange="toggleBarcode('${bc}',this.checked)"> ${bc} (${samples.length})</label></div>`;
+    html += '<div class="sample-checks">';
+    for (const s of samples) {
+      const short = s.split("/").pop().replace(bc + "_", "");
+      html += `<label><input type="checkbox" data-id="${s}" data-bc="${bc}" checked
+        onchange="toggleSample('${s}',this.checked)"> ${short}</label>`;
+    }
+    html += '</div></div>';
+  }
+  body.innerHTML = html;
+  updateSampleCount();
+}
+
+function toggleAll(checked) {
+  if (checked) selectedIds = new Set(allData.samples);
+  else selectedIds.clear();
+  document.querySelectorAll('#sample-body input[data-id]').forEach(cb => cb.checked = checked);
+  document.querySelectorAll('#sample-body .bc-group-header input').forEach(cb => cb.checked = checked);
+  updateSampleCount(); render(); saveState();
+}
+
+function toggleBarcode(bc, checked) {
+  document.querySelectorAll(`#sample-body input[data-bc="${bc}"]`).forEach(cb => {
+    cb.checked = checked;
+    if (checked) selectedIds.add(cb.dataset.id); else selectedIds.delete(cb.dataset.id);
+  });
+  syncAllCheckbox(); updateSampleCount(); render(); saveState();
+}
+
+function toggleSample(id, checked) {
+  if (checked) selectedIds.add(id); else selectedIds.delete(id);
+  const bc = id.split("/")[0];
+  const bcSamples = allData.samples.filter(s => s.startsWith(bc + "/"));
+  const bcCb = document.querySelector(`#sample-body .bc-group-header input[onchange*="${bc}"]`);
+  if (bcCb) bcCb.checked = bcSamples.every(s => selectedIds.has(s));
+  syncAllCheckbox(); updateSampleCount(); render(); saveState();
+}
+
+function syncAllCheckbox() {
+  const all = document.getElementById("check-all");
+  if (all) all.checked = selectedIds.size === allData.samples.length;
+}
+
+function updateSampleCount() {
+  document.getElementById("sample-count").textContent =
+    `(${selectedIds.size}/${allData.samples.length} selected)`;
+}
+
+function buildGeneSelector() {
+  const sel = document.getElementById("gene-select");
+  sel.innerHTML = '<option value="">All genes</option>';
+  for (const g of allData.genes) {
+    const opt = document.createElement("option");
+    opt.value = g; opt.textContent = g;
+    sel.appendChild(opt);
+  }
+}
+
+function buildHkSelector() {
+  const sel = document.getElementById("hk-gene");
+  sel.innerHTML = '<option value="">None</option>';
+  for (const g of allData.genes) {
+    const opt = document.createElement("option");
+    opt.value = g; opt.textContent = g;
+    sel.appendChild(opt);
+  }
+}
+
+// --- View mode ---
+function setView(mode) {
+  viewMode = mode;
+  document.querySelectorAll(".controls .ctrl-btn[data-view]").forEach(btn =>
+    btn.classList.toggle("active", btn.dataset.view === mode));
+  updateZoomButton();
+  render(); saveState();
+}
+
+function togglePanel(id) {
+  const body = document.getElementById(id).querySelector(".panel-body");
+  const arrow = document.getElementById(id).querySelector(".arrow");
+  body.classList.toggle("open");
+  arrow.classList.toggle("open");
+}
+
+// --- Rendering ---
+function getSelectedSamples() {
+  return allData.samples.filter(s => selectedIds.has(s));
+}
+
+function getFilteredCounts() {
+  const geneFilter = document.getElementById("gene-select").value;
+  return allData.counts.filter(r => {
+    if (!selectedIds.has(r.sample)) return false;
+    if (geneFilter && r.gene !== geneFilter) return false;
+    return true;
+  });
+}
+
+function destroyCharts() {
+  for (const c of chartInstances) c.destroy();
+  chartInstances = [];
+}
+
+function render() {
+  destroyCharts();
+  const area = document.getElementById("chart-area");
+  area.innerHTML = "";
+  if (!allData || !allData.hasData) return;
+  const samples = getSelectedSamples();
+  if (!samples.length) { showEmpty("No samples selected."); return; }
+
+  if (viewMode === "table") renderTable(area, samples);
+  else if (viewMode === "chart") renderChart(area, samples);
+  else if (viewMode === "isoforms") renderIsoforms(area, samples);
+  else if (viewMode === "coverage") renderCoverage(area, samples);
+}
+
+// --- View 1: Table ---
+function renderTable(area, samples) {
+  const hkGene = document.getElementById("hk-gene").value;
+  const showIso = document.getElementById("show-isoforms").checked;
+  const geneFilter = document.getElementById("gene-select").value;
+
+  const div = document.createElement("div");
+  div.className = "chart-container";
+  div.style.overflowX = "auto";
+
+  // Build row data
+  let rows;
+  if (hkGene && allData.normalized.length > 0) {
+    rows = allData.normalized.filter(r => {
+      if (!selectedIds.has(r.sample)) return false;
+      if (geneFilter && r.gene !== geneFilter) return false;
+      if (r.hk_gene !== hkGene) return false;
+      if (!showIso && r.level === "isoform") return false;
+      if (showIso && r.level === "gene_total") return false;
+      return true;
+    }).map(r => ({
+      gene: r.gene,
+      sample: r.sample,
+      splice_pattern: r.splice_pattern,
+      count: r.count,
+      ratio: r.ratio,
+      hk_gene: r.hk_gene,
+      hk_count: r.hk_count,
+    }));
+  } else {
+    // Raw counts — aggregate per gene×sample or show per-isoform
+    const grouped = {};
+    for (const r of allData.counts) {
+      if (!selectedIds.has(r.sample)) continue;
+      if (geneFilter && r.gene !== geneFilter) continue;
+      const key = r.gene + "\t" + r.sample;
+      if (!grouped[key]) grouped[key] = { gene: r.gene, sample: r.sample, total: r.total_count, patterns: [] };
+      grouped[key].patterns.push({ pattern: r.splice_pattern, count: r.pattern_count });
+    }
+    if (showIso) {
+      rows = [];
+      for (const g of Object.values(grouped)) {
+        for (const p of g.patterns) {
+          rows.push({ gene: g.gene, sample: g.sample, splice_pattern: p.pattern, count: p.count, ratio: null });
+        }
+      }
+    } else {
+      rows = Object.values(grouped).map(g => ({
+        gene: g.gene, sample: g.sample, splice_pattern: "*", count: g.total, ratio: null,
+      }));
+    }
+  }
+
+  const maxCount = Math.max(1, ...rows.map(r => r.count));
+
+  // Add region string to rows for sorting
+  for (const row of rows) {
+    const r = geneRegion(row.gene);
+    row.region = r ? r.chr + ":" + r.start + "-" + r.end : "";
+  }
+
+  // Sortable columns
+  const cols = [
+    { key: "gene", label: "Gene", cls: "" },
+    { key: "region", label: "Region", cls: "" },
+    { key: "sample", label: "Sample", cls: "" },
+  ];
+  if (showIso) cols.push({ key: "splice_pattern", label: "Splice Pattern", cls: "" });
+  cols.push({ key: "count", label: hkGene ? "Count" : "Raw Count", cls: "num" });
+  if (hkGene) cols.push({ key: "ratio", label: "Ratio (vs " + hkGene + ")", cls: "num" });
+
+  let sortCol = "gene", sortAsc = true;
+
+  function buildTable() {
+    rows.sort((a, b) => {
+      const va = a[sortCol], vb = b[sortCol];
+      if (va == null && vb == null) return 0;
+      if (va == null) return 1;
+      if (vb == null) return -1;
+      const cmp = typeof va === "string" ? naturalSort(va, vb) : va - vb;
+      return sortAsc ? cmp : -cmp;
+    });
+
+    let html = '<table class="stats"><thead><tr>';
+    for (const c of cols) {
+      const arrow = sortCol === c.key ? (sortAsc ? " &#9650;" : " &#9660;") : "";
+      html += `<th data-col="${c.key}">${c.label}${arrow}</th>`;
+    }
+    html += "</tr></thead><tbody>";
+    for (const row of rows) {
+      html += "<tr>";
+      for (const c of cols) {
+        const v = row[c.key];
+        let cls = c.cls;
+        let content;
+        if (c.key === "gene") {
+          const r = geneRegion(v);
+          if (r) {
+            content = `<td><a href="#" onclick="selectGeneLocus('${v}');return false;" title="Select for alignment viewer" style="color:#2980b9;text-decoration:none;font-weight:600;cursor:pointer;">${v}</a></td>`;
+          } else {
+            content = `<td style="font-weight:600;">${v}</td>`;
+          }
+        } else if (c.key === "region") {
+          const r = geneRegion(row.gene);
+          if (r) {
+            content = `<td style="font-size:11px;font-family:monospace;"><a href="#" onclick="selectGeneLocus('${row.gene}');return false;" title="Select for alignment viewer" style="color:#666;text-decoration:none;cursor:pointer;">${v}</a></td>`;
+          } else {
+            content = `<td style="font-size:11px;color:#999;">—</td>`;
+          }
+        } else if (c.key === "count") {
+          const pct = v / maxCount;
+          const bg = `rgba(52, 152, 219, ${(pct * 0.4).toFixed(2)})`;
+          content = `<td class="num heatcell" style="background:${bg}">${fmtNum(v)}</td>`;
+        } else if (c.key === "ratio") {
+          content = `<td class="num">${v != null ? v.toFixed(3) : "NA"}</td>`;
+        } else {
+          content = `<td class="${cls}">${v}</td>`;
+        }
+        html += content;
+      }
+      html += "</tr>";
+    }
+    html += "</tbody></table>";
+    div.innerHTML = html;
+
+    div.querySelectorAll("th").forEach(th => {
+      th.addEventListener("click", () => {
+        const col = th.dataset.col;
+        if (sortCol === col) sortAsc = !sortAsc; else { sortCol = col; sortAsc = true; }
+        buildTable();
+      });
+    });
+  }
+
+  buildTable();
+  area.appendChild(div);
+}
+
+// --- View 2: Chart (grouped bar) ---
+function renderChart(area, samples) {
+  const hkGene = document.getElementById("hk-gene").value;
+  // Chart: all genes overview, or zoomed to single gene
+  const topN = parseInt(document.getElementById("top-genes").value) || 0;
+  const sortedGenes = genesByCount(samples);
+  const genes = (chartZoomed && selectedGene) ? [selectedGene]
+    : topN > 0 ? sortedGenes.slice(0, topN) : sortedGenes;
+
+  const zoomed = chartZoomed && selectedGene && genes.length === 1;
+  const div = document.createElement("div");
+  div.className = "chart-container";
+
+  let chartData, chartOptions;
+
+  if (zoomed) {
+    // Zoomed: one bar per sample, sample names on x-axis
+    const gene = genes[0];
+    div.innerHTML = '<h3>' + gene + ' — ' + (hkGene ? 'Normalized ratio (vs ' + hkGene + ')' : 'Molecule counts per sample') + '</h3><canvas></canvas>';
+    const sampleLabels = samples.map(s => s.split("/").pop());
+    const values = samples.map(s => {
+      if (hkGene && allData.normalized.length > 0) {
+        const row = allData.normalized.find(r =>
+          r.gene === gene && r.sample === s && r.hk_gene === hkGene && r.level === "gene_total");
+        return row ? (row.ratio ?? 0) : 0;
+      }
+      const row = allData.counts.find(r => r.gene === gene && r.sample === s);
+      return row ? row.total_count : 0;
+    });
+    chartData = {
+      labels: sampleLabels,
+      datasets: [{
+        data: values,
+        backgroundColor: samples.map(s => sampleColor(s, 0.7)),
+        borderColor: samples.map(s => sampleColor(s, 1)),
+        borderWidth: 1,
+      }],
+    };
+    chartOptions = {
+      responsive: true,
+      plugins: {
+        legend: { display: false },
+        tooltip: {
+          callbacks: {
+            title: (items) => samples[items[0].dataIndex],
+            label: (item) => (hkGene ? "Ratio: " : "Count: ") + item.parsed.y,
+          },
+        },
+      },
+      scales: {
+        y: { beginAtZero: true, title: { display: true, text: hkGene ? "Ratio" : "Molecule count" } },
+        x: {
+          title: { display: true, text: "Sample" },
+          ticks: {
+            maxRotation: samples.length > 12 ? 60 : 0,
+            minRotation: samples.length > 12 ? 45 : 0,
+            font: { size: samples.length > 24 ? 9 : 11 },
+          },
+        },
+      },
+    };
+  } else {
+    // Overview: grouped bars, gene names on x-axis
+    div.innerHTML = '<h3>' + (hkGene ? 'Normalized ratio (vs ' + hkGene + ')' : 'Molecule counts per gene') + '</h3><canvas></canvas>';
+    const datasets = samples.map(s => {
+      const data = genes.map(g => {
+        if (hkGene && allData.normalized.length > 0) {
+          const row = allData.normalized.find(r =>
+            r.gene === g && r.sample === s && r.hk_gene === hkGene && r.level === "gene_total");
+          return row ? (row.ratio ?? 0) : 0;
+        }
+        const row = allData.counts.find(r => r.gene === g && r.sample === s);
+        return row ? row.total_count : 0;
+      });
+      return {
+        label: s,
+        data,
+        backgroundColor: sampleColor(s, 0.7),
+        borderColor: sampleColor(s, 1),
+        borderWidth: 1,
+      };
+    });
+    chartData = { labels: genes, datasets };
+    chartOptions = {
+      responsive: true,
+      plugins: {
+        legend: { display: samples.length <= 12, labels: { boxWidth: 12, font: { size: 11 } } },
+        tooltip: { mode: "nearest", intersect: true },
+      },
+      scales: {
+        y: { beginAtZero: true, title: { display: true, text: hkGene ? "Ratio" : "Molecule count" } },
+        x: {
+          title: { display: true, text: "Gene" },
+          ticks: {
+            maxRotation: genes.length > 15 ? 60 : 0,
+            minRotation: genes.length > 15 ? 45 : 0,
+            font: { size: genes.length > 30 ? 9 : 11 },
+          },
+        },
+      },
+    };
+  }
+
+  area.appendChild(div);
+  const canvasEl = div.querySelector("canvas");
+  const chart = new Chart(canvasEl, {
+    type: "bar",
+    data: chartData,
+    options: chartOptions,
+  });
+  chartInstances.push(chart);
+
+  // Click anywhere on the chart canvas → find nearest gene by x position
+  // (only in overview mode, not when zoomed to a single gene)
+  if (!zoomed) {
+  canvasEl.style.cursor = "pointer";
+  canvasEl.addEventListener("click", (e) => {
+    const rect = canvasEl.getBoundingClientRect();
+    const x = e.clientX - rect.left;
+    const scale = chart.scales.x;
+    if (!scale) return;
+    let bestIdx = -1, bestDist = Infinity;
+    for (let i = 0; i < genes.length; i++) {
+      const px = scale.getPixelForValue(i);
+      const d = Math.abs(x - px);
+      if (d < bestDist) { bestDist = d; bestIdx = i; }
+    }
+    if (bestIdx >= 0) selectGeneLocus(genes[bestIdx]);
+  });
+  }
+}
+
+// --- View 3: Isoforms (stacked bar) ---
+function renderIsoforms(area, samples) {
+  const geneFilter = document.getElementById("gene-select").value;
+  const genes = geneFilter ? [geneFilter] : allData.genes;
+
+  for (const gene of genes) {
+    const div = document.createElement("div");
+    div.className = "chart-container";
+
+    // Get unique patterns for this gene across all selected samples
+    const geneCounts = allData.counts.filter(r => r.gene === gene && selectedIds.has(r.sample));
+    const patterns = [...new Set(geneCounts.map(r => r.splice_pattern))];
+    // Sort: "none" first, then by total count descending
+    patterns.sort((a, b) => {
+      if (a === "none") return -1;
+      if (b === "none") return 1;
+      const aTotal = geneCounts.filter(r => r.splice_pattern === a).reduce((s, r) => s + r.pattern_count, 0);
+      const bTotal = geneCounts.filter(r => r.splice_pattern === b).reduce((s, r) => s + r.pattern_count, 0);
+      return bTotal - aTotal;
+    });
+
+    // Discovery panel — per barcode
+    const geneIsoforms = allData.isoforms.filter(r => r.gene === gene);
+    // Get barcodes that have data for this gene (from selected samples)
+    const activeBarcodes = [...new Set(geneCounts.map(r => r.sample.split("/")[0]))].sort(naturalSort);
+    let discHtml = '';
+    if (geneIsoforms.length > 0) {
+      for (const bc of activeBarcodes) {
+        const bcIso = geneIsoforms.filter(r => r.barcode === bc);
+        if (bcIso.length === 0 || bcIso.every(r => r.pooled_count === 0)) continue;
+        discHtml += `<div class="discovery-panel"><h4>Pooled isoform discovery — ${bc}</h4><table style="width:100%;font-size:12px;">` +
+          '<tr><th>Pattern</th><th style="text-align:right">Pooled</th><th style="text-align:right">Samples</th><th style="text-align:right">%</th></tr>';
+        for (const iso of bcIso) {
+          if (iso.pooled_count === 0) continue;
+          const label = iso.splice_pattern === "none" ? "unspliced" : "N@" + iso.splice_pattern;
+          discHtml += `<tr><td>${label}</td><td style="text-align:right">${iso.pooled_count}</td>` +
+            `<td style="text-align:right">${iso.n_samples}</td><td style="text-align:right">${iso.pct_of_gene}</td></tr>`;
+        }
+        discHtml += '</table></div>';
+      }
+    }
+
+    div.innerHTML = `<h3>${gene} — Isoform composition</h3>${discHtml}<canvas></canvas>`;
+    area.appendChild(div);
+
+    // Legend
+    const legend = document.createElement("div");
+    legend.className = "isoform-legend";
+    patterns.forEach((p, i) => {
+      const label = p === "none" ? "unspliced" : "N@" + p;
+      legend.innerHTML += `<span><span class="iso-swatch" style="background:${isoformColor(i, 0.7)}"></span>${label}</span>`;
+    });
+    div.appendChild(legend);
+
+    // Build stacked datasets (one per pattern)
+    const geneSamples = samples.filter(s => geneCounts.some(r => r.sample === s));
+    const datasets = patterns.map((pat, i) => ({
+      label: pat === "none" ? "unspliced" : "N@" + pat,
+      data: geneSamples.map(s => {
+        const row = geneCounts.find(r => r.sample === s && r.splice_pattern === pat);
+        return row ? row.pattern_count : 0;
+      }),
+      backgroundColor: isoformColor(i, 0.7),
+      borderColor: isoformColor(i, 1),
+      borderWidth: 1,
+    }));
+
+    chartInstances.push(new Chart(div.querySelector("canvas"), {
+      type: "bar",
+      data: {
+        labels: geneSamples.map(s => s.split("/").pop()),
+        datasets,
+      },
+      options: {
+        responsive: true,
+        plugins: {
+          legend: { display: patterns.length <= 10, labels: { boxWidth: 12, font: { size: 11 } } },
+          tooltip: {
+            callbacks: {
+              label: function(ctx) {
+                return ctx.dataset.label + ": " + ctx.parsed.y + " reads";
+              }
+            }
+          },
+        },
+        scales: {
+          x: { stacked: true, title: { display: true, text: "Sample" } },
+          y: { stacked: true, beginAtZero: true, title: { display: true, text: "Molecule count" } },
+        },
+      }
+    }));
+  }
+}
+
+// --- View 4: Coverage ---
+async function renderCoverage(area, samples) {
+  const geneFilter = document.getElementById("gene-select").value;
+  const genes = geneFilter ? [geneFilter] : allData.genes;
+  const datasetName = document.getElementById("dataset").value;
+
+  for (const gene of genes) {
+    const div = document.createElement("div");
+    div.className = "chart-container";
+    div.innerHTML = `<h3>${gene} — Coverage depth</h3><canvas></canvas>`;
+    area.appendChild(div);
+
+    const datasets = [];
+    for (const s of samples) {
+      try {
+        const resp = await fetch(`/api/gene-coverage?name=${encodeURIComponent(datasetName)}&gene=${encodeURIComponent(gene)}&sample=${encodeURIComponent(s)}`);
+        if (!resp.ok) continue;
+        const cov = await resp.json();
+        if (!cov.positions.length) continue;
+        datasets.push({
+          label: s,
+          data: cov.positions.map((p, i) => ({ x: p, y: cov.depths[i] })),
+          borderColor: sampleColor(s, 1),
+          borderWidth: 1.5,
+          fill: false,
+          pointRadius: 0,
+          pointHitRadius: 4,
+          showLine: true,
+          tension: 0,
+        });
+      } catch { /* skip unavailable */ }
+    }
+
+    if (datasets.length === 0) {
+      div.innerHTML = `<h3>${gene} — Coverage depth</h3><p class="empty">No coverage data available.</p>`;
+      continue;
+    }
+
+    chartInstances.push(new Chart(div.querySelector("canvas"), {
+      type: "scatter",
+      data: { datasets },
+      options: {
+        responsive: true,
+        plugins: {
+          legend: { display: samples.length <= 12, labels: { boxWidth: 12, font: { size: 11 } } },
+          tooltip: { mode: "nearest", intersect: false },
+        },
+        scales: {
+          x: { type: "linear", title: { display: true, text: "Position" } },
+          y: { beginAtZero: true, title: { display: true, text: "Depth" } },
+        },
+      }
+    }));
+  }
+}
+
+// --- Gene locus selection (updates Alignment Viewer link without navigating) ---
+function selectGeneLocus(gene) {
+  const r = geneRegion(gene);
+  if (!r) return;
+  selectedGene = gene;
+  const dsName = document.getElementById("dataset").value;
+  const locus = r.chr + ":" + r.start + "-" + r.end;
+  const url = "/?name=" + encodeURIComponent(dsName) + "&locus=" + encodeURIComponent(locus);
+  const link = document.getElementById("viewer-link");
+  link.href = url;
+  link.style.color = "#fff";
+  link.style.fontWeight = "600";
+  const badge = document.getElementById("locus-badge");
+  badge.textContent = gene + " " + r.chr + ":" + r.start.toLocaleString() + "-" + r.end.toLocaleString();
+  badge.style.display = "inline";
+  // Filter Table/Isoforms/Coverage to this gene
+  document.getElementById("gene-select").value = gene;
+  // Reset zoom when selecting a different gene
+  chartZoomed = false;
+  updateZoomButton();
+  saveState();
+  // Re-render only if we're NOT in chart view (chart shows all genes for context)
+  if (viewMode !== "chart") render();
+}
+
+// --- Chart zoom (focus on single gene) ---
+function toggleChartZoom() {
+  chartZoomed = !chartZoomed;
+  updateZoomButton();
+  if (viewMode === "chart") render();
+  saveState();
+}
+
+function updateZoomButton() {
+  const btn = document.getElementById("zoom-btn");
+  if (!selectedGene) {
+    btn.style.display = "none";
+    return;
+  }
+  btn.style.display = viewMode === "chart" ? "" : "none";
+  if (chartZoomed) {
+    btn.textContent = "All genes";
+    btn.style.background = "#e74c3c";
+    btn.style.color = "#fff";
+    btn.style.borderColor = "#e74c3c";
+  } else {
+    btn.textContent = "Zoom: " + selectedGene;
+    btn.style.background = "";
+    btn.style.color = "";
+    btn.style.borderColor = "";
+  }
+}
+
+// --- Gene sorting by total count (for chart display) ---
+function genesByCount(samples) {
+  // Sum counts per gene across selected samples, sort descending
+  const totals = {};
+  for (const r of allData.counts) {
+    if (!samples || selectedIds.has(r.sample)) {
+      totals[r.gene] = (totals[r.gene] || 0) + r.pattern_count;
+    }
+  }
+  return allData.genes.slice().sort((a, b) => (totals[b] || 0) - (totals[a] || 0));
+}
+
+// --- Gene coordinate helpers ---
+function geneRegion(gene) {
+  const info = allData.geneInfo && allData.geneInfo[gene];
+  if (!info) return null;
+  return { chr: info.chr, start: info.start, end: info.end };
+}
+
+function geneLocusStr(gene) {
+  const r = geneRegion(gene);
+  if (!r) return "";
+  return r.chr + ":" + fmtNum(r.start) + "-" + fmtNum(r.end);
+}
+
+function viewerUrl(gene) {
+  const r = geneRegion(gene);
+  if (!r) return "/";
+  const dsName = document.getElementById("dataset").value;
+  const locus = r.chr + ":" + r.start + "-" + r.end;
+  return "/?name=" + encodeURIComponent(dsName) + "&locus=" + encodeURIComponent(locus);
+}
+
+// --- Helpers ---
+function fmtNum(n) { return Number(n).toLocaleString(); }
+
+function naturalSort(a, b) {
+  if (typeof a !== "string") return a - b;
+  const re = /(\d+)/g;
+  const pa = a.split(re), pb = b.split(re);
+  for (let i = 0; i < Math.min(pa.length, pb.length); i++) {
+    if (pa[i] !== pb[i]) {
+      const na = Number(pa[i]), nb = Number(pb[i]);
+      if (!isNaN(na) && !isNaN(nb)) return na - nb;
+      return pa[i] < pb[i] ? -1 : 1;
+    }
+  }
+  return pa.length - pb.length;
+}
+
+init();
+  </script>
+</body>
+</html>

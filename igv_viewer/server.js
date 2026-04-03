@@ -136,11 +136,25 @@ function discoverTracks(outdir) {
           if (!fs.existsSync(bamPath)) continue;
           const baiPath = bamPath + ".bai";
           if (!fs.existsSync(baiPath)) continue;
-          // Skip header-only BAMs (0 mapped reads) — they cause 416 range errors.
-          // Threshold 400: a BAM with only a header is ~200-350 bytes; a BAM
-          // with even a single read (e.g. consensus) is ~600+ bytes.
+          // Skip BAMs with no mapped reads: parse the BAI index to check.
+          // BAI format: 4-byte magic "BAI\1", 4-byte n_ref, then per-ref
+          // bin/chunk data.  An empty BAM's BAI has n_ref bins all with
+          // zero chunks — the file is nearly all zeros after the header.
+          // Quick heuristic: if the BAI file has no non-zero byte in the
+          // bin data section (offset 8+), the BAM has no indexed reads.
           const bamStat = statSafe(bamPath);
-          if (!bamStat || bamStat.size < 400) continue;
+          if (!bamStat || bamStat.size < 200) continue;  // minimal sanity
+          try {
+            const baiData = fs.readFileSync(baiPath);
+            if (baiData.length >= 12) {
+              // Check if any byte after the 8-byte header (magic+n_ref) is non-zero
+              let hasData = false;
+              for (let i = 8; i < baiData.length; i++) {
+                if (baiData[i] !== 0) { hasData = true; break; }
+              }
+              if (!hasData) continue;  // empty BAI = no reads
+            }
+          } catch { /* if we can't read BAI, skip this track */ continue; }
           const urlBam = trackUrl(bamPath);
           const urlBai = trackUrl(baiPath);
           if (!urlBam || !urlBai) continue;
@@ -265,6 +279,92 @@ function discoverUmiStats(outdir) {
   return result;
 }
 
+// ---------------------------------------------------------------------------
+// Discover gene count data from step 11 output.
+// ---------------------------------------------------------------------------
+function discoverGeneCounts(outdir) {
+  const countDir = path.join(outdir, "11_count");
+  const result = { hasData: false, genes: [], samples: [], counts: [], isoforms: [], normalized: [] };
+
+  if (!isDirSafe(countDir)) return result;
+
+  // Parse gene_counts_all.tsv
+  const allFile = path.join(countDir, "gene_counts_all.tsv");
+  const allRows = parseTsv(allFile);
+  if (allRows.length === 0) return result;
+
+  result.hasData = true;
+  result.counts = allRows.map(r => ({
+    gene: r.gene,
+    sample: r.sample,
+    total_count: Number(r.total_count),
+    splice_pattern: r.splice_pattern,
+    pattern_count: Number(r.pattern_count),
+  }));
+
+  // Extract unique genes and samples
+  result.genes = [...new Set(allRows.map(r => r.gene))].sort();
+  result.samples = [...new Set(allRows.map(r => r.sample))].sort(naturalCompare);
+
+  // Extract gene coordinates from the first per-sample count file
+  result.geneInfo = {};
+  const sampleFiles = readdirSafe(countDir).filter(f => f.endsWith("_gene_counts.tsv"));
+  if (sampleFiles.length > 0) {
+    for (const row of parseTsv(path.join(countDir, sampleFiles[0]))) {
+      const gene = row["#gene"] || row.gene;
+      if (gene && row.chr && !result.geneInfo[gene]) {
+        result.geneInfo[gene] = { chr: row.chr, start: Number(row.start), end: Number(row.end) };
+      }
+    }
+  }
+
+  // Parse isoform_discovery.tsv
+  const isoFile = path.join(countDir, "isoform_discovery.tsv");
+  const isoRows = parseTsv(isoFile);
+  result.isoforms = isoRows.map(r => ({
+    barcode: r.barcode || "",
+    gene: r.gene,
+    splice_pattern: r.splice_pattern,
+    pooled_count: Number(r.pooled_count),
+    n_samples: Number(r.n_samples),
+    samples_with_pattern: r.samples_with_pattern,
+    pct_of_gene: r.pct_of_gene,
+  }));
+
+  // Parse gene_counts_normalized.tsv (if exists)
+  const normFile = path.join(countDir, "gene_counts_normalized.tsv");
+  const normRows = parseTsv(normFile);
+  result.normalized = normRows.map(r => ({
+    gene: r.gene,
+    sample: r.sample,
+    level: r.level,
+    splice_pattern: r.splice_pattern,
+    count: Number(r.count),
+    hk_gene: r.hk_gene,
+    hk_count: Number(r.hk_count),
+    ratio: r.ratio === "NA" ? null : Number(r.ratio),
+  }));
+
+  return result;
+}
+
+// Read a coverage depth file and return positions + depths arrays.
+function readCoverageFile(filePath) {
+  try {
+    const lines = fs.readFileSync(filePath, "utf8").trim().split("\n");
+    const positions = [];
+    const depths = [];
+    for (const line of lines) {
+      const parts = line.split("\t");
+      if (parts.length >= 3) {
+        positions.push(Number(parts[1]));
+        depths.push(Number(parts[2]));
+      }
+    }
+    return { positions, depths };
+  } catch { return { positions: [], depths: [] }; }
+}
+
 // Resolve a track URL (e.g. /data/foo or /extdata/bar) to an absolute filesystem path.
 function resolveTrackPath(url) {
   if (url.startsWith("/extdata/") && DATA_DIR) {
@@ -287,6 +387,11 @@ function loadDataset(outdir) {
 // Called once at server startup for each reference file.
 // ---------------------------------------------------------------------------
 function sanitizeFasta(fastaPath) {
+  // Skip large files (>10MB) — genome FASTAs from NCBI/Ensembl are already
+  // correctly formatted. Sanitizing them is slow (synchronous 200MB+ read).
+  const stat = statSafe(fastaPath);
+  if (stat && stat.size > 10 * 1024 * 1024) return;
+
   let data;
   try { data = fs.readFileSync(fastaPath); } catch { return; }
 
@@ -384,6 +489,9 @@ function resolvePath(urlPath) {
   if (urlPath === "/umi" || urlPath === "/umi.html") {
     return path.join(WORKSPACE, "igv_viewer/umi.html");
   }
+  if (urlPath === "/genes" || urlPath === "/genes.html") {
+    return path.join(WORKSPACE, "igv_viewer/genes.html");
+  }
   for (const [prefix, base] of Object.entries(ROUTES)) {
     if (urlPath.startsWith(prefix)) {
       const rel = urlPath.slice(prefix.length);
@@ -438,8 +546,20 @@ const server = http.createServer((req, res) => {
         if (rn) usedRefNames.add(rn);
       }
     }
+    // Match references by checking if ANY sequence name in the FASTA's .fai
+    // matches a BAM reference name.  The old check compared the filename stem
+    // (r.id) which fails for multi-sequence references (e.g. MpTak_v7.1.fa
+    // contains chr1, chr2, ... but r.id is "MpTak_v7.1").
     const refs = usedRefNames.size > 0
-      ? allRefs.filter(r => usedRefNames.has(r.id))
+      ? allRefs.filter(r => {
+          if (usedRefNames.has(r.id)) return true;  // exact filename match (single-seq)
+          // Check .fai for sequence names
+          try {
+            const faiPath = path.join(WORKSPACE, r.indexURL.replace(/^\/ref\//, "resources/references/"));
+            const faiLines = fs.readFileSync(faiPath, "utf8").trim().split("\n");
+            return faiLines.some(l => usedRefNames.has(l.split("\t")[0]));
+          } catch { return false; }
+        })
       : allRefs;
     const data = { references: refs, datasets: names, datasetInfo: dsInfo };
     const json = JSON.stringify(data, null, 2);
@@ -554,6 +674,47 @@ const server = http.createServer((req, res) => {
     return;
   }
 
+  // API: gene count data from step 11 output.
+  if (urlPath === "/api/gene-counts") {
+    const params = new URL(req.url, `http://${req.headers.host}`).searchParams;
+    const name = params.get("name");
+    if (!name) { res.writeHead(400); res.end("Missing ?name= parameter"); return; }
+    const datasets = discoverDatasets();
+    const dir = datasets[name];
+    if (!dir) { res.writeHead(404); res.end("Dataset not found"); return; }
+    const data = discoverGeneCounts(dir);
+    data.dataset = name;
+    const json = JSON.stringify(data, null, 2);
+    res.writeHead(200, { "Content-Type": "application/json", "Content-Length": Buffer.byteLength(json) });
+    res.end(json);
+    return;
+  }
+
+  // API: per-base coverage for a specific gene and sample.
+  if (urlPath === "/api/gene-coverage") {
+    const params = new URL(req.url, `http://${req.headers.host}`).searchParams;
+    const name = params.get("name");
+    const gene = params.get("gene");
+    const sample = params.get("sample");
+    if (!name || !gene || !sample) {
+      res.writeHead(400); res.end("Missing ?name=, ?gene=, or ?sample= parameter"); return;
+    }
+    const datasets = discoverDatasets();
+    const dir = datasets[name];
+    if (!dir) { res.writeHead(404); res.end("Dataset not found"); return; }
+    // sample format: "barcode/rpi" → coverage file: barcode_rpi_gene.depth.tsv
+    const sampleParts = sample.split("/");
+    const covFileName = sampleParts.join("_") + "_" + gene + ".depth.tsv";
+    const covPath = path.join(dir, "11_count", "coverage", covFileName);
+    const data = readCoverageFile(covPath);
+    data.gene = gene;
+    data.sample = sample;
+    const json = JSON.stringify(data);
+    res.writeHead(200, { "Content-Type": "application/json", "Content-Length": Buffer.byteLength(json) });
+    res.end(json);
+    return;
+  }
+
   const filePath = resolvePath(urlPath);
   if (!filePath) { res.writeHead(404); res.end("Not found"); return; }
   const stat = statSafe(filePath);
@@ -581,7 +742,10 @@ const server = http.createServer((req, res) => {
     }
   }
 
-  res.writeHead(200, { "Content-Type": mime, "Content-Length": stat.size, "Accept-Ranges": "bytes" });
+  const headers = { "Content-Type": mime, "Content-Length": stat.size, "Accept-Ranges": "bytes" };
+  // Prevent browser caching of HTML pages so edits take effect on refresh
+  if (ext === ".html") headers["Cache-Control"] = "no-cache, no-store, must-revalidate";
+  res.writeHead(200, headers);
   fs.createReadStream(filePath).pipe(res);
 });
 

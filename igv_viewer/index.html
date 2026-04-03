@@ -7,7 +7,8 @@
     * { margin: 0; padding: 0; box-sizing: border-box; }
     body { font-family: system-ui, sans-serif; background: #f5f5f5; }
     header { background: #2c3e50; color: #fff; padding: 12px 24px;
-             display: flex; align-items: center; gap: 16px; flex-wrap: wrap; }
+             display: flex; align-items: center; gap: 16px; flex-wrap: wrap;
+             position: sticky; top: 0; z-index: 100; }
     header h1 { font-size: 18px; font-weight: 600; }
     header select { padding: 4px 8px; border-radius: 4px; font-size: 14px; }
     #igv-container { margin: 12px; }
@@ -63,8 +64,39 @@
     <label for="show-all" style="margin-left: 12px; font-size: 14px; cursor: pointer;">
       <input type="checkbox" id="show-all" style="cursor: pointer;"> Show all reads
     </label>
-    <a href="/umi" id="umi-link" style="color: #aaa; text-decoration: none; font-size: 14px; margin-left: auto;">UMI Analysis</a>
+    <span id="locus-badge" style="display:none; font-size:12px; background:#3498db; color:#fff;
+          padding:2px 8px; border-radius:10px; margin-left:auto;"></span>
+    <a href="/umi" id="umi-link" style="color: #aaa; text-decoration: none; font-size: 14px;">UMI Analysis</a>
+    <a href="/genes" id="genes-link" style="color: #aaa; text-decoration: none; font-size: 14px;">Gene Counts</a>
   </header>
+  <script>
+    // Sync nav links + locus badge immediately from URL params (before slow async init)
+    (function() {
+      var p = new URLSearchParams(location.search);
+      var n = p.get("name");
+      var locus = p.get("locus");
+      if (n) {
+        var e = encodeURIComponent(n);
+        document.getElementById("umi-link").href = "/umi?name=" + e;
+        var gh = "";
+        try { gh = sessionStorage.getItem("l3rseq_genes_hash_" + n) || ""; } catch(ex) {}
+        document.getElementById("genes-link").href = "/genes?name=" + e + gh;
+      }
+      // Show gene locus badge if navigating from gene counts page
+      if (locus) {
+        var badge = document.getElementById("locus-badge");
+        // Try to find gene name from the genes hash
+        var geneName = "";
+        try {
+          var hash = gh || "";
+          var m = hash.match(/sel=([^&]+)/);
+          if (m) geneName = decodeURIComponent(m[1]) + " ";
+        } catch(ex) {}
+        badge.textContent = geneName + locus;
+        badge.style.display = "inline";
+      }
+    })();
+  </script>
   <div class="info" id="info-bar">
     <div id="dataset-desc" style="display:none; margin-bottom: 6px; color: #333; font-weight: 500; white-space: pre-line;"></div>
     <div>Tracks show raw mapping (step 07, blue) and tail-corrected reads (step 09, red).
@@ -226,10 +258,19 @@
       buildDropdown(sel, names);
       sel.insertAdjacentHTML("afterbegin", '<option value="">-- select dataset --</option>');
       sel.value = "";
-      sel.onchange = () => {
-        loadDataset(sel.value);
+
+      function syncNavLinks(name) {
         const umiLink = document.getElementById("umi-link");
-        if (umiLink) umiLink.href = sel.value ? "/umi?name=" + encodeURIComponent(sel.value) : "/umi";
+        if (umiLink) umiLink.href = name ? "/umi?name=" + encodeURIComponent(name) : "/umi";
+        const genesLink = document.getElementById("genes-link");
+        // Carry genes page view state hash so it restores on return
+        const genesHash = name ? (sessionStorage.getItem("l3rseq_genes_hash_" + name) || "") : "";
+        if (genesLink) genesLink.href = (name ? "/genes?name=" + encodeURIComponent(name) : "/genes") + genesHash;
+      }
+
+      sel.onchange = () => {
+        syncNavLinks(sel.value);
+        loadDataset(sel.value);
       };
 
       /* Populate reference selector */
@@ -239,11 +280,24 @@
         const dsSel = document.getElementById("dataset");
         if (dsSel.value) loadDataset(dsSel.value);
       };
+
+      /* Auto-select: URL param first, then single-dataset auto-pick */
+      const urlParams = new URLSearchParams(location.search);
+      const urlName = urlParams.get("name");
+      const urlLocus = urlParams.get("locus");
+      let pick = null;
+      if (urlName && names.includes(urlName)) pick = urlName;
+      else if (names.length === 1) pick = names[0];
+      if (pick) {
+        sel.value = pick;
+        syncNavLinks(pick);
+        await loadDataset(pick, urlLocus || undefined);
+      }
     }
 
     /* ---- Load tracks on demand (only when user selects a dataset) ---- */
 
-    async function loadDataset(name) {
+    async function loadDataset(name, locus) {
       if (!name) return;
       const container = document.getElementById("igv-container");
       if (browser) { igv.removeBrowser(browser); browser = null; }
@@ -293,10 +347,13 @@
         for (const t of enabledTracks) t.groupBy = groupBy;
       }
 
-      browser = await igv.createBrowser(container, {
+      const browserCfg = {
         reference: ref,
         tracks: enabledTracks,
-      });
+        loadDefaultGenomes: false,  // suppress fetch to igv.org (blocked by firewall)
+      };
+      if (locus) browserCfg.locus = locus;
+      browser = await igv.createBrowser(container, browserCfg);
 
       /* Also set groupBy on AlignmentTrack objects for sort/color to reference */
       if (groupBy) {
@@ -550,7 +607,7 @@
         const label = document.createElement("label");
         const cb = document.createElement("input");
         cb.type = "checkbox";
-        cb.checked = true;
+        cb.checked = !t.hidden;  // hidden tracks start unchecked
         cb.dataset.trackIdx = i;
         cb.onchange = () => toggleTrack(i, cb.checked);
         label.appendChild(cb);

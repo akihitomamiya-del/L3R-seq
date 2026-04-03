@@ -5,9 +5,9 @@ Automated tests for verifying the L3Rseq pipeline on synthetic data.
 ## Quick start
 
 ```bash
-bash tests/run_tests.sh --quick           # smoke test (~2 min, 62 checks)
-bash tests/run_tests.sh --skip-preprocess  # steps 04-10 only (~2 min, 98 checks)
-bash tests/run_tests.sh                    # all steps 01-10 + filter (110 checks)
+bash tests/run_tests.sh --quick           # smoke test (~26s, 77 checks)
+bash tests/run_tests.sh --skip-preprocess  # steps 04-10 only (~40s)
+bash tests/run_tests.sh                    # all steps 01-10 + gene counting (156 checks)
 bash tests/run_tests.sh --no-viewer        # skip IGV viewer after tests
 ```
 
@@ -35,6 +35,8 @@ data/
   slam_test/          synthetic SLAM-seq data (pre-mapped, 40 reads with T→C gradient)
   splice_test/        synthetic splice data (pre-mapped, 30 reads)
   blast_test/         synthetic BLAST data (pre-mapped, 32 reads)
+  test_regions.tsv    gene regions for counting tests (TSV format)
+  test_regions.bed    gene regions for counting tests (BED format)
 
 expected/             reference results from a validated run
   csv_CT/             step 10 CSVs with --pattern CT
@@ -72,6 +74,11 @@ The synthetic tests use these files from `resources/`:
 | BLAST walk correction | exact | per-read CIGAR before→after checked |
 | BLAST chimeric detection | exact | cDNA-matching clips removed |
 | BLAST translocation | exact | ChrM-matching clips flagged TL:i:1 |
+| Gene regions (coordinates) | exact | regions TSV format, column count |
+| Gene regions (BED) | exact | BED → TSV conversion |
+| Gene counting | tolerant | total counted vs flagstat (±20%) |
+| BED/TSV equivalence | exact | BED-derived counts match TSV counts |
+| Housekeeping normalization | exact | self-normalization ratio = 1.000 |
 
 The pipeline is fully deterministic: racon runs single-threaded (`-t 1`) with
 deterministic seed selection (median-length read). Consensus sequences are

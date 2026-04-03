@@ -7,7 +7,8 @@
     * { margin: 0; padding: 0; box-sizing: border-box; }
     body { font-family: system-ui, sans-serif; background: #f5f5f5; }
     header { background: #2c3e50; color: #fff; padding: 12px 24px;
-             display: flex; align-items: center; gap: 16px; flex-wrap: wrap; }
+             display: flex; align-items: center; gap: 16px; flex-wrap: wrap;
+             position: sticky; top: 0; z-index: 100; }
     header h1 { font-size: 18px; font-weight: 600; }
     header select { padding: 4px 8px; border-radius: 4px; font-size: 14px; }
     header a { color: #aaa; text-decoration: none; font-size: 14px; margin-left: auto; }
@@ -67,8 +68,21 @@
     <h1>L3Rseq UMI Analysis</h1>
     <label for="dataset">Dataset:</label>
     <select id="dataset"><option value="">loading...</option></select>
-    <a href="/">Alignment Viewer</a>
+    <a href="/" id="viewer-link">Alignment Viewer</a>
+    <a href="/genes" id="genes-link">Gene Counts</a>
   </header>
+  <script>
+    (function() {
+      var n = new URLSearchParams(location.search).get("name");
+      if (n) {
+        var e = encodeURIComponent(n);
+        document.getElementById("viewer-link").href = "/?name=" + e;
+        var gh = "";
+        try { gh = sessionStorage.getItem("l3rseq_genes_hash_" + n) || ""; } catch(ex) {}
+        document.getElementById("genes-link").href = "/genes?name=" + e + gh;
+      }
+    })();
+  </script>
 
   <div class="panel" id="sample-panel">
     <div class="panel-header" onclick="togglePanel('sample-panel')">
@@ -80,8 +94,8 @@
   </div>
 
   <div class="controls" id="controls" style="display:none;">
-    <button class="ctrl-btn active" data-view="overlay" onclick="setView('overlay')">Overlay</button>
-    <button class="ctrl-btn" data-view="grid" onclick="setView('grid')">Grid</button>
+    <button class="ctrl-btn active" data-view="grid" onclick="setView('grid')">Grid</button>
+    <button class="ctrl-btn" data-view="overlay" onclick="setView('overlay')">Overlay</button>
     <button class="ctrl-btn" data-view="table" onclick="setView('table')">Table</button>
     <span class="ctrl-sep">|</span>
     <label style="cursor:pointer;display:flex;align-items:center;gap:3px;">
@@ -98,7 +112,7 @@
 // --- State ---
 let allData = null;      // raw API response
 let selectedIds = new Set();
-let viewMode = "overlay";
+let viewMode = "grid";
 let chartInstances = [];
 
 // --- Color palette ---
@@ -121,6 +135,65 @@ function sampleColor(sample, alpha) {
   return `hsla(${hue}, 70%, ${lightness}%, ${alpha})`;
 }
 
+// --- State persistence (survives page navigation) ---
+function stateKey() {
+  const ds = document.getElementById("dataset").value;
+  return ds ? "l3rseq_umi_" + ds : null;
+}
+
+function saveState() {
+  const key = stateKey();
+  if (!key || !allData) return;
+  try {
+    sessionStorage.setItem(key, JSON.stringify({
+      selectedIds: [...selectedIds],
+      viewMode,
+      showSingletons: document.getElementById("show-singletons").checked,
+      scrollY: window.scrollY,
+    }));
+  } catch {}
+}
+
+function restoreState() {
+  const key = stateKey();
+  if (!key) return false;
+  try {
+    const raw = sessionStorage.getItem(key);
+    if (!raw) return false;
+    const s = JSON.parse(raw);
+    if (s.selectedIds && allData) {
+      const valid = new Set(allData.samples.map(sm => sm.id));
+      selectedIds = new Set(s.selectedIds.filter(id => valid.has(id)));
+      document.querySelectorAll('#sample-body input[data-id]').forEach(cb => {
+        cb.checked = selectedIds.has(cb.dataset.id);
+      });
+      document.querySelectorAll('#sample-body .bc-group-header input').forEach(cb => {
+        const bc = cb.getAttribute("onchange").match(/'([^']+)'/)?.[1];
+        if (bc) {
+          const bcSamples = allData.samples.filter(sm => sm.barcode === bc);
+          cb.checked = bcSamples.every(sm => selectedIds.has(sm.id));
+        }
+      });
+      syncAllCheckbox();
+      updateSampleCount();
+    }
+    if (s.viewMode) { viewMode = s.viewMode; }
+    document.querySelectorAll(".controls .ctrl-btn[data-view]").forEach(btn =>
+      btn.classList.toggle("active", btn.dataset.view === viewMode));
+    if (s.showSingletons != null) document.getElementById("show-singletons").checked = s.showSingletons;
+    if (s.scrollY) setTimeout(() => window.scrollTo(0, s.scrollY), 100);
+    return true;
+  } catch { return false; }
+}
+
+function syncNavLinks(name) {
+  const viewerLink = document.getElementById("viewer-link");
+  if (viewerLink) viewerLink.href = name ? "/?name=" + encodeURIComponent(name) : "/";
+  const genesLink = document.getElementById("genes-link");
+  const genesHash = name ? (sessionStorage.getItem("l3rseq_genes_hash_" + name) || "") : "";
+  if (genesLink) genesLink.href = (name ? "/genes?name=" + encodeURIComponent(name) : "/genes") + genesHash;
+}
+
 // --- Init ---
 async function init() {
   const sel = document.getElementById("dataset");
@@ -133,21 +206,26 @@ async function init() {
       opt.value = ds; opt.textContent = ds;
       sel.appendChild(opt);
     }
-    // Restore from URL param
+    // Auto-select: URL param first, then single-dataset auto-pick
     const urlName = new URLSearchParams(location.search).get("name");
-    if (urlName && data.datasets.includes(urlName)) {
-      sel.value = urlName;
-      loadDataset(urlName);
+    let pick = null;
+    if (urlName && data.datasets.includes(urlName)) pick = urlName;
+    else if (data.datasets.length === 1) pick = data.datasets[0];
+    // Wire up event listeners before loading data
+    sel.addEventListener("change", () => {
+      const name = sel.value;
+      syncNavLinks(name);
+      if (name) loadDataset(name); else clearAll();
+    });
+    document.getElementById("show-singletons").addEventListener("change", () => { render(); saveState(); });
+
+    // Auto-load dataset (awaited so state restore completes before init returns)
+    if (pick) {
+      sel.value = pick;
+      syncNavLinks(pick);
+      await loadDataset(pick);
     }
   } catch { sel.innerHTML = '<option value="">error loading datasets</option>'; }
-  sel.addEventListener("change", () => {
-    const name = sel.value;
-    history.replaceState(null, "", name ? "?name=" + encodeURIComponent(name) : "/umi");
-    if (name) loadDataset(name); else clearAll();
-    // Update viewer link to preserve dataset
-    document.querySelector("header a").href = name ? "/?name=" + encodeURIComponent(name) : "/";
-  });
-  document.getElementById("show-singletons").addEventListener("change", render);
 }
 
 async function loadDataset(name) {
@@ -164,7 +242,9 @@ async function loadDataset(name) {
     selectedIds = new Set(allData.samples.map(s => s.id));
     buildSampleSelector();
     document.getElementById("controls").style.display = "flex";
+    restoreState();
     render();
+    saveState();
   } catch { showEmpty("Error loading UMI data."); }
 }
 
@@ -215,7 +295,7 @@ function toggleAll(checked) {
   else selectedIds.clear();
   document.querySelectorAll('#sample-body input[data-id]').forEach(cb => cb.checked = checked);
   document.querySelectorAll('#sample-body .bc-group-header input').forEach(cb => cb.checked = checked);
-  updateSampleCount(); render();
+  updateSampleCount(); render(); saveState();
 }
 
 function toggleBarcode(bc, checked) {
@@ -223,19 +303,18 @@ function toggleBarcode(bc, checked) {
     cb.checked = checked;
     if (checked) selectedIds.add(cb.dataset.id); else selectedIds.delete(cb.dataset.id);
   });
-  syncAllCheckbox(); updateSampleCount(); render();
+  syncAllCheckbox(); updateSampleCount(); render(); saveState();
 }
 
 function toggleSample(id, checked) {
   if (checked) selectedIds.add(id); else selectedIds.delete(id);
-  // Sync barcode checkbox
   const bc = allData.samples.find(s => s.id === id)?.barcode;
   if (bc) {
     const bcSamples = allData.samples.filter(s => s.barcode === bc);
     const bcCheckbox = document.querySelector(`#sample-body .bc-group-header input[onchange*="${bc}"]`);
     if (bcCheckbox) bcCheckbox.checked = bcSamples.every(s => selectedIds.has(s.id));
   }
-  syncAllCheckbox(); updateSampleCount(); render();
+  syncAllCheckbox(); updateSampleCount(); render(); saveState();
 }
 
 function syncAllCheckbox() {
@@ -253,7 +332,7 @@ function setView(mode) {
   viewMode = mode;
   document.querySelectorAll(".controls .ctrl-btn[data-view]").forEach(btn =>
     btn.classList.toggle("active", btn.dataset.view === mode));
-  render();
+  render(); saveState();
 }
 
 function togglePanel(id) {

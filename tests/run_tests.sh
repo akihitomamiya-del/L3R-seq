@@ -1106,6 +1106,173 @@ echo ""
 fi
 
 # ---------------------------------------------------------------------------
+# Test 8: Gene-level read counting (regions + count subcommands)
+# ---------------------------------------------------------------------------
+
+if [ "$QUICK" -eq 0 ]; then
+T_START=$SECONDS
+echo "[TEST 8] Gene-level read counting"
+echo ""
+
+# 8a. Regions from coordinates
+REGIONS_OUT="$OUTPUT_DIR/test_regions_coords.tsv"
+rm -f "$REGIONS_OUT"
+if "$PIPELINE_DIR/L3Rseq" regions \
+    --coordinates "test_gene:test_gene:1-1300" \
+    --output "$REGIONS_OUT" > "$OUTPUT_DIR/test8_regions.log" 2>&1; then
+    pass "regions --coordinates ran successfully"
+else
+    fail "regions --coordinates failed (see test8_regions.log)"
+fi
+
+# Verify regions TSV format
+if [ -f "$REGIONS_OUT" ]; then
+    _region_lines=$(grep -cv '^#' "$REGIONS_OUT" 2>/dev/null || echo 0)
+    check_exact "regions output has 1 gene" "$_region_lines" "1"
+    _region_cols=$(head -2 "$REGIONS_OUT" | tail -1 | awk -F'\t' '{print NF}')
+    check_exact "regions output has 6 columns" "$_region_cols" "6"
+else
+    fail "regions output file not created"
+fi
+
+# 8b. Regions from BED
+REGIONS_BED_OUT="$OUTPUT_DIR/test_regions_bed.tsv"
+rm -f "$REGIONS_BED_OUT"
+if "$PIPELINE_DIR/L3Rseq" regions \
+    --bed "$DATA_DIR/test_regions.bed" \
+    --output "$REGIONS_BED_OUT" > "$OUTPUT_DIR/test8_bed.log" 2>&1; then
+    pass "regions --bed ran successfully"
+else
+    fail "regions --bed failed (see test8_bed.log)"
+fi
+
+# 8c. Count subcommand with TSV regions
+# Use --min-frac 0.3: synthetic consensus reads are ~500-800bp fragments of
+# the 1300bp test_gene, so they don't span 95% of the region.
+COUNT_DIR="$OUTPUT_DIR/pipeline_CT/11_count"
+rm -rf "$COUNT_DIR"
+if "$PIPELINE_DIR/L3Rseq" count \
+    --input "$OUTPUT_DIR/pipeline_CT" \
+    --outdir "$OUTPUT_DIR/pipeline_CT" \
+    --regions "$DATA_DIR/test_regions.tsv" \
+    --min-frac 0.3 \
+    > "$OUTPUT_DIR/test8_count.log" 2>&1; then
+    pass "count subcommand ran successfully"
+else
+    fail "count subcommand failed (see test8_count.log)"
+fi
+
+# Verify output files
+if [ -d "$COUNT_DIR" ]; then
+    pass "11_count/ directory created"
+else
+    fail "11_count/ directory not created"
+fi
+
+# Per-sample count files
+_sample_files=$(find "$COUNT_DIR" -maxdepth 1 -name "*_gene_counts.tsv" 2>/dev/null | wc -l)
+check_exact "per-sample count TSVs" "$_sample_files" "4"
+
+# Merged counts
+if [ -f "$COUNT_DIR/gene_counts_all.tsv" ]; then
+    pass "gene_counts_all.tsv exists"
+    _merged_rows=$(grep -cv '^gene' "$COUNT_DIR/gene_counts_all.tsv" 2>/dev/null || echo 0)
+    if [ "$_merged_rows" -gt 0 ]; then
+        pass "gene_counts_all.tsv has data rows ($_merged_rows)"
+    else
+        fail "gene_counts_all.tsv is empty"
+    fi
+else
+    fail "gene_counts_all.tsv not created"
+fi
+
+# Isoform discovery
+if [ -f "$COUNT_DIR/isoform_discovery.tsv" ]; then
+    pass "isoform_discovery.tsv exists"
+else
+    fail "isoform_discovery.tsv not created"
+fi
+
+# Coverage files
+_cov_files=$(find "$COUNT_DIR/coverage" -name "*.depth.tsv" 2>/dev/null | wc -l)
+check_exact "coverage depth files" "$_cov_files" "4"
+
+# Verify counts are reasonable: total across all samples should match flagstat
+# (each primary.sort.bam has only mapped primary reads)
+conda activate NanoporeMap 2>/dev/null
+_total_flagstat=0
+for _bam in "$OUTPUT_DIR/pipeline_CT/07_map"/*/*/*.sort.bam; do
+    [[ "$_bam" == *primary.sort.bam ]] || continue
+    _mapped=$(samtools view -c -F 0x904 "$_bam" 2>/dev/null || echo 0)
+    _total_flagstat=$((_total_flagstat + _mapped))
+done
+conda deactivate 2>/dev/null
+
+_total_counted=$(awk -F'\t' 'NR>1 { sum += $5 } END { print sum+0 }' "$COUNT_DIR/gene_counts_all.tsv" 2>/dev/null || echo 0)
+# With --min-frac 0.3, most reads should be counted. Allow 20% tolerance
+# since some very short reads may not reach the 30% overlap threshold.
+if [ "$_total_flagstat" -gt 0 ]; then
+    check_range "total counted reads vs flagstat" "$_total_counted" "$_total_flagstat" "0.20"
+fi
+
+# 8d. BED format equivalence: convert BED → TSV via regions, then count
+COUNT_BED_DIR="$OUTPUT_DIR/pipeline_CT_bed/11_count"
+rm -rf "$OUTPUT_DIR/pipeline_CT_bed"
+mkdir -p "$OUTPUT_DIR/pipeline_CT_bed"
+ln -sf "$OUTPUT_DIR/pipeline_CT/07_map" "$OUTPUT_DIR/pipeline_CT_bed/07_map"
+# Convert BED to regions TSV
+if "$PIPELINE_DIR/L3Rseq" regions \
+    --bed "$DATA_DIR/test_regions.bed" \
+    --output "$OUTPUT_DIR/pipeline_CT_bed/regions_from_bed.tsv" \
+    > "$OUTPUT_DIR/test8_bed_regions.log" 2>&1 && \
+   "$PIPELINE_DIR/L3Rseq" count \
+    --input "$OUTPUT_DIR/pipeline_CT_bed" \
+    --outdir "$OUTPUT_DIR/pipeline_CT_bed" \
+    --regions "$OUTPUT_DIR/pipeline_CT_bed/regions_from_bed.tsv" \
+    --min-frac 0.3 \
+    > "$OUTPUT_DIR/test8_bed_count.log" 2>&1; then
+    _bed_total=$(awk -F'\t' 'NR>1 { sum += $5 } END { print sum+0 }' "$COUNT_BED_DIR/gene_counts_all.tsv" 2>/dev/null || echo 0)
+    check_exact "BED count matches TSV count" "$_bed_total" "$_total_counted"
+else
+    fail "count with BED-derived regions failed (see test8_bed_count.log)"
+fi
+
+# 8e. Normalization (gene as its own housekeeping → ratio = 1.0)
+rm -rf "$COUNT_DIR"
+if "$PIPELINE_DIR/L3Rseq" count \
+    --input "$OUTPUT_DIR/pipeline_CT" \
+    --outdir "$OUTPUT_DIR/pipeline_CT" \
+    --regions "$DATA_DIR/test_regions.tsv" \
+    --housekeeping test_gene \
+    --min-frac 0.3 \
+    > "$OUTPUT_DIR/test8_norm.log" 2>&1; then
+    pass "count with --housekeeping ran successfully"
+else
+    fail "count with --housekeeping failed (see test8_norm.log)"
+fi
+
+if [ -f "$COUNT_DIR/gene_counts_normalized.tsv" ]; then
+    pass "gene_counts_normalized.tsv exists"
+    # Gene-total ratio should be 1.000 (gene is its own housekeeping)
+    _ratios=$(awk -F'\t' '$3 == "gene_total" { print $8 }' "$COUNT_DIR/gene_counts_normalized.tsv" 2>/dev/null)
+    _all_one=1
+    for _r in $_ratios; do
+        if [ "$_r" != "1.000" ]; then _all_one=0; break; fi
+    done
+    if [ "$_all_one" -eq 1 ]; then
+        pass "self-normalization ratios = 1.000"
+    else
+        fail "self-normalization ratios != 1.000 (got: $_ratios)"
+    fi
+else
+    fail "gene_counts_normalized.tsv not created"
+fi
+
+echo "  ⏱ Test 8: $(( SECONDS - T_START ))s"
+echo ""
+fi
+
+# ---------------------------------------------------------------------------
 # Summary
 # ---------------------------------------------------------------------------
 

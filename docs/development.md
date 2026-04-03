@@ -28,6 +28,59 @@ Plots include conversion-colored editing/noise panels (stacked by nucleotide con
 
 The [UMI analysis page](advanced.md#alignment-viewer) in the viewer (`/umi`) provides interactive cross-sample comparison of bin size distributions.
 
+## Viewer development
+
+The IGV viewer is a multi-page web app (`/` alignment, `/umi` UMI analysis, `/genes` gene counts). Pages interact via URL parameters, URL hash, sessionStorage, and shared nav links. Follow this cycle for every change:
+
+### Edit → Restart → Screenshot → Confirm
+
+1. Edit the file(s)
+2. Restart the viewer: `L3Rseq viewer --stop && L3Rseq viewer --dir <dir>`
+3. Take Puppeteer screenshots to verify (see below)
+4. Test the exact user-reported scenario end-to-end
+
+**Never skip the screenshot step.** API responses can look correct while the page is broken.
+
+```bash
+# Puppeteer screenshot template
+LD_LIBRARY_PATH="/opt/miniforge/envs/analysis/lib" node -e "
+const puppeteer = require('/workspace/igv_viewer/node_modules/puppeteer');
+(async () => {
+  const b = await puppeteer.launch({ headless: true, args: ['--no-sandbox'] });
+  const page = await b.newPage();
+  await page.setViewport({ width: 1400, height: 900 });
+  await page.goto('http://localhost:8080/genes?name=runs/LibCheck', { waitUntil: 'networkidle0', timeout: 20000 });
+  await new Promise(r => setTimeout(r, 3000));
+  await page.screenshot({ path: '/tmp/test.png' });
+  await b.close();
+})();
+"
+```
+
+### Common pitfalls and solutions
+
+| Problem | Root cause | Solution |
+|---------|-----------|----------|
+| Browser shows old HTML | Cache | Server sends `Cache-Control: no-cache` for HTML. Always restart viewer. |
+| State lost navigating between pages | sessionStorage unreliable in VS Code Simple Browser | Primary state in URL hash (`#v=table&sel=GENE`). Hash embedded in nav links. sessionStorage as backup. |
+| Nav links don't carry state | Async `init()` hasn't updated links yet | Inline `<script>` in `<header>` sets links immediately from URL params. |
+| `target="_blank"` doesn't work | VS Code Simple Browser | Gene names use `onclick` to update the Alignment Viewer link; no navigation. |
+| Alignment viewer crashes | Empty BAMs or blocked `igv.org` fetch | BAI content check filters empty BAMs. `loadDefaultGenomes: false`. |
+| Large FASTA blocks startup | `sanitizeFasta()` reads synchronously | Skip >10MB files. |
+| `samtools \| awk` fails with pipefail | samtools non-zero for missing chromosomes | `{ samtools ... \|\| true; } \| awk` |
+
+### Cross-page state architecture
+
+All three pages share dataset via `?name=`. The genes page additionally stores view state in URL hash:
+
+- `#v=table` — view mode
+- `&sel=GENE` — selected gene for alignment viewer
+- `&g=GENE` — gene filter, `&hk=GENE` — housekeeping, `&iso=1` — isoform rows
+
+Other pages read `sessionStorage["l3rseq_genes_hash_<name>"]` to build Gene Counts nav links with the hash. Each page has an inline `<script>` that sets links immediately, before async init.
+
+**When changing one page, test all three.** A genes.html change can break the alignment viewer (nav links) or UMI page (shared state keys).
+
 ## Build the Docker image from source
 
 For developers who want to modify the pipeline or Dockerfile. If you use VS Code, clone the repo and select **Reopen in Container** > **L3Rseq Pipeline (build)** — this builds the image and drops you into a ready-to-edit environment. Otherwise, build manually:

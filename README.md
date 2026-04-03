@@ -236,6 +236,10 @@ L3Rseq map       --input out/ --outdir out/ --ref ref.fa                 # 07: m
 L3Rseq variants  --input out/ --outdir out/ --ref ref.fa --pattern CT    # 08: variant calling
 L3Rseq correct   --input out/ --outdir out/ --ref ref.fa --pattern CT    # 09: tail correction
 L3Rseq export    --input out/ --outdir out/                              # 10: CSV export
+
+# Post-analysis: gene-level counting
+L3Rseq regions   --gff annotation.gff3 --output regions.tsv             # define gene regions
+L3Rseq count     --input out/ --outdir out/ --regions regions.tsv       # count molecules per gene
 ```
 
 For subcommand-specific help: `L3Rseq <subcommand> --help`
@@ -250,6 +254,7 @@ For subcommand-specific help: `L3Rseq <subcommand> --help`
 - **Splicing detection** — `--introns` classifies reads as spliced/unspliced with per-intron resolution; `discover-introns` can automatically detect intron coordinates from your data without prior annotation
 - **Noise separation** — per-read noise count (NC tag) distinguishes biological editing from residual sequencing errors in the consensus
 - **Secondary pattern** — `--count-pattern TC` for SLAM-seq T-to-C counting alongside primary editing
+- **Gene-level counting** — qPCR-style molecule counting from mapped BAMs: define gene regions from GFF, BED, or manual coordinates, then count UMI-consensus reads per gene with isoform discovery from splice patterns and optional housekeeping-gene normalization (see [Gene counting](docs/advanced.md#gene-level-counting))
 - **Built-in alignment viewer** — browser-based [IGV.js viewer](docs/advanced.md#alignment-viewer) with custom SAM tag support: sort and color reads by editing count, splice status, 3' tail length, noise, and more. Lets you visually inspect per-molecule annotations directly on the alignment without leaving the pipeline
 
 <!-- TODO: Add viewer screenshot showing color-by-EC or sort-by-SJ -->

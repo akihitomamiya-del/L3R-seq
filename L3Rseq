@@ -54,6 +54,10 @@ Subcommands (core pipeline):
   correct      3' tail correction
   export       CSV export
 
+Analysis:
+  regions          Prepare gene regions from GFF, BED, or coordinates
+  count            Gene-level read counting from mapped BAMs
+
 Utility:
   discover-introns  Discover candidate intron positions from mapped reads
   viewer            Start the IGV.js alignment viewer (http://localhost:8080)
@@ -524,6 +528,140 @@ cmd_export() {
 }
 
 # ---------------------------------------------------------------------------
+# Subcommand: regions (gene region discovery)
+# ---------------------------------------------------------------------------
+cmd_regions() {
+    local gff_file="" bed_file="" coordinates="" output_file=""
+    local feature_type="gene" span="gene" name_pattern="" chr_filter=""
+    local append=0 discover_from="" min_reads="1"
+
+    while [ $# -gt 0 ]; do
+        case "$1" in
+            --gff)            require_arg "$1" "${2:-}"; gff_file="$2"; shift 2 ;;
+            --bed)            require_arg "$1" "${2:-}"; bed_file="$2"; shift 2 ;;
+            --coordinates)    require_arg "$1" "${2:-}"; coordinates="$2"; shift 2 ;;
+            --output)         require_arg "$1" "${2:-}"; output_file="$2"; shift 2 ;;
+            --feature-type)   require_arg "$1" "${2:-}"; feature_type="$2"; shift 2 ;;
+            --span)           require_arg "$1" "${2:-}"; span="$2"; shift 2 ;;
+            --name-pattern)   require_arg "$1" "${2:-}"; name_pattern="$2"; shift 2 ;;
+            --chr)            require_arg "$1" "${2:-}"; chr_filter="$2"; shift 2 ;;
+            --append)         append=1; shift ;;
+            --discover-from)  require_arg "$1" "${2:-}"; discover_from="$2"; shift 2 ;;
+            --min-reads)      require_arg "$1" "${2:-}"; min_reads="$2"; shift 2 ;;
+            --help)
+                cat <<'HELP'
+Usage: L3Rseq regions [--gff <file> | --bed <file> | --coordinates <str>] --output <file>
+       L3Rseq regions --gff <file> --discover-from <dir> --output <file>
+
+Prepare gene regions from GFF3, BED, or manual coordinates for use with L3Rseq count.
+
+Input (one required):
+  --gff <file>           GFF3/GTF annotation file
+  --bed <file>           BED file (0-based half-open, converted to 1-based inclusive)
+  --coordinates <str>    Manual "name:chr:start-end,..." (1-based inclusive)
+
+Auto-discovery (use with --gff):
+  --discover-from <dir>  Scan BAMs in this directory (containing 07_map/) to find
+                         which GFF genes have mapped reads. Outputs only genes with
+                         reads, sorted by read count descending.
+  --min-reads <int>      Minimum reads to include a gene (default: 1)
+
+Output:
+  --output <file>        Output regions TSV path (required)
+
+GFF options:
+  --feature-type <str>   Feature type to extract (default: gene)
+  --span <mode>          Region boundaries: gene (default), cds (ATG→stop), mrna
+  --name-pattern <str>   Filter by gene name glob (e.g. "Mp1g*")
+  --chr <str>            Filter by chromosome
+
+General:
+  --append               Append to existing output file instead of overwriting
+HELP
+                return 0 ;;
+            *)  echo "Unknown option: $1" >&2; return 1 ;;
+        esac
+    done
+
+    [ -z "$output_file" ] && { echo "ERROR: --output is required" >&2; return 1; }
+
+    # Determine input mode
+    local input="" mode=""
+    if [ -n "$discover_from" ]; then
+        # Discovery mode requires --gff
+        if [ -z "$gff_file" ]; then
+            echo "ERROR: --discover-from requires --gff" >&2
+            return 1
+        fi
+        input="$gff_file"; mode="discover"
+        # Discovery needs samtools
+        conda activate "$ENV_MAP"
+    elif [ -n "$gff_file" ]; then
+        input="$gff_file"; mode="gff"
+    elif [ -n "$bed_file" ]; then
+        input="$bed_file"; mode="bed"
+    elif [ -n "$coordinates" ]; then
+        input="$coordinates"; mode="coordinates"
+    else
+        echo "ERROR: One of --gff, --bed, --coordinates, or --gff + --discover-from is required" >&2
+        return 1
+    fi
+
+    source "$SCRIPT_DIR/scripts/regions.sh"
+    run_regions "$input" "$output_file" "$mode" "$feature_type" "$span" "$name_pattern" "$chr_filter" "$append" "$discover_from" "$min_reads"
+
+    if [ "$mode" = "discover" ]; then
+        conda deactivate
+    fi
+}
+
+# ---------------------------------------------------------------------------
+# Subcommand: count (gene-level read counting)
+# ---------------------------------------------------------------------------
+cmd_count() {
+    local input_dir="" output_dir="" regions_file="" housekeeping=""
+    local min_frac="0.95" min_mapq="0"
+
+    while [ $# -gt 0 ]; do
+        case "$1" in
+            --input)        require_arg "$1" "${2:-}"; input_dir="$2"; shift 2 ;;
+            --outdir)       require_arg "$1" "${2:-}"; output_dir="$2"; shift 2 ;;
+            --regions)      require_arg "$1" "${2:-}"; regions_file="$2"; shift 2 ;;
+            --housekeeping) require_arg "$1" "${2:-}"; housekeeping="$2"; shift 2 ;;
+            --min-frac)     require_arg "$1" "${2:-}"; min_frac="$2"; shift 2 ;;
+            --min-mapq)     require_arg "$1" "${2:-}"; min_mapq="$2"; shift 2 ;;
+            --help)
+                cat <<'HELP'
+Usage: L3Rseq count --input <dir> --outdir <dir> --regions <file> [options]
+
+Count UMI-consensus molecules per gene region from step 07 mapped BAMs.
+
+Required:
+  --input <dir>          Path containing 07_map/ output
+  --outdir <dir>         Output directory (creates 11_count/ subdirectory)
+  --regions <file>       Regions TSV (from L3Rseq regions)
+
+Optional:
+  --housekeeping <genes> Comma-separated gene names for normalization
+  --min-frac <float>     Minimum overlap fraction (default: 0.95)
+  --min-mapq <int>       Minimum mapping quality (default: 0)
+HELP
+                return 0 ;;
+            *)  echo "Unknown option: $1" >&2; return 1 ;;
+        esac
+    done
+
+    [ -z "$input_dir" ] && { echo "ERROR: --input is required" >&2; return 1; }
+    [ -z "$output_dir" ] && { echo "ERROR: --outdir is required" >&2; return 1; }
+    [ -z "$regions_file" ] && { echo "ERROR: --regions is required" >&2; return 1; }
+
+    conda activate "$ENV_MAP"
+    source "$SCRIPT_DIR/scripts/11_count.sh"
+    run_step_11 "$input_dir" "$output_dir" "$regions_file" "$housekeeping" "$min_frac" "$min_mapq"
+    conda deactivate
+}
+
+# ---------------------------------------------------------------------------
 # Subcommand: discover-introns
 # ---------------------------------------------------------------------------
 cmd_discover_introns() {
@@ -989,6 +1127,8 @@ case "$subcommand" in
     variants)  cmd_variants "$@" ;;
     correct)   cmd_correct "$@" ;;
     export)            cmd_export "$@" ;;
+    regions)           cmd_regions "$@" ;;
+    count)             cmd_count "$@" ;;
     discover-introns)  cmd_discover_introns "$@" ;;
     viewer)            cmd_viewer "$@" ;;
     run)               cmd_run "$@" ;;

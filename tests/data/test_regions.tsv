@@ -1,0 +1,2 @@
+#gene_name	chr	start	end	strand	source
+test_gene	test_gene	1	1300	+	manual

@@ -7,7 +7,7 @@
 ## Synthetic test suite
 
 ```bash
-bash tests/run_tests.sh                    # full suite (140 checks, ~42s)
+bash tests/run_tests.sh                    # full suite (156 checks, ~45s)
 bash tests/run_tests.sh --skip-preprocess  # steps 04-10 only (~30s)
 bash tests/run_tests.sh --quick            # smoke test (~15s)
 bash tests/run_tests.sh --no-viewer        # skip IGV viewer after tests
@@ -26,6 +26,8 @@ All tests use synthetic data with a 1.5kbp `test_gene` reference — no external
 | Test 4 | 09-10 | Splicing: SJ/SI/IR tags, splice pattern counts, intron discovery |
 | Test 5 | 09-10 | BLAST: walk correction CIGARs, ChrM translocation, cDNA chimera filtering |
 | Test 6 | — | IGV viewer API: datasets, tracks, pileup output, IGV.js patches |
+| Test 7 | — | Plot generation: analysis conda env, plot_umi_bins.py |
+| Test 8 | regions, count | Gene counting: regions from coordinates/BED, molecule counting, BED equivalence, housekeeping normalization |
 
 ## Docker image verification
 
