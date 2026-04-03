@@ -21,7 +21,8 @@
     "vscode": {
       "extensions": [
         "anthropic.claude-code",
-        "eamodio.gitlens"
+        "eamodio.gitlens",
+        "bierner.markdown-mermaid"
       ],
       "settings": {
         "terminal.integrated.defaultProfile.linux": "zsh"

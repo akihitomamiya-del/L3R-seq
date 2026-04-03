@@ -6,6 +6,9 @@
   },
   "customizations": {
     "vscode": {
+      "extensions": [
+        "bierner.markdown-mermaid"
+      ],
       "settings": {
         "terminal.integrated.defaultProfile.linux": "zsh"
       }
