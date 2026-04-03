@@ -51,10 +51,14 @@ RUN chmod +x /usr/local/bin/init-firewall.sh /usr/local/bin/start-firewall.sh &&
     chmod 0440 /etc/sudoers.d/vscode-firewall
 
 # Puppeteer Chrome (dev-only — headless screenshots for UI testing).
-# Runs as root so we can write to /opt; shared libs are in the base image.
-RUN cd /workspace/igv_viewer \
+# Use the repo's package files (from build context) so the cached Chrome
+# version matches what the repo's puppeteer expects at runtime.
+COPY igv_viewer/package.json igv_viewer/package-lock.json /tmp/igv-puppeteer/
+RUN cd /tmp/igv-puppeteer \
+    && npm install --ignore-scripts \
     && PUPPETEER_CACHE_DIR=/opt/puppeteer-cache npx puppeteer browsers install chrome \
-    && chmod -R a+rX /opt/puppeteer-cache
+    && chmod -R a+rX /opt/puppeteer-cache \
+    && rm -rf /tmp/igv-puppeteer
 ENV PUPPETEER_CACHE_DIR=/opt/puppeteer-cache
 
 # ============================================================
