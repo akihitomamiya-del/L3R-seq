@@ -85,7 +85,7 @@ for domain in \
         echo "ERROR: Failed to resolve $domain"
         exit 1
     fi
-    
+
     while read -r ip; do
         if [[ ! "$ip" =~ ^[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}$ ]]; then
             echo "ERROR: Invalid IP from DNS for $domain: $ip"
@@ -93,6 +93,34 @@ for domain in \
         fi
         echo "Adding $ip for $domain"
         ipset add allowed-domains "$ip" -exist
+    done < <(echo "$ips")
+done
+
+# VS Code Remote / Codespaces infrastructure.
+# These CDN and relay domains are required for the browser-based editor
+# to download the VS Code server, install extensions, and establish the
+# websocket tunnel.  Resolution failures are non-fatal because some
+# domains may not resolve outside Codespaces or may use CNAME-only records.
+for domain in \
+    "github.dev" \
+    "vscode-cdn.net" \
+    "gallerycdn.vsassets.io" \
+    "global.rel.tunnels.api.visualstudio.com" \
+    "online.visualstudio.com" \
+    "dc.services.visualstudio.com" \
+    "default.exp-tas.com" \
+    "vscode.download.prss.microsoft.com"; do
+    echo "Resolving $domain (optional)..."
+    ips=$(dig +noall +answer A "$domain" 2>/dev/null | awk '$4 == "A" {print $5}')
+    if [ -z "$ips" ]; then
+        echo "WARNING: Could not resolve $domain — skipping"
+        continue
+    fi
+    while read -r ip; do
+        if [[ "$ip" =~ ^[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}$ ]]; then
+            echo "Adding $ip for $domain"
+            ipset add allowed-domains "$ip" -exist
+        fi
     done < <(echo "$ips")
 done
 
