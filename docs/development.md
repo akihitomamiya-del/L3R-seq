@@ -153,6 +153,46 @@ Test blocks in `tests/run_tests.sh`:
 | TEST 7 | Plot generation | `--quick` |
 | TEST 8 | Gene counting (step 11) | `--quick` |
 
+### Test coverage gaps (as of 2026-04-04)
+
+Comprehensive audit of code paths with zero test coverage.
+
+**High impact — functional code never exercised:**
+
+| # | Feature | Risk |
+|---|---------|------|
+| 1 | `--method umic-seq` with actual data | Entirely different UMI pipeline (`UMIC-seq` conda env). Only the missing-`--probe` error path is tested (Test 1c). |
+| 2 | `--no-target-fwd` | Changes step 06 extraction to skip forward primer. Never invoked in any test. |
+| 3 | `regions --gff` / `--discover-from` / `--append` | Major real-world features for gene counting. Only `--coordinates` and `--bed` are tested (Test 8). |
+| 4 | `count --min-mapq` | MAPQ filtering for homologue families. Always defaults to 0 in tests. |
+| 5 | Multi-gene counting (step 11) | Test data has 1 gene (`test_gene`). Real data has dozens. Multi-gene region files, overlapping regions, and cross-gene isoform discovery are untested. |
+| 6 | Multi-chromosome references | All tests use single-contig `test_gene.fasta`. Multi-chromosome FAI reference matching in the viewer and step 07 is untested. |
+| 7 | `validate_introns()` | Input validation function (L3Rseq:120-163) for BED format, `start >= end`, bad extensions, empty files — never called in tests. |
+| 8 | `--prefilter` inside `L3Rseq run` | Standalone `filter` is tested (Test 1b), but the `--prefilter` flag that runs it as part of `run` is never invoked. |
+
+**Medium impact — standalone subcommand routing:**
+
+All 10 standalone subcommands (`concat`, `trim`, `demux`, `umi`, `consensus`,
+`extract`, `map`, `variants`, `correct`, `export`) are only tested via
+`L3Rseq run`. Their standalone entry points (argument parsing, input
+validation) are never exercised with actual data. Dispatcher `--help` tests
+also miss 5 subcommands: `filter`, `umi`, `consensus`, `extract`,
+`discover-introns`, `viewer`.
+
+**Low impact — edge cases and defensive paths:**
+
+| Feature | Notes |
+|---------|-------|
+| `--start-at > --stop-at` | Silent no-op, no validation or error |
+| `--verbose` | Alters stderr routing only |
+| Empty FASTQ / malformed BAM input | No defensive tests |
+| Invalid `--pattern` values (e.g., "XY") | Passes through unchecked to LoFreq/step 09 |
+| `--prefix`, `--target-fwd/rev`, `--var` overrides | Always use defaults in tests |
+| DS:i: tag in SAM/CSV output | Never explicitly validated |
+| Combined SLAM + splice + BLAST in one run | Each tested in isolation, never combined |
+| Step 09 with `--introns` but zero spliced reads | Splice test always includes spliced reads |
+| Step 10 TL column value validation | Column exists but values not checked in CSV |
+
 ### Linting
 
 Shell scripts are not currently linted. Adding shellcheck would catch common
