@@ -9,7 +9,6 @@ on:
 jobs:
   shellcheck:
     runs-on: ubuntu-latest
-    # Non-blocking until existing warnings are resolved
     continue-on-error: true
     steps:
       - uses: actions/checkout@v4
@@ -28,22 +27,16 @@ jobs:
       credentials:
         username: ${{ github.actor }}
         password: ${{ secrets.GITHUB_TOKEN }}
+      options: --user 0:0
     permissions:
       contents: read
       packages: read
-    env:
-      # conda init writes to ~/.bashrc; ensure HOME is writable
-      HOME: /tmp/home
     steps:
-      - name: Setup environment
-        run: |
-          mkdir -p /tmp/home
-          git config --global --add safe.directory /__w/L3R-seq/L3R-seq
       - uses: actions/checkout@v4
       - name: Run quick test suite
-        shell: bash
         run: |
-          eval "$(conda shell.bash hook 2>/dev/null || /opt/miniforge/bin/conda shell.bash hook)"
+          eval "$(/opt/miniforge/bin/conda shell.bash hook)"
+          export PATH="/opt/miniforge/bin:$PATH"
           bash tests/run_tests.sh --quick --no-viewer
 
   full-test:
@@ -54,19 +47,14 @@ jobs:
       credentials:
         username: ${{ github.actor }}
         password: ${{ secrets.GITHUB_TOKEN }}
+      options: --user 0:0
     permissions:
       contents: read
       packages: read
-    env:
-      HOME: /tmp/home
     steps:
-      - name: Setup environment
-        run: |
-          mkdir -p /tmp/home
-          git config --global --add safe.directory /__w/L3R-seq/L3R-seq
       - uses: actions/checkout@v4
       - name: Run full test suite
-        shell: bash
         run: |
-          eval "$(conda shell.bash hook 2>/dev/null || /opt/miniforge/bin/conda shell.bash hook)"
+          eval "$(/opt/miniforge/bin/conda shell.bash hook)"
+          export PATH="/opt/miniforge/bin:$PATH"
           bash tests/run_tests.sh --no-viewer
