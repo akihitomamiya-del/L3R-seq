@@ -16,9 +16,22 @@ run_parse_cigar() {
     RESULT_Aln_Start="${fields[3]}"
     RESULT_Aln_CIGAR="${fields[5]}"
 
-    RESULT_Rightclip_N=$(echo "$RESULT_Aln_CIGAR" | grep -Eo '[0-9]+S$' | grep -Eo '^[0-9]+' | awk '{a+=$1} END{print a+0;}')
-    RESULT_Total_M=$(echo "$RESULT_Aln_CIGAR" | grep -Eo '[0-9]+M' | grep -Eo '[0-9]+' | awk '{a+=$1} END{print a+0;}')
-    RESULT_Total_D=$(echo "$RESULT_Aln_CIGAR" | grep -Eo '[0-9]+D' | grep -Eo '[0-9]+' | awk '{a+=$1} END{print a+0;}')
+    # Single awk pass: extract right-clip (trailing S), total M, and total D
+    read -r RESULT_Rightclip_N RESULT_Total_M RESULT_Total_D <<< "$(
+        echo "$RESULT_Aln_CIGAR" | awk '{
+            cigar = $0; rclip = 0; m = 0; d = 0
+            while (match(cigar, /[0-9]+[MIDNSHP=X]/)) {
+                n = substr(cigar, RSTART, RLENGTH - 1) + 0
+                op = substr(cigar, RSTART + RLENGTH - 1, 1)
+                rest = substr(cigar, RSTART + RLENGTH)
+                if (op == "M") m += n
+                else if (op == "D") d += n
+                else if (op == "S" && rest == "") rclip += n
+                cigar = rest
+            }
+            print rclip, m, d
+        }'
+    )"
 
     if [ "$RESULT_Rightclip_N" -gt 0 ]; then
         local seq="${fields[9]}"
