@@ -2,6 +2,36 @@
 
 All notable changes are documented here.
 
+## [1.0.15] - 2026-04-04
+
+### Added
+- CI test pipeline with shellcheck linting and quick test suite on every push
+- Dispatcher argument parsing tests (21 checks)
+- Test selectability (`--test N` flag for run_tests.sh)
+- Shared shell library (`scripts/lib.sh`) with `iterate_samples`, `require_input` helpers
+- `_conda_run` wrapper in dispatcher (replaces 22 duplicated conda blocks)
+- `/healthz` endpoint for viewer health checks
+- Graceful SIGTERM/SIGINT shutdown in viewer server
+- Pre-commit hooks config with shellcheck
+- CONTRIBUTING.md, API docs, troubleshooting guide
+- Shared CSS for viewer pages
+- `scripts/bump-version.sh` for atomic version updates
+
+### Fixed
+- Version skew across CITATION.cff, L3Rseq, and CHANGELOG.md
+- XSS in viewer: innerHTML with user data replaced by DOM methods
+- Step 09 error handling: enabled pipefail, fixed trap variable quoting
+- Silent `_summary_append` failures now emit warnings
+- Empty catch blocks in server.js now log warnings
+- execSync calls in viewer now have timeouts (5-15s)
+- Step 08 test validation now checks file content, not just existence
+
+### Changed
+- CIGAR parsing optimized: single awk pass replaces 9 subprocesses
+- Steps 06-08, 10 refactored to use `iterate_samples` callbacks
+- Hidden dataset list moved to configurable `HIDDEN_DATASETS` const
+- Removed unused `compression` dependency from viewer
+
 ## [1.0.12] - 2026-04-02
 
 ### Added
