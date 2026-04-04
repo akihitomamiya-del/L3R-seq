@@ -28,14 +28,23 @@ jobs:
       credentials:
         username: ${{ github.actor }}
         password: ${{ secrets.GITHUB_TOKEN }}
-      options: --user root
     permissions:
       contents: read
       packages: read
+    env:
+      # conda init writes to ~/.bashrc; ensure HOME is writable
+      HOME: /tmp/home
     steps:
+      - name: Setup environment
+        run: |
+          mkdir -p /tmp/home
+          git config --global --add safe.directory /__w/L3R-seq/L3R-seq
       - uses: actions/checkout@v4
       - name: Run quick test suite
-        run: bash tests/run_tests.sh --quick --no-viewer
+        shell: bash
+        run: |
+          eval "$(conda shell.bash hook 2>/dev/null || /opt/miniforge/bin/conda shell.bash hook)"
+          bash tests/run_tests.sh --quick --no-viewer
 
   full-test:
     if: github.event_name == 'schedule'
@@ -45,11 +54,19 @@ jobs:
       credentials:
         username: ${{ github.actor }}
         password: ${{ secrets.GITHUB_TOKEN }}
-      options: --user root
     permissions:
       contents: read
       packages: read
+    env:
+      HOME: /tmp/home
     steps:
+      - name: Setup environment
+        run: |
+          mkdir -p /tmp/home
+          git config --global --add safe.directory /__w/L3R-seq/L3R-seq
       - uses: actions/checkout@v4
       - name: Run full test suite
-        run: bash tests/run_tests.sh --no-viewer
+        shell: bash
+        run: |
+          eval "$(conda shell.bash hook 2>/dev/null || /opt/miniforge/bin/conda shell.bash hook)"
+          bash tests/run_tests.sh --no-viewer
