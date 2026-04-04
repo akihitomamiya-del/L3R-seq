@@ -17,6 +17,13 @@ process.on("SIGHUP", () => {});
 const PORT = process.env.IGV_PORT || 8080;
 const WORKSPACE = process.env.IGV_WORKSPACE || "/workspace";
 const SCAN_DIR = process.env.IGV_SCAN_DIR || WORKSPACE;  // --dir narrows discovery
+
+// Dataset names to hide from the public /api/datasets listing.
+// These are internal test outputs that clutter the dropdown.
+// Override via L3RSEQ_HIDDEN_DATASETS env var (comma-separated).
+const HIDDEN_DATASETS = (process.env.L3RSEQ_HIDDEN_DATASETS ||
+  "pipeline_AG,pipeline_CT,pipeline_TC,blast_test,slam_test,splice_test,demo_test,full_preprocess,neg_test,discover_splice"
+).split(",").map(s => s.trim()).filter(Boolean);
 const DATA_DIR = process.env.IGV_DATA_DIR || "";          // external data mount (e.g. /data/output)
 
 const MIME = {
@@ -32,6 +39,7 @@ const ROUTES = {
   "/igv/": path.join(WORKSPACE, "igv_viewer/node_modules/igv/dist/"),
   "/chartjs/": path.join(WORKSPACE, "igv_viewer/node_modules/chart.js/dist/"),
   "/js/": path.join(WORKSPACE, "igv_viewer/js/"),
+  "/css/": path.join(WORKSPACE, "igv_viewer/css/"),
   "/ref/": path.join(WORKSPACE, "resources/references/"),
   "/data/": WORKSPACE + "/",
 };
@@ -519,10 +527,8 @@ const server = http.createServer((req, res) => {
     // other discovered datasets (runs/REP2, etc.) follow alphabetically.
     // Internal test outputs (pipeline_AG, pipeline_CT, pipeline_TC) are hidden.
     const order = ["demo", "blast", "splice", "SLAM"];
-    const hidden = ["pipeline_AG", "pipeline_CT", "pipeline_TC", "blast_test", "slam_test", "splice_test", "demo_test",
-                     "full_preprocess", "neg_test", "discover_splice"];
     const names = Object.keys(datasets)
-      .filter(n => !hidden.some(h => n.includes(h)))
+      .filter(n => !HIDDEN_DATASETS.some(h => n.includes(h)))
       .sort((a, b) => {
         const aKey = order.findIndex(k => a.includes(k));
         const bKey = order.findIndex(k => b.includes(k));
