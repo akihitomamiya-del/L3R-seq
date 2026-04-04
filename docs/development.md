@@ -195,14 +195,16 @@ commit that introduced it (if known) and the file + line to patch.
 
 ### Test suite
 
-| # | Severity | File : Line | Description |
-|---|----------|-------------|-------------|
-| T1 | High | `tests/run_tests.sh:443-451` | **Variant check accepts empty for all samples.** Commit `f8e1af5` allows empty `observed_variants.txt` for every sample, but only RPI_2 samples should be empty (they have A→G or T→C editing, not C→T). RPI_1 samples have C→T editing and must produce variants. Fix: make the assertion sample-aware. |
-| T2 | High | `tests/run_tests.sh:414-417` | **200% tolerance on small EC values allows zero.** When `expected_ec <= 10`, `check_range` uses tolerance 2.0, producing range [−9, 27]. A broken pipeline outputting EC=0 passes silently. Fix: set a floor on the lower bound (e.g., `max(1, expected - tolerance)`). |
-| T3 | Medium | `tests/run_tests.sh:928,950,962` | **Unguarded `grep -c` aborts under `set -euo pipefail`.** If match count is 0, `grep -c` exits 1, crashing the script before `check_exact` can report the failure. Fix: `grep -c ... \|\| true`. |
-| T4 | Medium | `tests/run_tests.sh` | **`--test 1b` silently passes with 0 checks.** No `should_run 1b` call exists; the test block is inside `should_run 1`. Running `--test 1b` executes nothing and reports success. |
-| T5 | Medium | `tests/run_tests.sh` | **`--test demo` / `--test 2b` crash on unset `$OUT`.** Variable `OUT` is only set inside `should_run 2`; running these test names alone under `set -u` hits an unbound variable error. |
-| T6 | Low | `tests/run_tests.sh:1227` | **Gene count row count is fragile.** `grep -cv '^gene'` excludes data rows for genes whose names start with "gene" (e.g., `gene1`). Fix: `tail -n +2 \| wc -l`. |
+All items fixed in commit `5820e8f`.
+
+| # | Status | Description |
+|---|--------|-------------|
+| T1 | **Fixed** | Variant check now sample-aware — RPI_1 asserts non-empty, RPI_2 accepts empty. |
+| T2 | **Fixed** | `check_range` floors lower bound at 1 when expected > 0. |
+| T3 | **Fixed** | Three `grep -c` calls guarded with `\|\| true`. |
+| T4 | **Fixed** | Test 1b split into own `should_run 1b` block. |
+| T5 | **Fixed** | `OUT` set as default before test blocks; `--test` without value errors. |
+| T6 | **Fixed** | Row count uses `tail -n +2 \| wc -l` instead of `grep -cv '^gene'`. |
 
 ### Documentation
 
