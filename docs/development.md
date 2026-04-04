@@ -180,6 +180,36 @@ lines 89-92, Docker-only). There are no tests for:
 Adding dispatcher tests to `tests/run_tests.sh` (or a new
 `tests/test_dispatcher.sh`) would catch argument parsing regressions.
 
+## Known issues (as of 2026-04-04)
+
+Tracked here so they are fixed in priority order. Each entry notes the
+commit that introduced it (if known) and the file + line to patch.
+
+### Pipeline logic
+
+| # | Severity | File : Line | Description |
+|---|----------|-------------|-------------|
+| P1 | Medium | `scripts/11_count.sh:96` | **Coverage depth ignores `--min-mapq`.** `samtools depth` is called without `-Q`, so low-MAPQ reads inflate coverage plots even when `--min-mapq` filters them from gene counts. Fix: pass `min_mapq` to `generate_coverage` and add `-Q "$min_mapq"`. |
+| P2 | Low | `L3Rseq:937` | **Step 07 intermediate cleanup is a no-op.** After commit `53b478e` renamed outputs to include the RPI prefix, `rm -f aligned.sam aligned.bam` no longer matches `${rpi_name}_aligned.sam`. Intermediates are never cleaned. Fix: `rm -f "$_rpi_dir"/*_aligned.sam "$_rpi_dir"/*_aligned.bam`. |
+| P3 | Low | `scripts/11_count.sh:148` | **Fallback BAM discovery uses old naming.** Globs for `*/primary.sort.bam` but post-rename files are `*_primary.sort.bam`. Only affects the edge case of passing a non-standard directory to `L3Rseq count`. Fix: `*/*_primary.sort.bam`. |
+
+### Test suite
+
+| # | Severity | File : Line | Description |
+|---|----------|-------------|-------------|
+| T1 | High | `tests/run_tests.sh:443-451` | **Variant check accepts empty for all samples.** Commit `f8e1af5` allows empty `observed_variants.txt` for every sample, but only RPI_2 samples should be empty (they have A→G or T→C editing, not C→T). RPI_1 samples have C→T editing and must produce variants. Fix: make the assertion sample-aware. |
+| T2 | High | `tests/run_tests.sh:414-417` | **200% tolerance on small EC values allows zero.** When `expected_ec <= 10`, `check_range` uses tolerance 2.0, producing range [−9, 27]. A broken pipeline outputting EC=0 passes silently. Fix: set a floor on the lower bound (e.g., `max(1, expected - tolerance)`). |
+| T3 | Medium | `tests/run_tests.sh:928,950,962` | **Unguarded `grep -c` aborts under `set -euo pipefail`.** If match count is 0, `grep -c` exits 1, crashing the script before `check_exact` can report the failure. Fix: `grep -c ... \|\| true`. |
+| T4 | Medium | `tests/run_tests.sh` | **`--test 1b` silently passes with 0 checks.** No `should_run 1b` call exists; the test block is inside `should_run 1`. Running `--test 1b` executes nothing and reports success. |
+| T5 | Medium | `tests/run_tests.sh` | **`--test demo` / `--test 2b` crash on unset `$OUT`.** Variable `OUT` is only set inside `should_run 2`; running these test names alone under `set -u` hits an unbound variable error. |
+| T6 | Low | `tests/run_tests.sh:1227` | **Gene count row count is fragile.** `grep -cv '^gene'` excludes data rows for genes whose names start with "gene" (e.g., `gene1`). Fix: `tail -n +2 \| wc -l`. |
+
+### Documentation
+
+| # | File | Description |
+|---|------|-------------|
+| D1 | `.devcontainer/claude-code/CLAUDE.md:139` | Says "Step 09 uses `set +e` (not pipefail)" but since commit `e93b94c` the file uses `set -euo pipefail` with `set +e` only inside the per-read worker function. |
+
 ## Build the Docker image from source
 
 For developers who want to modify the pipeline or Dockerfile. If you use VS Code, clone the repo and select **Reopen in Container** > **L3Rseq Pipeline (build)** — this builds the image and drops you into a ready-to-edit environment. Otherwise, build manually:

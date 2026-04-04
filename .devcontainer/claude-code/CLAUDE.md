@@ -136,8 +136,13 @@ Quick sync: `cp .devcontainer/claude-code/CLAUDE.md ~/.claude/CLAUDE.md`
   unchecked in `buildTrackToggles`; multi-chromosome reference matching via FAI.
 - **Test flags**: Do not add `--no-viewer` by default — the test suite handles
   viewer restart automatically. Use `--quick` for fast iteration.
-- **Step 09 error handling**: `09_tail_correct.sh` uses `set +e` (not pipefail)
-  due to complex control flow. Other scripts use `set -euo pipefail`.
+- **Step 09 error handling**: `09_tail_correct.sh` uses `set -euo pipefail` at
+  file level, but the per-read worker `_process_one_read()` starts with `set +e`
+  to tolerate arithmetic and grep exit codes. Other scripts use `set -euo pipefail`.
+- **Known issues**: See `docs/development.md` § "Known issues" for tracked bugs
+  in the pipeline (coverage ignoring min-mapq, stale file globs after rename) and
+  test suite (variant check too lenient, grep -c unguarded, --test flag gaps).
+  Consult that section before working on steps 07-11 or the test suite.
 - **Real data test**: Always `rm -rf runs/LibCheck` before re-running
   `runs/LibCheck_sample.sh` — leftover `03_demux_all/` breaks RPI filtering.
 
