@@ -31,6 +31,7 @@ const MIME = {
 const ROUTES = {
   "/igv/": path.join(WORKSPACE, "igv_viewer/node_modules/igv/dist/"),
   "/chartjs/": path.join(WORKSPACE, "igv_viewer/node_modules/chart.js/dist/"),
+  "/js/": path.join(WORKSPACE, "igv_viewer/js/"),
   "/ref/": path.join(WORKSPACE, "resources/references/"),
   "/data/": WORKSPACE + "/",
 };

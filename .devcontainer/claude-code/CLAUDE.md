@@ -180,6 +180,24 @@ the test suite inside a fresh container. Not applicable in devcontainer sessions
 bash tests/test_shell_functions.sh          # CIGAR, splice, BLAST helpers
 ```
 
+### Viewer tests
+
+```bash
+cd igv_viewer && npm test                   # Puppeteer DOM tests (46 checks, synthetic data)
+cd igv_viewer && npm run test:stress        # Stress tests (real data, auto-discovers)
+node igv_viewer/test_stress.js runs/LibCheck  # Explicit dataset
+```
+
+The stress tests (`test_stress.js`) auto-discover the largest dataset from the
+running viewer server and exercise scale-dependent behaviors: track cap (>8
+tracks), barcode group toggling, all view modes, gene click → alignment
+round-trip, and cross-page state preservation. They gracefully skip if no real
+data is available (exit 0). Run them after any viewer change that touches
+shared code, navigation, or sample selectors.
+
+**Slash command**: Type `/stress-test` in Claude Code to run the full stress
+test cycle (restart viewer + automated tests + screenshots + report).
+
 ## IGV viewer
 
 ```bash

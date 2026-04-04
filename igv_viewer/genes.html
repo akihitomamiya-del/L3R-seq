@@ -132,6 +132,7 @@
   <div class="chart-area" id="chart-area"></div>
 
   <script src="/chartjs/chart.umd.js"></script>
+  <script src="/js/shared.js"></script>
   <script>
 "use strict";
 
@@ -141,16 +142,6 @@ let viewMode = "chart";
 let chartInstances = [];
 let selectedGene = null;  // gene selected for alignment viewer
 let chartZoomed = false;  // whether chart is zoomed to single gene
-
-// --- Color palette (reuse UMI page pattern) ---
-const BARCODE_HUES = {};
-const HUE_POOL = [210, 140, 25, 280, 350, 60];
-let hueIdx = 0;
-
-function barcodeHue(bc) {
-  if (!(bc in BARCODE_HUES)) BARCODE_HUES[bc] = HUE_POOL[hueIdx++ % HUE_POOL.length];
-  return BARCODE_HUES[bc];
-}
 
 function sampleColor(sampleId, alpha) {
   const bc = sampleId.split("/")[0];
@@ -280,11 +271,6 @@ function restoreState() {
   return true;
 }
 
-function syncNavLinks(name) {
-  document.getElementById("viewer-link").href = name ? "/?name=" + encodeURIComponent(name) : "/";
-  document.getElementById("umi-link").href = name ? "/umi?name=" + encodeURIComponent(name) : "/umi";
-}
-
 // --- Init ---
 async function init() {
   const sel = document.getElementById("dataset");
@@ -335,8 +321,7 @@ async function loadDataset(name) {
         "<code>L3Rseq count --input &lt;dir&gt; --outdir &lt;dir&gt; --regions regions.tsv</code>");
       return;
     }
-    Object.keys(BARCODE_HUES).forEach(k => delete BARCODE_HUES[k]);
-    hueIdx = 0;
+    resetBarcodeHues();
     selectedIds = new Set(allData.samples);
     buildSampleSelector();
     buildGeneSelector();
@@ -451,13 +436,6 @@ function setView(mode) {
     btn.classList.toggle("active", btn.dataset.view === mode));
   updateZoomButton();
   render(); saveState();
-}
-
-function togglePanel(id) {
-  const body = document.getElementById(id).querySelector(".panel-body");
-  const arrow = document.getElementById(id).querySelector(".arrow");
-  body.classList.toggle("open");
-  arrow.classList.toggle("open");
 }
 
 // --- Rendering ---
@@ -997,23 +975,6 @@ function viewerUrl(gene) {
   const dsName = document.getElementById("dataset").value;
   const locus = r.chr + ":" + r.start + "-" + r.end;
   return "/?name=" + encodeURIComponent(dsName) + "&locus=" + encodeURIComponent(locus);
-}
-
-// --- Helpers ---
-function fmtNum(n) { return Number(n).toLocaleString(); }
-
-function naturalSort(a, b) {
-  if (typeof a !== "string") return a - b;
-  const re = /(\d+)/g;
-  const pa = a.split(re), pb = b.split(re);
-  for (let i = 0; i < Math.min(pa.length, pb.length); i++) {
-    if (pa[i] !== pb[i]) {
-      const na = Number(pa[i]), nb = Number(pb[i]);
-      if (!isNaN(na) && !isNaN(nb)) return na - nb;
-      return pa[i] < pb[i] ? -1 : 1;
-    }
-  }
-  return pa.length - pb.length;
 }
 
 init();

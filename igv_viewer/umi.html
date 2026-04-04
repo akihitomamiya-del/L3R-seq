@@ -106,6 +106,7 @@
   <div class="chart-area" id="chart-area"></div>
 
   <script src="/chartjs/chart.umd.js"></script>
+  <script src="/js/shared.js"></script>
   <script>
 "use strict";
 
@@ -114,16 +115,6 @@ let allData = null;      // raw API response
 let selectedIds = new Set();
 let viewMode = "grid";
 let chartInstances = [];
-
-// --- Color palette ---
-const BARCODE_HUES = {};
-const HUE_POOL = [210, 140, 25, 280, 350, 60]; // blue, green, orange, purple, red, yellow
-let hueIdx = 0;
-
-function barcodeHue(bc) {
-  if (!(bc in BARCODE_HUES)) BARCODE_HUES[bc] = HUE_POOL[hueIdx++ % HUE_POOL.length];
-  return BARCODE_HUES[bc];
-}
 
 function sampleColor(sample, alpha) {
   const hue = barcodeHue(sample.barcode);
@@ -186,14 +177,6 @@ function restoreState() {
   } catch { return false; }
 }
 
-function syncNavLinks(name) {
-  const viewerLink = document.getElementById("viewer-link");
-  if (viewerLink) viewerLink.href = name ? "/?name=" + encodeURIComponent(name) : "/";
-  const genesLink = document.getElementById("genes-link");
-  const genesHash = name ? (sessionStorage.getItem("l3rseq_genes_hash_" + name) || "") : "";
-  if (genesLink) genesLink.href = (name ? "/genes?name=" + encodeURIComponent(name) : "/genes") + genesHash;
-}
-
 // --- Init ---
 async function init() {
   const sel = document.getElementById("dataset");
@@ -236,8 +219,7 @@ async function loadDataset(name) {
     allData = await resp.json();
     if (!allData.samples.length) { showEmpty("No UMI data found (run step 04 first)."); return; }
     // Reset hue assignments
-    Object.keys(BARCODE_HUES).forEach(k => delete BARCODE_HUES[k]);
-    hueIdx = 0;
+    resetBarcodeHues();
     // Select all by default
     selectedIds = new Set(allData.samples.map(s => s.id));
     buildSampleSelector();
@@ -333,13 +315,6 @@ function setView(mode) {
   document.querySelectorAll(".controls .ctrl-btn[data-view]").forEach(btn =>
     btn.classList.toggle("active", btn.dataset.view === mode));
   render(); saveState();
-}
-
-function togglePanel(id) {
-  const body = document.getElementById(id).querySelector(".panel-body");
-  const arrow = document.getElementById(id).querySelector(".arrow");
-  body.classList.toggle("open");
-  arrow.classList.toggle("open");
 }
 
 // --- Rendering ---
@@ -662,23 +637,6 @@ function renderTable(area, samples) {
 
   buildTable();
   area.appendChild(div);
-}
-
-// --- Helpers ---
-function fmtNum(n) { return Number(n).toLocaleString(); }
-
-function naturalSort(a, b) {
-  if (typeof a !== "string") return a - b;
-  const re = /(\d+)/g;
-  const pa = a.split(re), pb = b.split(re);
-  for (let i = 0; i < Math.min(pa.length, pb.length); i++) {
-    if (pa[i] !== pb[i]) {
-      const na = Number(pa[i]), nb = Number(pb[i]);
-      if (!isNaN(na) && !isNaN(nb)) return na - nb;
-      return pa[i] < pb[i] ? -1 : 1;
-    }
-  }
-  return pa.length - pb.length;
 }
 
 init();

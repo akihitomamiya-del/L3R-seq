@@ -1,6 +1,8 @@
 {
   "scripts": {
-    "postinstall": "node scripts/patch-igv.js"
+    "postinstall": "node scripts/patch-igv.js",
+    "test": "LD_LIBRARY_PATH=/opt/miniforge/envs/analysis/lib node test_buttons.js",
+    "test:stress": "LD_LIBRARY_PATH=/opt/miniforge/envs/analysis/lib node test_stress.js"
   },
   "dependencies": {
     "chart.js": "^4.4.0",

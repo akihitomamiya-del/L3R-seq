@@ -230,6 +230,7 @@
   <div id="igv-container"></div>
 
   <script src="/igv/igv.min.js"></script>
+  <script src="/js/shared.js"></script>
   <script>
     var browser = null;  // var so Puppeteer tools can access window.browser
     let references = [];
@@ -285,15 +286,6 @@
       buildDropdown(sel, names);
       sel.insertAdjacentHTML("afterbegin", '<option value="">-- select dataset --</option>');
       sel.value = "";
-
-      function syncNavLinks(name) {
-        const umiLink = document.getElementById("umi-link");
-        if (umiLink) umiLink.href = name ? "/umi?name=" + encodeURIComponent(name) : "/umi";
-        const genesLink = document.getElementById("genes-link");
-        // Carry genes page view state hash so it restores on return
-        const genesHash = name ? (sessionStorage.getItem("l3rseq_genes_hash_" + name) || "") : "";
-        if (genesLink) genesLink.href = (name ? "/genes?name=" + encodeURIComponent(name) : "/genes") + genesHash;
-      }
 
       sel.onchange = () => {
         syncNavLinks(sel.value);
@@ -653,14 +645,6 @@
     /* ---- Track selection ---- */
 
     const MAX_DEFAULT_TRACKS = 8;  // cap initial load for large datasets
-    const HUE_POOL = [210, 140, 25, 280, 350, 60];
-    const BARCODE_HUES = {};
-    let hueIdx = 0;
-    function barcodeHue(bc) {
-      if (!(bc in BARCODE_HUES)) BARCODE_HUES[bc] = HUE_POOL[hueIdx++ % HUE_POOL.length];
-      return BARCODE_HUES[bc];
-    }
-
     function parseTrackName(name) {
       const parts = name.split(" — ");
       const samplePart = parts[0];
@@ -682,8 +666,7 @@
       const container = document.getElementById("track-toggles");
       container.innerHTML = "";
       // Reset barcode colors on new dataset
-      Object.keys(BARCODE_HUES).forEach(k => delete BARCODE_HUES[k]);
-      hueIdx = 0;
+      resetBarcodeHues();
 
       // Group tracks by barcode
       const groups = new Map();
