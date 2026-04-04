@@ -62,8 +62,8 @@ run_step_02() {
             _out=$(grep -m1 'Reads written' "$_log" | grep -oE '[0-9,]+' | head -1 | tr -d ',')
             _pct=$(( _out * 100 / (_in > 0 ? _in : 1) ))
             echo "    $_bn: ${_in:-?} → ${_out:-?} reads after trimming (${_pct}%)"
-            _summary_append "$output_dir" "$_bn" "-" "02" "reads_in" "${_in:-0}" 2>/dev/null || true
-            _summary_append "$output_dir" "$_bn" "-" "02" "reads_out" "${_out:-0}" 2>/dev/null || true
+            _summary_append "$output_dir" "$_bn" "-" "02" "reads_in" "${_in:-0}" || echo "  WARNING: Failed to write summary metric" >&2
+            _summary_append "$output_dir" "$_bn" "-" "02" "reads_out" "${_out:-0}" || echo "  WARNING: Failed to write summary metric" >&2
         fi
     done
     echo "[Step 02] Done. Output in $output_dir/02_trim/"

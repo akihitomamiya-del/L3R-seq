@@ -94,7 +94,7 @@ run_step_06() {
             local _n
             _n=$(grep -c '^>' "$_edir/${_rpi_prefix}extracted_trimmed.fa" || true)
             echo "    $_bname/$_rname: $_n extracted"
-            _summary_append "$output_dir" "$_bname" "$_rname" "06" "extracted_seqs" "$_n" 2>/dev/null || true
+            _summary_append "$output_dir" "$_bname" "$_rname" "06" "extracted_seqs" "$_n" || echo "  WARNING: Failed to write summary metric" >&2
         fi
     done
     echo "[Step 06] Done. Output in $output_dir/06_extract/"

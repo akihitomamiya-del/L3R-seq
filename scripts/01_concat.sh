@@ -45,6 +45,6 @@ run_step_01() {
         local _size
         _size=$(du -h "$_fq" | cut -f1)
         echo "    $_bn: $_nreads reads ($_size)"
-        _summary_append "$output_dir" "$_bn" "-" "01" "reads" "$_nreads" 2>/dev/null || true
+        _summary_append "$output_dir" "$_bn" "-" "01" "reads" "$_nreads" || echo "  WARNING: Failed to write summary metric" >&2
     done
 }

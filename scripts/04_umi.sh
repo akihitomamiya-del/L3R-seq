@@ -110,8 +110,8 @@ run_step_04() {
                 _reads=$(awk -F'\t' '$2=="reads_in_kept_bins"{print $3}' "$_stats")
                 _mean=$(awk -F'\t' '$2=="mean_cluster_size"{print $3}' "$_stats")
                 echo "    $_bname/$_rname: $_bins bins, $_reads reads in bins (mean cluster size $_mean)"
-                _summary_append "$output_dir" "$_bname" "$_rname" "04" "bins_kept" "$_bins" 2>/dev/null || true
-                _summary_append "$output_dir" "$_bname" "$_rname" "04" "reads_in_bins" "$_reads" 2>/dev/null || true
+                _summary_append "$output_dir" "$_bname" "$_rname" "04" "bins_kept" "$_bins" || echo "  WARNING: Failed to write summary metric" >&2
+                _summary_append "$output_dir" "$_bname" "$_rname" "04" "reads_in_bins" "$_reads" || echo "  WARNING: Failed to write summary metric" >&2
             fi
         done
         echo "[Step 04] Done. Output in $output_dir/04_umi/"
@@ -195,7 +195,7 @@ run_step_04() {
             _nbins=$(find "$_rdir/UMIclusterfull" -name '*bins.fastq' 2>/dev/null | wc -l)
         fi
         echo "    $_bname/$_rname: $_nbins bins"
-        _summary_append "$output_dir" "$_bname" "$_rname" "04" "bins_kept" "$_nbins" 2>/dev/null || true
+        _summary_append "$output_dir" "$_bname" "$_rname" "04" "bins_kept" "$_nbins" || echo "  WARNING: Failed to write summary metric" >&2
     done
     echo "[Step 04] Done. Output in $output_dir/04_umi/"
 }

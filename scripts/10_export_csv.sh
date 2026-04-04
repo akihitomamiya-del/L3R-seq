@@ -230,7 +230,7 @@ run_step_10() {
             local _nrows _ec_total
             _nrows=$(( $(wc -l < "$_csv") - 1 ))
             echo "    $_bname/$_rname: $_nrows rows exported"
-            _summary_append "$output_dir" "$_bname" "$_rname" "10" "csv_rows" "$_nrows" 2>/dev/null || true
+            _summary_append "$output_dir" "$_bname" "$_rname" "10" "csv_rows" "$_nrows" || echo "  WARNING: Failed to write summary metric" >&2
         fi
         local _rpi_prefix="${_rname}_"
         local _sam="$_cdir/${_rpi_prefix}corrected.sam"
@@ -242,9 +242,9 @@ run_step_10() {
                 _chimeric=$(grep -cv '^@' "$_cdir/${_rpi_prefix}chimeric_rightclip.sam" 2>/dev/null) || _chimeric=0
             fi
             _ec_sum=$(grep -v '^@' "$_sam" | grep -oE 'EC:i:[0-9]+' | sed 's/EC:i://' | awk '{s+=$1} END{print s+0}')
-            _summary_append "$output_dir" "$_bname" "$_rname" "09" "corrected_reads" "$_corrected" 2>/dev/null || true
-            _summary_append "$output_dir" "$_bname" "$_rname" "09" "chimeric_clips" "$_chimeric" 2>/dev/null || true
-            _summary_append "$output_dir" "$_bname" "$_rname" "09" "total_editing_count" "$_ec_sum" 2>/dev/null || true
+            _summary_append "$output_dir" "$_bname" "$_rname" "09" "corrected_reads" "$_corrected" || echo "  WARNING: Failed to write summary metric" >&2
+            _summary_append "$output_dir" "$_bname" "$_rname" "09" "chimeric_clips" "$_chimeric" || echo "  WARNING: Failed to write summary metric" >&2
+            _summary_append "$output_dir" "$_bname" "$_rname" "09" "total_editing_count" "$_ec_sum" || echo "  WARNING: Failed to write summary metric" >&2
         fi
     done
     echo "[Step 10] Done. Output in $output_dir/10_csv/"

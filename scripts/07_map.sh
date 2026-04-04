@@ -119,7 +119,7 @@ run_step_07() {
             local _mapped
             _mapped=$(head -1 "$_fs" | awk '{print $1}')
             echo "    $_bname/$_rname: $_mapped mapped"
-            _summary_append "$output_dir" "$_bname" "$_rname" "07" "mapped_reads" "$_mapped" 2>/dev/null || true
+            _summary_append "$output_dir" "$_bname" "$_rname" "07" "mapped_reads" "$_mapped" || echo "  WARNING: Failed to write summary metric" >&2
         fi
     done
     echo "[Step 07] Done. Output in $output_dir/07_map/"

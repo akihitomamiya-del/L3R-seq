@@ -78,8 +78,8 @@ run_step_03() {
             _nunclass=$(( $(wc -l < "$_ddir/${_bn}_unclassified.fastq") / 4 ))
         fi
         echo "    $_bn: $_nrpi RPIs assigned, $_nunclass unclassified"
-        _summary_append "$output_dir" "$_bn" "-" "03" "rpis_assigned" "$_nrpi" 2>/dev/null || true
-        _summary_append "$output_dir" "$_bn" "-" "03" "unclassified" "$_nunclass" 2>/dev/null || true
+        _summary_append "$output_dir" "$_bn" "-" "03" "rpis_assigned" "$_nrpi" || echo "  WARNING: Failed to write summary metric" >&2
+        _summary_append "$output_dir" "$_bn" "-" "03" "unclassified" "$_nunclass" || echo "  WARNING: Failed to write summary metric" >&2
     done
     echo "[Step 03] Done. Output in $output_dir/03_demux/"
 }

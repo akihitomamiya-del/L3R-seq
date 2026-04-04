@@ -79,7 +79,7 @@ run_step_08() {
             local _nvar
             _nvar=$(wc -l < "$_vf")
             echo "    $_bname/$_rname: $_nvar ${_pattern_label} variant positions"
-            _summary_append "$output_dir" "$_bname" "$_rname" "08" "variant_positions" "$_nvar" 2>/dev/null || true
+            _summary_append "$output_dir" "$_bname" "$_rname" "08" "variant_positions" "$_nvar" || echo "  WARNING: Failed to write summary metric" >&2
         fi
     done
     echo "[Step 08] Done. Output in $output_dir/08_variants/"
