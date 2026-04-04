@@ -5,13 +5,17 @@
 # --method longread-umi, then validates SLAM, splice, BLAST, walk correction,
 # and the IGV viewer API.
 #
-# Usage: bash tests/run_tests.sh [--skip-preprocess] [--quick] [--no-viewer]
+# Usage: bash tests/run_tests.sh [--skip-preprocess] [--quick] [--no-viewer] [--test N|NAME]
 #   Default:              tests all steps 01-10, starts IGV viewer after tests
 #   With --skip-preprocess: skips steps 01-03 (faster, for core pipeline testing)
 #   With --quick:           minimal smoke test for CI (~13 sec)
 #                           runs Test 1c, Test 2 (1 sample only), Test 3, Test 4, Test 5
 #                           implies --skip-preprocess
 #   With --no-viewer:       skip IGV viewer after tests complete
+#   With --test N:          run only test block N (1, 1b, 1c, 2, 2b, 3, 4, 5, 6, 7, 8, 9)
+#                           aliases: preprocess=1, negative=1c, pipeline=2, slam=3,
+#                           splice=4, blast=5, viewer=6, plots=7, counting=8,
+#                           shell=9, dispatcher=dispatcher
 #
 # Timing reference (108 checks, all steps 01-10):
 #
@@ -99,16 +103,41 @@ count_csv_cols() { head -1 "$1" | awk -F',' '{print NF}'; }
 SKIP_PREPROCESS=0
 QUICK=0
 START_VIEWER=1
-for arg in "$@"; do
-    case "$arg" in
-        --skip-preprocess) SKIP_PREPROCESS=1 ;;
-        --quick)           QUICK=1 ;;
-        --viewer)          START_VIEWER=1 ;;
-        --no-viewer)       START_VIEWER=0 ;;
+RUN_TEST=""
+while [ $# -gt 0 ]; do
+    case "$1" in
+        --skip-preprocess) SKIP_PREPROCESS=1; shift ;;
+        --quick)           QUICK=1; shift ;;
+        --viewer)          START_VIEWER=1; shift ;;
+        --no-viewer)       START_VIEWER=0; shift ;;
+        --test)
+            shift
+            case "${1:-}" in
+                # Name aliases
+                preprocess)  RUN_TEST="1" ;;
+                negative)    RUN_TEST="1c" ;;
+                pipeline)    RUN_TEST="2" ;;
+                slam)        RUN_TEST="3" ;;
+                splice)      RUN_TEST="4" ;;
+                blast)       RUN_TEST="5" ;;
+                viewer)      RUN_TEST="6" ;;
+                plots)       RUN_TEST="7" ;;
+                counting)    RUN_TEST="8" ;;
+                shell)       RUN_TEST="9" ;;
+                dispatcher)  RUN_TEST="dispatcher" ;;
+                *)           RUN_TEST="$1" ;;
+            esac
+            shift ;;
+        *) echo "Unknown option: $1" >&2; exit 1 ;;
     esac
 done
 # --quick implies --skip-preprocess
 if [ "$QUICK" -eq 1 ]; then SKIP_PREPROCESS=1; fi
+
+# should_run: returns 0 (true) if the given test block should run
+should_run() {
+    [ -z "$RUN_TEST" ] || [ "$RUN_TEST" = "$1" ]
+}
 
 # ---------------------------------------------------------------------------
 # Initialization
@@ -171,7 +200,7 @@ mkdir -p "$OUTPUT_DIR"
 # Test 1: Steps 01-03 (optional, with --full)
 # ---------------------------------------------------------------------------
 
-if [ "$SKIP_PREPROCESS" -eq 0 ]; then
+if [ "$SKIP_PREPROCESS" -eq 0 ] && should_run 1; then
     T_START=$SECONDS
     echo "[TEST 1] Steps 01-03: concat, trim, demux"
     echo ""
@@ -252,6 +281,7 @@ fi
 # Test 1c: Negative tests (error handling)
 # ---------------------------------------------------------------------------
 
+if should_run 1c; then
 T_START=$SECONDS
 echo "[TEST 1c] Negative tests (error handling)"
 echo ""
@@ -308,11 +338,13 @@ else
 fi
 echo "  ⏱ Test 1c: $(( SECONDS - T_START ))s"
 echo ""
+fi  # should_run 1c
 
 # ---------------------------------------------------------------------------
 # Test 2: Steps 04-10 with CT pattern
 # ---------------------------------------------------------------------------
 
+if should_run 2; then
 T_START=$SECONDS
 echo "[TEST 2] Steps 04-10: longread-umi, CT pattern"
 echo "  ⏳ Running pipeline (this is the longest test) ..."
@@ -476,12 +508,13 @@ else
 fi
 echo "  ⏱ Test 2: $(( SECONDS - T_START ))s"
 echo ""
+fi  # should_run 2
 
 # ---------------------------------------------------------------------------
 # Test 2b: Steps 08-10 with CT,AG dual pattern (reuses 04-07 from Test 2)
 # ---------------------------------------------------------------------------
 
-if [ "$QUICK" -eq 0 ]; then
+if [ "$QUICK" -eq 0 ] && should_run 2b; then
     T_START=$SECONDS
     echo "[TEST 2b] Steps 08-10: CT,AG dual pattern"
     echo "  ⏳ Running steps 08-10 with --pattern CT,AG ..."
@@ -540,6 +573,7 @@ fi
 # track of walk-corrected + long edited reads showing C→T at position 606.
 # ---------------------------------------------------------------------------
 
+if should_run demo; then
 T_START=$SECONDS
 DEMO_DIR="$OUTPUT_DIR/demo"
 mkdir -p "$DEMO_DIR"
@@ -654,6 +688,7 @@ EOF
     echo "  Pipeline CT+AG viewer: linked corrected BAMs for all samples"
 fi
 echo ""
+fi  # should_run demo
 
 # ---------------------------------------------------------------------------
 # Test 3: Synthetic SLAM-seq validation (CT + count-pattern TC)
@@ -663,6 +698,7 @@ echo ""
 #   Pattern: CT, count-pattern: TC
 # Expected: 40 reads, EC=96, SC=590, NC=101
 
+if should_run 3; then
 T_START=$SECONDS
 echo "[TEST 3] Synthetic SLAM-seq validation (steps 09-10)"
 echo ""
@@ -725,11 +761,13 @@ fi
 
 echo "  ⏱ Test 3: $(( SECONDS - T_START ))s"
 echo ""
+fi  # should_run 3
 
 # ---------------------------------------------------------------------------
 # Test 5: Intron splicing support (--introns flag)
 # ---------------------------------------------------------------------------
 
+if should_run 4; then
 T_START=$SECONDS
 echo "[TEST 4] Splicing annotation + discovery"
 echo ""
@@ -809,11 +847,13 @@ else
 fi
 echo "  ⏱ Test 4: $(( SECONDS - T_START ))s"
 echo ""
+fi  # should_run 4
 
 # ---------------------------------------------------------------------------
 # Test 6: BLAST + Walk Correction
 # ---------------------------------------------------------------------------
 
+if should_run 5; then
 T_START=$SECONDS
 echo "========================================"
 echo "[TEST 5] BLAST + walk correction"
@@ -921,11 +961,13 @@ check_exact "Control reads in corrected" "$control_count" "8"
 
 echo "  ⏱ Test 5: $(( SECONDS - T_START ))s"
 echo ""
+fi  # should_run 5
 
 # ---------------------------------------------------------------------------
 # Test 6: IGV viewer API
 # ---------------------------------------------------------------------------
 
+if should_run 6; then
 T_START=$SECONDS
 echo "[TEST 6] IGV viewer API"
 echo ""
@@ -1024,13 +1066,15 @@ else
 fi
 echo "  ⏱ Test 6: $(( SECONDS - T_START ))s"
 echo ""
+fi  # should_run 6
 
 # ---------------------------------------------------------------------------
-# Test 8: Shell function unit tests (CIGAR, splice, BLAST)
+# Test 9: Shell function unit tests (CIGAR, splice, BLAST)
 # ---------------------------------------------------------------------------
 
+if should_run 9; then
 T_START=$SECONDS
-echo "[TEST 8] Shell function unit tests"
+echo "[TEST 9] Shell function unit tests"
 echo ""
 
 _sf_output=$(bash "$SCRIPT_DIR/test_shell_functions.sh" 2>&1)
@@ -1043,14 +1087,15 @@ else
     fail "Shell functions: $_sf_fail failed ($_sf_pass passed)"
     echo "$_sf_output" | grep '\[FAIL\]' | head -5
 fi
-echo "  ⏱ Test 8: $(( SECONDS - T_START ))s"
+echo "  ⏱ Test 9: $(( SECONDS - T_START ))s"
 echo ""
+fi  # should_run 9
 
 # ---------------------------------------------------------------------------
 # Test 7: Plot generation (analysis conda env + plot_umi_bins.py)
 # ---------------------------------------------------------------------------
 
-if [ "$QUICK" -eq 0 ]; then
+if [ "$QUICK" -eq 0 ] && should_run 7; then
 T_START=$SECONDS
 echo "[TEST 7] Plot generation (analysis env)"
 echo ""
@@ -1109,7 +1154,7 @@ fi
 # Test 8: Gene-level read counting (regions + count subcommands)
 # ---------------------------------------------------------------------------
 
-if [ "$QUICK" -eq 0 ]; then
+if [ "$QUICK" -eq 0 ] && should_run 8; then
 T_START=$SECONDS
 echo "[TEST 8] Gene-level read counting"
 echo ""
@@ -1271,6 +1316,26 @@ fi
 echo "  ⏱ Test 8: $(( SECONDS - T_START ))s"
 echo ""
 fi
+
+# ---------------------------------------------------------------------------
+# Dispatcher argument tests (always fast, no data processing)
+# ---------------------------------------------------------------------------
+
+if should_run dispatcher; then
+T_START=$SECONDS
+_disp_output=$(bash "$SCRIPT_DIR/test_dispatcher.sh" 2>&1)
+_disp_pass=$(echo "$_disp_output" | grep -c '\[PASS\]' || true)
+_disp_fail=$(echo "$_disp_output" | grep -c '\[FAIL\]' || true)
+
+if [ "$_disp_fail" -eq 0 ]; then
+    pass "Dispatcher tests: $_disp_pass passed"
+else
+    fail "Dispatcher tests: $_disp_fail failed ($_disp_pass passed)"
+    echo "$_disp_output" | grep '\[FAIL\]' | head -5
+fi
+echo "  ⏱ Dispatcher: $(( SECONDS - T_START ))s"
+echo ""
+fi  # should_run dispatcher
 
 # ---------------------------------------------------------------------------
 # Summary
