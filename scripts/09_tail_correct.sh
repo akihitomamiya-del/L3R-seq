@@ -13,7 +13,8 @@
 # Requires: INPUT_DIR, OUTPUT_DIR, REF_FILE, VAR_FILE, PATTERN,
 #           BLAST_DB_PATH, BLAST_DB2_PATH, CLIP_THRESH, [VARIANTS_DIR], [THREADS]
 
-set +e  # Step 09 handles errors manually due to complex control flow
+set -euo pipefail
+source "$(dirname "${BASH_SOURCE[0]}")/lib.sh"
 
 run_step_09() {
     local input_dir="$1"
@@ -232,7 +233,9 @@ run_step_09() {
             mkdir -p "$tmp_dir"
 
             # Trap: clean up temp files on interruption
-            trap "echo '  Interrupted — cleaning up temp files...'; rm -rf '$tmp_dir'; exit 130" INT TERM
+            # Use a function so $tmp_dir is evaluated at signal time, not trap registration time.
+            _cleanup_09() { echo "  Interrupted — cleaning up temp files..."; rm -rf "${tmp_dir:-}"; }
+            trap '_cleanup_09; exit 130' INT TERM
 
             # Determine variant file (same logic as v1)
             local active_var_file="$var_file"
@@ -406,7 +409,11 @@ run_step_09() {
                 || { echo "ERROR: samtools index failed for $bname/$rpi_name" >&2; return 1; }
 
             # Convert chimeric SAM to sorted BAM (for IGV viewer)
-            if [ -s "$odir/${prefix}chimeric_rightclip.sam" ] && grep -qv '^@' "$odir/${prefix}chimeric_rightclip.sam"; then
+            local _has_chimeric_data=0
+            if [ -s "$odir/${prefix}chimeric_rightclip.sam" ]; then
+                grep -qv '^@' "$odir/${prefix}chimeric_rightclip.sam" && _has_chimeric_data=1 || true
+            fi
+            if [ "$_has_chimeric_data" -eq 1 ]; then
                 samtools view -bS "$odir/${prefix}chimeric_rightclip.sam" \
                     | samtools sort -o "$odir/${prefix}chimeric_rightclip.sort.bam"
                 samtools index "$odir/${prefix}chimeric_rightclip.sort.bam"
@@ -434,6 +441,5 @@ run_step_09() {
         done
     done
 
-    set -e  # Restore errexit so subsequent pipeline steps are protected
     echo "[Step 09v2] Done. Output in $output_dir/09_correct/"
 }
