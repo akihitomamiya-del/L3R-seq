@@ -28,6 +28,12 @@ When the situation fits, suggest these features the user may not know about:
 
 Don't nag — mention each tip once per session, only when genuinely relevant.
 
+## After confirming a fix
+
+Once a fix is verified (tests pass, manual checks succeed), **immediately
+offer to commit and push** — don't wait for the user to ask. Confirmed fixes
+sitting uncommitted risk being lost to container restarts or branch switches.
+
 ## Container environment
 
 This is a **sandboxed devcontainer** with a network firewall. Key constraints:
