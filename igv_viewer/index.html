@@ -633,7 +633,7 @@
          dropdown and bakes groupBy into track configs before creating browser) */
       const rf = browser.referenceFrameList?.[0];
       const savedLocus = rf
-        ? rf.chr + ":" + Math.round(rf.start) + "-" + Math.round(rf.end)
+        ? rf.chr + ":" + (Math.round(rf.start) + 1) + "-" + Math.round(rf.end)
         : null;
 
       const sel = document.getElementById("dataset");
@@ -797,7 +797,7 @@
       try {
         const container = document.getElementById("igv-container");
         const rf = browser ? browser.referenceFrameList?.[0] : null;
-        if (rf) lastLocus = rf.chr + ":" + Math.round(rf.start) + "-" + Math.round(rf.end);
+        if (rf) lastLocus = rf.chr + ":" + (Math.round(rf.start) + 1) + "-" + Math.round(rf.end);
         if (browser) { igv.removeBrowser(browser); browser = null; }
 
         const showAll = document.getElementById("show-all").checked;
