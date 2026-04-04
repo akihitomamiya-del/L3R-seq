@@ -504,6 +504,13 @@ const server = http.createServer((req, res) => {
 
   const urlPath = decodeURIComponent(req.url.split("?")[0]);
 
+  // Health check endpoint
+  if (urlPath === "/healthz") {
+    res.writeHead(200, { "Content-Type": "application/json" });
+    res.end(JSON.stringify({ status: "ok", uptime: process.uptime() }));
+    return;
+  }
+
   // API: list available datasets (fast — no BAM reading)
   if (urlPath === "/api/datasets") {
     const datasets = discoverDatasets();
