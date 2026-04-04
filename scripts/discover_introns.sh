@@ -8,6 +8,7 @@
 # Requires: INPUT_DIR (07_map output), OUTPUT_DIR
 
 set -euo pipefail
+source "$(dirname "${BASH_SOURCE[0]}")/lib.sh"
 
 run_discover_introns() {
     local input_dir="$1"

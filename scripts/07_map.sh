@@ -4,6 +4,7 @@
 # Requires: INPUT_DIR, OUTPUT_DIR, REF_FILE, PRESET
 
 set -euo pipefail
+source "$(dirname "${BASH_SOURCE[0]}")/lib.sh"
 
 ## Sanitize a FASTA reference: strip \r, ensure trailing newline, wrap long
 ## lines to 80 chars, and regenerate .fai if the FASTA was modified.
@@ -43,6 +44,44 @@ sanitize_fasta() {
     fi
 }
 
+_process_sample_07() {
+    local bname="$1" rpi_name="$2" rpi_dir="$3"
+    local output_dir="$4" ref_file="$5" preset="$6"
+
+    local input_fa="$rpi_dir/${rpi_name}_extracted_trimmed.fa"
+    require_input "$input_fa" "$bname" "$rpi_name" "06" || return 0
+
+    echo "  Processing $bname / $rpi_name ..."
+    local odir="$output_dir/07_map/$bname/$rpi_name"
+    mkdir -p "$odir"
+    local prefix="${rpi_name}_"
+
+    # Align with minimap2
+    if ! minimap2 -ax "$preset" "$ref_file" "$input_fa" \
+        > "$odir/${prefix}aligned.sam" \
+        2> "$odir/${prefix}aligned.minimap2.log"; then
+        echo "  ERROR: minimap2 failed for $bname/$rpi_name (see $odir/${prefix}aligned.minimap2.log)" >&2
+        return 1
+    fi
+
+    # Flagstat on all reads
+    samtools flagstat "$odir/${prefix}aligned.sam" > "$odir/${prefix}aligned.flagstat.txt"
+
+    # Convert to sorted BAM + index (all alignments)
+    samtools view -bS "$odir/${prefix}aligned.sam" > "$odir/${prefix}aligned.bam"
+    samtools sort "$odir/${prefix}aligned.bam" > "$odir/${prefix}aligned.sort.bam"
+    samtools index "$odir/${prefix}aligned.sort.bam"
+
+    # Primary-only sorted BAM for viewer (excludes secondary 0x100 + supplementary 0x800)
+    samtools view -bS -F 0x900 "$odir/${prefix}aligned.sam" > "$odir/${prefix}primary.bam"
+    samtools sort "$odir/${prefix}primary.bam" > "$odir/${prefix}primary.sort.bam"
+    samtools index "$odir/${prefix}primary.sort.bam"
+
+    # Extract mapped-only reads
+    samtools view -h -F 4 "$odir/${prefix}aligned.sam" > "$odir/${prefix}mapped_only.sam"
+    samtools flagstat "$odir/${prefix}mapped_only.sam" > "$odir/${prefix}mapped_only.flagstat.txt"
+}
+
 run_step_07() {
     local input_dir="$1"
     local output_dir="$2"
@@ -56,56 +95,7 @@ run_step_07() {
     # Sanitize reference FASTA before use
     sanitize_fasta "$ref_file"
 
-    for barcode_dir in "$input_dir"/*/; do
-        [ -d "$barcode_dir" ] || continue
-
-        local bname
-        bname=$(basename "$barcode_dir")
-
-        for rpi_dir in "$barcode_dir"/*/; do
-            [ -d "$rpi_dir" ] || continue
-
-            local rpi_name
-            rpi_name=$(basename "$rpi_dir")
-
-            local input_fa="$rpi_dir/${rpi_name}_extracted_trimmed.fa"
-            if [ ! -f "$input_fa" ]; then
-                echo "  WARNING: No ${rpi_name}_extracted_trimmed.fa in $bname/$rpi_name, skipping (run step 06 first)"
-                continue
-            fi
-
-            echo "  Processing $bname / $rpi_name ..."
-            mkdir -p "$output_dir/07_map/$bname/$rpi_name"
-            local odir="$output_dir/07_map/$bname/$rpi_name"
-            local prefix="${rpi_name}_"
-
-            # Align with minimap2
-            if ! minimap2 -ax "$preset" "$ref_file" "$input_fa" \
-                > "$odir/${prefix}aligned.sam" \
-                2> "$odir/${prefix}aligned.minimap2.log"; then
-                echo "  ERROR: minimap2 failed for $bname/$rpi_name (see $odir/${prefix}aligned.minimap2.log)" >&2
-                return 1
-            fi
-
-            # Flagstat on all reads
-            samtools flagstat "$odir/${prefix}aligned.sam" > "$odir/${prefix}aligned.flagstat.txt"
-
-            # Convert to sorted BAM + index (all alignments)
-            samtools view -bS "$odir/${prefix}aligned.sam" > "$odir/${prefix}aligned.bam"
-            samtools sort "$odir/${prefix}aligned.bam" > "$odir/${prefix}aligned.sort.bam"
-            samtools index "$odir/${prefix}aligned.sort.bam"
-
-            # Primary-only sorted BAM for viewer (excludes secondary 0x100 + supplementary 0x800)
-            samtools view -bS -F 0x900 "$odir/${prefix}aligned.sam" > "$odir/${prefix}primary.bam"
-            samtools sort "$odir/${prefix}primary.bam" > "$odir/${prefix}primary.sort.bam"
-            samtools index "$odir/${prefix}primary.sort.bam"
-
-            # Extract mapped-only reads
-            samtools view -h -F 4 "$odir/${prefix}aligned.sam" > "$odir/${prefix}mapped_only.sam"
-            samtools flagstat "$odir/${prefix}mapped_only.sam" > "$odir/${prefix}mapped_only.flagstat.txt"
-
-        done
-    done
+    iterate_samples "$input_dir" _process_sample_07 "$output_dir" "$ref_file" "$preset"
 
     # Summary: mapped read counts from flagstat
     for _mdir in "$output_dir"/07_map/*/*; do

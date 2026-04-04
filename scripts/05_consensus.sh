@@ -5,6 +5,7 @@
 # Optional: KEEP_INTERMEDIATES (0=clean per-bin dirs after consensus, 1=keep all)
 
 set -euo pipefail
+source "$(dirname "${BASH_SOURCE[0]}")/lib.sh"
 
 run_step_05() {
     local input_dir="$1"

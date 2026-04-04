@@ -4,6 +4,7 @@
 # Requires: INPUT_DIR, OUTPUT_DIR
 
 set -euo pipefail
+source "$(dirname "${BASH_SOURCE[0]}")/lib.sh"
 
 # Quality report generator
 _write_quality_report() {
@@ -160,6 +161,39 @@ with open('$report_file', 'w') as out:
 " 2>/dev/null || echo "  WARNING: Quality report generation failed (python3 required)"
 }
 
+_process_sample_10() {
+    local bname="$1" rpi_name="$2" rpi_dir="$3"
+    local output_dir="$4" header_base="$5" header_tail="$6" header_sj="$7"
+
+    local corrected_sam="$rpi_dir/${rpi_name}_corrected.sam"
+    require_input "$corrected_sam" "$bname" "$rpi_name" "09" || return 0
+
+    echo "  Exporting $bname / $rpi_name ..."
+
+    local csv_file="$output_dir/10_csv/${bname}_${rpi_name}.csv"
+
+    # Build header dynamically based on which tags are present
+    local first_data
+    # Use awk instead of grep|head to avoid SIGPIPE under pipefail
+    first_data=$(awk '/^[^@]/{print; exit}' "$corrected_sam")
+    local header="$header_base"
+    if echo "$first_data" | grep -q 'SC:i:'; then
+        header="${header},secondary_editing_count"
+    fi
+    header="${header},${header_tail}"
+    if echo "$first_data" | grep -q 'SJ:Z:'; then
+        header="${header},${header_sj}"
+    fi
+
+    # Strip SAM header, convert tabs to commas, add CSV header
+    sed '/^@/d' "$corrected_sam" | sed 's/\t/,/g' > "$csv_file"
+    { echo "$header"; cat "$csv_file"; } > "${csv_file}.tmp" && mv "${csv_file}.tmp" "$csv_file"
+
+    # Generate quality report
+    local report_file="$output_dir/10_csv/${bname}_${rpi_name}_quality_report.txt"
+    _write_quality_report "$corrected_sam" "$report_file" "$bname / $rpi_name"
+}
+
 run_step_10() {
     local input_dir="$1"
     local output_dir="$2"
@@ -173,51 +207,8 @@ run_step_10() {
     local header_tail="noise_count,matched_length,All_mismatches"
     local header_sj="splice_pattern,introns_spliced,introns_retained"
 
-    for barcode_dir in "$input_dir"/*/; do
-        [ -d "$barcode_dir" ] || continue
-
-        local bname
-        bname=$(basename "$barcode_dir")
-
-        for rpi_dir in "$barcode_dir"/*/; do
-            [ -d "$rpi_dir" ] || continue
-
-            local rpi_name
-            rpi_name=$(basename "$rpi_dir")
-
-            local corrected_sam="$rpi_dir/${rpi_name}_corrected.sam"
-            if [ ! -f "$corrected_sam" ]; then
-                echo "  WARNING: No ${rpi_name}_corrected.sam in $bname/$rpi_name, skipping (run step 09 first)"
-                continue
-            fi
-
-            echo "  Exporting $bname / $rpi_name ..."
-
-            local csv_file="$output_dir/10_csv/${bname}_${rpi_name}.csv"
-
-            # Build header dynamically based on which tags are present
-            local first_data
-            # Use awk instead of grep|head to avoid SIGPIPE under pipefail
-            first_data=$(awk '/^[^@]/{print; exit}' "$corrected_sam")
-            local header="$header_base"
-            if echo "$first_data" | grep -q 'SC:i:'; then
-                header="${header},secondary_editing_count"
-            fi
-            header="${header},${header_tail}"
-            if echo "$first_data" | grep -q 'SJ:Z:'; then
-                header="${header},${header_sj}"
-            fi
-
-            # Strip SAM header, convert tabs to commas, add CSV header
-            sed '/^@/d' "$corrected_sam" | sed 's/\t/,/g' > "$csv_file"
-            { echo "$header"; cat "$csv_file"; } > "${csv_file}.tmp" && mv "${csv_file}.tmp" "$csv_file"
-
-            # Generate quality report
-            local report_file="$output_dir/10_csv/${bname}_${rpi_name}_quality_report.txt"
-            _write_quality_report "$corrected_sam" "$report_file" "$bname / $rpi_name"
-
-        done
-    done
+    iterate_samples "$input_dir" _process_sample_10 \
+        "$output_dir" "$header_base" "$header_tail" "$header_sj"
 
     # Summary: CSV rows + key stats from corrected SAM
     for _cdir in "$input_dir"/*/*; do

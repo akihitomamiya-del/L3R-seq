@@ -9,6 +9,7 @@
 # Output: per-sample counts, merged counts, isoform discovery, coverage, normalization
 
 set -euo pipefail
+source "$(dirname "${BASH_SOURCE[0]}")/lib.sh"
 
 # ---------------------------------------------------------------------------
 # count_gene_reads — core awk-based counting with fractional overlap

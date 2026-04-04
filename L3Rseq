@@ -92,6 +92,16 @@ _summary_append() {
     printf "%s\t%s\t%s\t%s\t%s\t%s\n" "$(date +%Y-%m-%dT%H:%M:%S)" "$2" "$3" "$4" "$5" "$6" >> "$_f"
 }
 
+# Source a step script, activate its conda env, run the function, deactivate.
+# Usage: _conda_run <env> <script> <func> [args...]
+_conda_run() {
+    local _env="$1" _script="$2" _func="$3"; shift 3
+    source "$SCRIPT_DIR/scripts/$_script"
+    conda activate "$_env"
+    "$_func" "$@"
+    conda deactivate
+}
+
 # Validate that a conda environment exists before activation.
 # Usage: require_conda_env <env_name>
 require_conda_env() {
@@ -217,10 +227,7 @@ cmd_trim() {
     [ -z "$input_dir" ] && { echo "ERROR: --input is required" >&2; return 1; }
     [ -z "$output_dir" ] && { echo "ERROR: --outdir is required" >&2; return 1; }
 
-    source "$SCRIPT_DIR/scripts/02_trim.sh"
-    conda activate "$ENV_CUTADAPT"
-    run_step_02 "$input_dir" "$output_dir" "$adapter_fwd" "$adapter_rev" "$adapter_trim3" "$error_rate"
-    conda deactivate
+    _conda_run "$ENV_CUTADAPT" "02_trim.sh" run_step_02 "$input_dir" "$output_dir" "$adapter_fwd" "$adapter_rev" "$adapter_trim3" "$error_rate"
 }
 
 # ---------------------------------------------------------------------------
@@ -247,10 +254,7 @@ cmd_demux() {
     [ -z "$output_dir" ] && { echo "ERROR: --outdir is required" >&2; return 1; }
     [ -z "$rpi_fasta" ] && { echo "ERROR: --rpi-fasta is required" >&2; return 1; }
 
-    source "$SCRIPT_DIR/scripts/03_demultiplex.sh"
-    conda activate "$ENV_CUTADAPT"
-    run_step_03 "$input_dir" "$output_dir" "$rpi_fasta" "$error_rate" "$min_overlap"
-    conda deactivate
+    _conda_run "$ENV_CUTADAPT" "03_demultiplex.sh" run_step_03 "$input_dir" "$output_dir" "$rpi_fasta" "$error_rate" "$min_overlap"
 }
 
 # ---------------------------------------------------------------------------
@@ -275,10 +279,7 @@ cmd_filter() {
     [ -z "$output_dir" ] && { echo "ERROR: --outdir is required" >&2; return 1; }
     [ -z "$ref_file" ] && { echo "ERROR: --ref is required" >&2; return 1; }
 
-    source "$SCRIPT_DIR/scripts/filter.sh"
-    conda activate "$ENV_MAP"
-    run_step_filter "$input_dir" "$output_dir" "$ref_file" "$preset"
-    conda deactivate
+    _conda_run "$ENV_MAP" "filter.sh" run_step_filter "$input_dir" "$output_dir" "$ref_file" "$preset"
 }
 
 # ---------------------------------------------------------------------------
@@ -328,18 +329,18 @@ cmd_umi() {
         size_thresh="$DEFAULT_LONGREAD_SIZE_THRESH"
     fi
 
-    source "$SCRIPT_DIR/scripts/04_umi.sh"
     # Activate appropriate conda environment based on method
     if [ "$method" = "longread-umi" ]; then
-        conda activate "$ENV_LONGREAD_UMI"
+        _conda_run "$ENV_LONGREAD_UMI" "04_umi.sh" run_step_04 "$input_dir" "$output_dir" "$probe_file" \
+            "$umi_len" "$umi_loc" "$min_probe_score" "$aln_thresh" \
+            "$size_thresh" "$cluster_steps" "$sample_size" "$method" \
+            "$umi_flank5" "$umi_flank3"
     else
-        conda activate "$ENV_UMIC"
+        _conda_run "$ENV_UMIC" "04_umi.sh" run_step_04 "$input_dir" "$output_dir" "$probe_file" \
+            "$umi_len" "$umi_loc" "$min_probe_score" "$aln_thresh" \
+            "$size_thresh" "$cluster_steps" "$sample_size" "$method" \
+            "$umi_flank5" "$umi_flank3"
     fi
-    run_step_04 "$input_dir" "$output_dir" "$probe_file" \
-        "$umi_len" "$umi_loc" "$min_probe_score" "$aln_thresh" \
-        "$size_thresh" "$cluster_steps" "$sample_size" "$method" \
-        "$umi_flank5" "$umi_flank3"
-    conda deactivate
 }
 
 # ---------------------------------------------------------------------------
@@ -366,10 +367,7 @@ cmd_consensus() {
     [ -z "$input_dir" ] && { echo "ERROR: --input is required" >&2; return 1; }
     [ -z "$output_dir" ] && { echo "ERROR: --outdir is required" >&2; return 1; }
 
-    source "$SCRIPT_DIR/scripts/05_consensus.sh"
-    conda activate "$ENV_LONGREAD_UMI"
-    run_step_05 "$input_dir" "$output_dir" "$threads" "$rounds" "$preset"
-    conda deactivate
+    _conda_run "$ENV_LONGREAD_UMI" "05_consensus.sh" run_step_05 "$input_dir" "$output_dir" "$threads" "$rounds" "$preset"
 }
 
 # ---------------------------------------------------------------------------
@@ -398,10 +396,7 @@ cmd_extract() {
     [ -z "$input_dir" ] && { echo "ERROR: --input is required" >&2; return 1; }
     [ -z "$output_dir" ] && { echo "ERROR: --outdir is required" >&2; return 1; }
 
-    source "$SCRIPT_DIR/scripts/06_extract.sh"
-    conda activate "$ENV_CUTADAPT"
-    run_step_06 "$input_dir" "$output_dir" "$target_fwd" "$target_rev" "$error_rate" "$min_overlap"
-    conda deactivate
+    _conda_run "$ENV_CUTADAPT" "06_extract.sh" run_step_06 "$input_dir" "$output_dir" "$target_fwd" "$target_rev" "$error_rate" "$min_overlap"
 }
 
 # ---------------------------------------------------------------------------
@@ -426,10 +421,7 @@ cmd_map() {
     [ -z "$output_dir" ] && { echo "ERROR: --outdir is required" >&2; return 1; }
     [ -z "$ref_file" ] && { echo "ERROR: --ref is required" >&2; return 1; }
 
-    source "$SCRIPT_DIR/scripts/07_map.sh"
-    conda activate "$ENV_MAP"
-    run_step_07 "$input_dir" "$output_dir" "$ref_file" "$preset"
-    conda deactivate
+    _conda_run "$ENV_MAP" "07_map.sh" run_step_07 "$input_dir" "$output_dir" "$ref_file" "$preset"
 }
 
 # ---------------------------------------------------------------------------
@@ -456,10 +448,7 @@ cmd_variants() {
     [ -z "$output_dir" ] && { echo "ERROR: --outdir is required" >&2; return 1; }
     [ -z "$ref_file" ] && { echo "ERROR: --ref is required" >&2; return 1; }
 
-    source "$SCRIPT_DIR/scripts/08_variants.sh"
-    conda activate "$ENV_LOFREQ"
-    run_step_08 "$input_dir" "$output_dir" "$ref_file" "$min_af" "$pattern"
-    conda deactivate
+    _conda_run "$ENV_LOFREQ" "08_variants.sh" run_step_08 "$input_dir" "$output_dir" "$ref_file" "$min_af" "$pattern"
 }
 
 # ---------------------------------------------------------------------------
@@ -498,11 +487,8 @@ cmd_correct() {
     [ -z "$ref_file" ] && { echo "ERROR: --ref is required" >&2; return 1; }
     validate_introns "$introns" || return 1
 
-    conda activate "$ENV_MAP"
-    source "$SCRIPT_DIR/scripts/09_tail_correct.sh"
-    run_step_09 "$input_dir" "$output_dir" "$ref_file" "$var_file" "$pattern" \
+    _conda_run "$ENV_MAP" "09_tail_correct.sh" run_step_09 "$input_dir" "$output_dir" "$ref_file" "$var_file" "$pattern" \
         "$blast_db_path" "$blast_db2_path" "$clip_thresh" "$output_dir/08_variants" "$threads" "$count_pattern" "$introns"
-    conda deactivate
 }
 
 # ---------------------------------------------------------------------------
@@ -594,8 +580,6 @@ HELP
             return 1
         fi
         input="$gff_file"; mode="discover"
-        # Discovery needs samtools
-        conda activate "$ENV_MAP"
     elif [ -n "$gff_file" ]; then
         input="$gff_file"; mode="gff"
     elif [ -n "$bed_file" ]; then
@@ -607,11 +591,12 @@ HELP
         return 1
     fi
 
-    source "$SCRIPT_DIR/scripts/regions.sh"
-    run_regions "$input" "$output_file" "$mode" "$feature_type" "$span" "$name_pattern" "$chr_filter" "$append" "$discover_from" "$min_reads"
-
     if [ "$mode" = "discover" ]; then
-        conda deactivate
+        # Discovery needs samtools
+        _conda_run "$ENV_MAP" "regions.sh" run_regions "$input" "$output_file" "$mode" "$feature_type" "$span" "$name_pattern" "$chr_filter" "$append" "$discover_from" "$min_reads"
+    else
+        source "$SCRIPT_DIR/scripts/regions.sh"
+        run_regions "$input" "$output_file" "$mode" "$feature_type" "$span" "$name_pattern" "$chr_filter" "$append" "$discover_from" "$min_reads"
     fi
 }
 
@@ -655,10 +640,7 @@ HELP
     [ -z "$output_dir" ] && { echo "ERROR: --outdir is required" >&2; return 1; }
     [ -z "$regions_file" ] && { echo "ERROR: --regions is required" >&2; return 1; }
 
-    conda activate "$ENV_MAP"
-    source "$SCRIPT_DIR/scripts/11_count.sh"
-    run_step_11 "$input_dir" "$output_dir" "$regions_file" "$housekeeping" "$min_frac" "$min_mapq"
-    conda deactivate
+    _conda_run "$ENV_MAP" "11_count.sh" run_step_11 "$input_dir" "$output_dir" "$regions_file" "$housekeeping" "$min_frac" "$min_mapq"
 }
 
 # ---------------------------------------------------------------------------
@@ -685,10 +667,7 @@ cmd_discover_introns() {
     [ -z "$input_dir" ] && { echo "ERROR: --input is required (path to 07_map output)" >&2; return 1; }
     [ -z "$output_dir" ] && { echo "ERROR: --outdir is required" >&2; return 1; }
 
-    source "$SCRIPT_DIR/scripts/discover_introns.sh"
-    conda activate "$ENV_MAP"
-    run_discover_introns "$input_dir" "$output_dir" "$min_del_len" "$min_support_pct" "$boundary_tolerance"
-    conda deactivate
+    _conda_run "$ENV_MAP" "discover_introns.sh" run_discover_introns "$input_dir" "$output_dir" "$min_del_len" "$min_support_pct" "$boundary_tolerance"
 }
 
 # ---------------------------------------------------------------------------
@@ -871,11 +850,8 @@ RUNHELP
 
     # Step 2: Trim (input: 01_concat/)
     if [ "$start_at" -le 2 ] && [ "$stop_at" -ge 2 ]; then
-        source "$SCRIPT_DIR/scripts/02_trim.sh"
-        conda activate "$ENV_CUTADAPT"
-        run_step_02 "$output_dir/01_concat" "$output_dir" \
+        _conda_run "$ENV_CUTADAPT" "02_trim.sh" run_step_02 "$output_dir/01_concat" "$output_dir" \
             "$DEFAULT_ADAPTER_FWD" "$DEFAULT_ADAPTER_REV" "$DEFAULT_ADAPTER_TRIM3" "$DEFAULT_ERROR_RATE"
-        conda deactivate
         # Cleanup: trim1/trim2 are intermediate; only trim3 used by step 03
         if [ "$keep_intermediates" -eq 0 ]; then
             for _bc_dir in "$output_dir"/02_trim/*/; do
@@ -889,11 +865,8 @@ RUNHELP
     if [ "$start_at" -le 3 ] && [ "$stop_at" -ge 3 ]; then
         [ -z "$rpi_fasta" ] && { echo "ERROR: --rpi-fasta is required for step 3" >&2; return 1; }
         [ -n "$rpi_fasta" ] && [ ! -f "$rpi_fasta" ] && { echo "ERROR: --rpi-fasta file not found: $rpi_fasta" >&2; return 1; }
-        source "$SCRIPT_DIR/scripts/03_demultiplex.sh"
-        conda activate "$ENV_CUTADAPT"
-        run_step_03 "$output_dir/02_trim" "$output_dir" "$rpi_fasta" \
+        _conda_run "$ENV_CUTADAPT" "03_demultiplex.sh" run_step_03 "$output_dir/02_trim" "$output_dir" "$rpi_fasta" \
             "$DEFAULT_DEMUX_ERROR_RATE" "$DEFAULT_DEMUX_MIN_OVERLAP"
-        conda deactivate
         # Cleanup: unclassified reads not used downstream
         if [ "$keep_intermediates" -eq 0 ]; then
             find "$output_dir/03_demux" -name '*_unclassified.fastq' -delete 2>/dev/null || true
@@ -903,10 +876,7 @@ RUNHELP
     # Optional: filter (input: 03_demux/)
     if [ "$prefilter" -eq 1 ] && [ "$start_at" -le 3 ] && [ "$stop_at" -ge 4 ]; then
         [ -z "$ref_file" ] && { echo "ERROR: --ref is required for --prefilter" >&2; return 1; }
-        source "$SCRIPT_DIR/scripts/filter.sh"
-        conda activate "$ENV_MAP"
-        run_step_filter "$output_dir/03_demux" "$output_dir" "$ref_file" "$DEFAULT_MAP_PRESET"
-        conda deactivate
+        _conda_run "$ENV_MAP" "filter.sh" run_step_filter "$output_dir/03_demux" "$output_dir" "$ref_file" "$DEFAULT_MAP_PRESET"
     fi
 
     # Step 4: UMI (input: filter/ or 03_demux/)
@@ -922,26 +892,23 @@ RUNHELP
         if [ "$method" = "longread-umi" ]; then
             run_size_thresh="$DEFAULT_LONGREAD_SIZE_THRESH"
         fi
-        source "$SCRIPT_DIR/scripts/04_umi.sh"
         if [ "$method" = "longread-umi" ]; then
-            conda activate "$ENV_LONGREAD_UMI"
+            _conda_run "$ENV_LONGREAD_UMI" "04_umi.sh" run_step_04 "$umi_input" "$output_dir" "$probe_file" \
+                "$DEFAULT_UMI_LEN" "$DEFAULT_UMI_LOC" "$DEFAULT_MIN_PROBE_SCORE" \
+                "$DEFAULT_ALN_THRESH" "$run_size_thresh" "$DEFAULT_CLUSTER_STEPS" \
+                "$DEFAULT_SAMPLE_SIZE" "$method" "$umi_flank5" "$umi_flank3"
         else
-            conda activate "$ENV_UMIC"
+            _conda_run "$ENV_UMIC" "04_umi.sh" run_step_04 "$umi_input" "$output_dir" "$probe_file" \
+                "$DEFAULT_UMI_LEN" "$DEFAULT_UMI_LOC" "$DEFAULT_MIN_PROBE_SCORE" \
+                "$DEFAULT_ALN_THRESH" "$run_size_thresh" "$DEFAULT_CLUSTER_STEPS" \
+                "$DEFAULT_SAMPLE_SIZE" "$method" "$umi_flank5" "$umi_flank3"
         fi
-        run_step_04 "$umi_input" "$output_dir" "$probe_file" \
-            "$DEFAULT_UMI_LEN" "$DEFAULT_UMI_LOC" "$DEFAULT_MIN_PROBE_SCORE" \
-            "$DEFAULT_ALN_THRESH" "$run_size_thresh" "$DEFAULT_CLUSTER_STEPS" \
-            "$DEFAULT_SAMPLE_SIZE" "$method" "$umi_flank5" "$umi_flank3"
-        conda deactivate
     fi
 
     # Step 5: Consensus (input: 04_umi/)
     if [ "$start_at" -le 5 ] && [ "$stop_at" -ge 5 ]; then
-        source "$SCRIPT_DIR/scripts/05_consensus.sh"
-        conda activate "$ENV_LONGREAD_UMI"
-        run_step_05 "$output_dir/04_umi" "$output_dir" "$threads" \
+        _conda_run "$ENV_LONGREAD_UMI" "05_consensus.sh" run_step_05 "$output_dir/04_umi" "$output_dir" "$threads" \
             "$DEFAULT_CONSENSUS_ROUNDS" "$DEFAULT_CONSENSUS_PRESET" "$keep_intermediates"
-        conda deactivate
         # Cleanup step 04: bin FASTQs and UMI refs no longer needed after consensus
         if [ "$keep_intermediates" -eq 0 ]; then
             for _rpi_dir in "$output_dir"/04_umi/*/*; do
@@ -954,21 +921,15 @@ RUNHELP
 
     # Step 6: Extract (input: 05_consensus/)
     if [ "$start_at" -le 6 ] && [ "$stop_at" -ge 6 ]; then
-        source "$SCRIPT_DIR/scripts/06_extract.sh"
-        conda activate "$ENV_CUTADAPT"
-        run_step_06 "$output_dir/05_consensus" "$output_dir" \
+        _conda_run "$ENV_CUTADAPT" "06_extract.sh" run_step_06 "$output_dir/05_consensus" "$output_dir" \
             "$target_fwd" "$target_rev" "$DEFAULT_ERROR_RATE" "$DEFAULT_TARGET_MIN_OVERLAP"
-        conda deactivate
     fi
 
     # Step 7: Map (input: 06_extract/)
     if [ "$start_at" -le 7 ] && [ "$stop_at" -ge 7 ]; then
         [ -z "$ref_file" ] && { echo "ERROR: --ref is required for step 7" >&2; return 1; }
         [ ! -f "$ref_file" ] && { echo "ERROR: --ref file not found: $ref_file" >&2; return 1; }
-        source "$SCRIPT_DIR/scripts/07_map.sh"
-        conda activate "$ENV_MAP"
-        run_step_07 "$output_dir/06_extract" "$output_dir" "$ref_file" "$DEFAULT_MAP_PRESET"
-        conda deactivate
+        _conda_run "$ENV_MAP" "07_map.sh" run_step_07 "$output_dir/06_extract" "$output_dir" "$ref_file" "$DEFAULT_MAP_PRESET"
         # Cleanup: aligned.sam and aligned.bam redundant with sort.bam
         if [ "$keep_intermediates" -eq 0 ]; then
             for _rpi_dir in "$output_dir"/07_map/*/*; do
@@ -982,10 +943,7 @@ RUNHELP
     if [ "$start_at" -le 8 ] && [ "$stop_at" -ge 8 ]; then
         [ -z "$ref_file" ] && { echo "ERROR: --ref is required for step 8" >&2; return 1; }
         [ ! -f "$ref_file" ] && { echo "ERROR: --ref file not found: $ref_file" >&2; return 1; }
-        source "$SCRIPT_DIR/scripts/08_variants.sh"
-        conda activate "$ENV_LOFREQ"
-        run_step_08 "$output_dir/07_map" "$output_dir" "$ref_file" "$DEFAULT_MIN_AF" "$pattern"
-        conda deactivate
+        _conda_run "$ENV_LOFREQ" "08_variants.sh" run_step_08 "$output_dir/07_map" "$output_dir" "$ref_file" "$DEFAULT_MIN_AF" "$pattern"
     fi
 
     # Step 9: Correct (input: 07_map/)
@@ -994,12 +952,9 @@ RUNHELP
         [ ! -f "$ref_file" ] && { echo "ERROR: --ref file not found: $ref_file" >&2; return 1; }
         # Auto-detect variant files from step 08 if --var not specified
         local run_var_file="$var_file"
-        conda activate "$ENV_MAP"
-        source "$SCRIPT_DIR/scripts/09_tail_correct.sh"
-        run_step_09 "$output_dir/07_map" "$output_dir" "$ref_file" "$run_var_file" "$pattern" \
+        _conda_run "$ENV_MAP" "09_tail_correct.sh" run_step_09 "$output_dir/07_map" "$output_dir" "$ref_file" "$run_var_file" "$pattern" \
             "$blast_db_path" "$blast_db2_path" "$DEFAULT_CLIP_THRESH" \
             "$output_dir/08_variants" "$threads" "$count_pattern" "$introns"
-        conda deactivate
     fi
 
     # Step 10: Export (input: 09_correct/)
