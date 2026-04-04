@@ -143,6 +143,13 @@ let chartInstances = [];
 let selectedGene = null;  // gene selected for alignment viewer
 let chartZoomed = false;  // whether chart is zoomed to single gene
 
+// --- XSS-safe helper for building HTML table strings with user data ---
+function escapeHtml(str) {
+  if (str == null) return "";
+  return String(str).replace(/&/g, "&amp;").replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;").replace(/"/g, "&quot;").replace(/'/g, "&#39;");
+}
+
 function sampleColor(sampleId, alpha) {
   const bc = sampleId.split("/")[0];
   const hue = barcodeHue(bc);
@@ -233,12 +240,10 @@ function restoreState() {
     document.querySelectorAll('#sample-body input[data-id]').forEach(cb => {
       cb.checked = selectedIds.has(cb.dataset.id);
     });
-    document.querySelectorAll('#sample-body .bc-group-header input').forEach(cb => {
-      const bc = cb.getAttribute("onchange").match(/'([^']+)'/)?.[1];
-      if (bc) {
-        const bcSamples = allData.samples.filter(sm => sm.startsWith(bc + "/"));
-        cb.checked = bcSamples.every(sm => selectedIds.has(sm));
-      }
+    document.querySelectorAll('#sample-body .bc-group-header input[data-barcode]').forEach(cb => {
+      const bc = cb.dataset.barcode;
+      const bcSamples = allData.samples.filter(sm => sm.startsWith(bc + "/"));
+      cb.checked = bcSamples.every(sm => selectedIds.has(sm));
     });
     syncAllCheckbox();
     updateSampleCount();
@@ -349,28 +354,64 @@ function showEmpty(msg) {
 // --- Sample selector ---
 function buildSampleSelector() {
   const body = document.getElementById("sample-body");
+  body.innerHTML = "";
   const barcodes = [...new Set(allData.samples.map(s => s.split("/")[0]))].sort(naturalSort);
 
-  let html = '<div style="margin-bottom:8px;"><label style="cursor:pointer;font-weight:600;">' +
-    '<input type="checkbox" id="check-all" checked onchange="toggleAll(this.checked)"> Select all</label></div>';
+  const allDiv = document.createElement("div");
+  allDiv.style.marginBottom = "8px";
+  const allLabel = document.createElement("label");
+  allLabel.style.cssText = "cursor:pointer;font-weight:600;";
+  const allCb = document.createElement("input");
+  allCb.type = "checkbox"; allCb.id = "check-all"; allCb.checked = true;
+  allCb.addEventListener("change", function() { toggleAll(this.checked); });
+  allLabel.appendChild(allCb);
+  allLabel.appendChild(document.createTextNode(" Select all"));
+  allDiv.appendChild(allLabel);
+  body.appendChild(allDiv);
 
   for (const bc of barcodes) {
     const hue = barcodeHue(bc);
     const samples = allData.samples.filter(s => s.startsWith(bc + "/"));
-    html += '<div class="bc-group">';
-    html += `<div class="bc-group-header">
-      <span class="swatch" style="background:hsl(${hue},70%,50%)"></span>
-      <label style="cursor:pointer"><input type="checkbox" checked
-        onchange="toggleBarcode('${bc}',this.checked)"> ${bc} (${samples.length})</label></div>`;
-    html += '<div class="sample-checks">';
+    const groupDiv = document.createElement("div");
+    groupDiv.className = "bc-group";
+
+    const headerDiv = document.createElement("div");
+    headerDiv.className = "bc-group-header";
+    const swatch = document.createElement("span");
+    swatch.className = "swatch";
+    swatch.style.background = "hsl(" + hue + ",70%,50%)";
+    headerDiv.appendChild(swatch);
+    const bcLabel = document.createElement("label");
+    bcLabel.style.cursor = "pointer";
+    const bcCb = document.createElement("input");
+    bcCb.type = "checkbox"; bcCb.checked = true;
+    bcCb.dataset.barcode = bc;
+    bcCb.addEventListener("change", (function(bcName) {
+      return function() { toggleBarcode(bcName, this.checked); };
+    })(bc));
+    bcLabel.appendChild(bcCb);
+    bcLabel.appendChild(document.createTextNode(" " + bc + " (" + samples.length + ")"));
+    headerDiv.appendChild(bcLabel);
+    groupDiv.appendChild(headerDiv);
+
+    const checksDiv = document.createElement("div");
+    checksDiv.className = "sample-checks";
     for (const s of samples) {
       const short = s.split("/").pop().replace(bc + "_", "");
-      html += `<label><input type="checkbox" data-id="${s}" data-bc="${bc}" checked
-        onchange="toggleSample('${s}',this.checked)"> ${short}</label>`;
+      const sLabel = document.createElement("label");
+      const sCb = document.createElement("input");
+      sCb.type = "checkbox"; sCb.checked = true;
+      sCb.dataset.id = s; sCb.dataset.bc = bc;
+      sCb.addEventListener("change", (function(sId) {
+        return function() { toggleSample(sId, this.checked); };
+      })(s));
+      sLabel.appendChild(sCb);
+      sLabel.appendChild(document.createTextNode(" " + short));
+      checksDiv.appendChild(sLabel);
     }
-    html += '</div></div>';
+    groupDiv.appendChild(checksDiv);
+    body.appendChild(groupDiv);
   }
-  body.innerHTML = html;
   updateSampleCount();
 }
 
@@ -394,7 +435,7 @@ function toggleSample(id, checked) {
   if (checked) selectedIds.add(id); else selectedIds.delete(id);
   const bc = id.split("/")[0];
   const bcSamples = allData.samples.filter(s => s.startsWith(bc + "/"));
-  const bcCb = document.querySelector(`#sample-body .bc-group-header input[onchange*="${bc}"]`);
+  const bcCb = document.querySelector(`#sample-body .bc-group-header input[data-barcode="${bc}"]`);
   if (bcCb) bcCb.checked = bcSamples.every(s => selectedIds.has(s));
   syncAllCheckbox(); updateSampleCount(); render(); saveState();
 }
@@ -557,7 +598,7 @@ function renderTable(area, samples) {
     let html = '<table class="stats"><thead><tr>';
     for (const c of cols) {
       const arrow = sortCol === c.key ? (sortAsc ? " &#9650;" : " &#9660;") : "";
-      html += `<th data-col="${c.key}">${c.label}${arrow}</th>`;
+      html += `<th data-col="${escapeHtml(c.key)}">${escapeHtml(c.label)}${arrow}</th>`;
     }
     html += "</tr></thead><tbody>";
     for (const row of rows) {
@@ -569,14 +610,14 @@ function renderTable(area, samples) {
         if (c.key === "gene") {
           const r = geneRegion(v);
           if (r) {
-            content = `<td><a href="#" onclick="selectGeneLocus('${v}');return false;" title="Select for alignment viewer" style="color:#2980b9;text-decoration:none;font-weight:600;cursor:pointer;">${v}</a></td>`;
+            content = `<td><a href="#" data-gene="${escapeHtml(v)}" title="Select for alignment viewer" style="color:#2980b9;text-decoration:none;font-weight:600;cursor:pointer;">${escapeHtml(v)}</a></td>`;
           } else {
-            content = `<td style="font-weight:600;">${v}</td>`;
+            content = `<td style="font-weight:600;">${escapeHtml(v)}</td>`;
           }
         } else if (c.key === "region") {
           const r = geneRegion(row.gene);
           if (r) {
-            content = `<td style="font-size:11px;font-family:monospace;"><a href="#" onclick="selectGeneLocus('${row.gene}');return false;" title="Select for alignment viewer" style="color:#666;text-decoration:none;cursor:pointer;">${v}</a></td>`;
+            content = `<td style="font-size:11px;font-family:monospace;"><a href="#" data-gene="${escapeHtml(row.gene)}" title="Select for alignment viewer" style="color:#666;text-decoration:none;cursor:pointer;">${escapeHtml(v)}</a></td>`;
           } else {
             content = `<td style="font-size:11px;color:#999;">—</td>`;
           }
@@ -587,7 +628,7 @@ function renderTable(area, samples) {
         } else if (c.key === "ratio") {
           content = `<td class="num">${v != null ? v.toFixed(3) : "NA"}</td>`;
         } else {
-          content = `<td class="${cls}">${v}</td>`;
+          content = `<td class="${escapeHtml(cls)}">${escapeHtml(v)}</td>`;
         }
         html += content;
       }
@@ -596,6 +637,11 @@ function renderTable(area, samples) {
     html += "</tbody></table>";
     div.innerHTML = html;
 
+    // Event delegation for gene links (replaces inline onclick handlers)
+    div.addEventListener("click", function(e) {
+      const link = e.target.closest("a[data-gene]");
+      if (link) { e.preventDefault(); selectGeneLocus(link.dataset.gene); }
+    });
     div.querySelectorAll("th").forEach(th => {
       th.addEventListener("click", () => {
         const col = th.dataset.col;
@@ -627,7 +673,10 @@ function renderChart(area, samples) {
   if (zoomed) {
     // Zoomed: one bar per sample, sample names on x-axis
     const gene = genes[0];
-    div.innerHTML = '<h3>' + gene + ' — ' + (hkGene ? 'Normalized ratio (vs ' + hkGene + ')' : 'Molecule counts per sample') + '</h3><canvas></canvas>';
+    const h3z = document.createElement("h3");
+    h3z.textContent = gene + ' — ' + (hkGene ? 'Normalized ratio (vs ' + hkGene + ')' : 'Molecule counts per sample');
+    div.appendChild(h3z);
+    div.appendChild(document.createElement("canvas"));
     const sampleLabels = samples.map(s => s.split("/").pop());
     const values = samples.map(s => {
       if (hkGene && allData.normalized.length > 0) {
@@ -672,7 +721,10 @@ function renderChart(area, samples) {
     };
   } else {
     // Overview: grouped bars, gene names on x-axis
-    div.innerHTML = '<h3>' + (hkGene ? 'Normalized ratio (vs ' + hkGene + ')' : 'Molecule counts per gene') + '</h3><canvas></canvas>';
+    const h3o = document.createElement("h3");
+    h3o.textContent = hkGene ? 'Normalized ratio (vs ' + hkGene + ')' : 'Molecule counts per gene';
+    div.appendChild(h3o);
+    div.appendChild(document.createElement("canvas"));
     const datasets = samples.map(s => {
       const data = genes.map(g => {
         if (hkGene && allData.normalized.length > 0) {
@@ -762,28 +814,47 @@ function renderIsoforms(area, samples) {
       return bTotal - aTotal;
     });
 
+    // Header
+    const h3i = document.createElement("h3");
+    h3i.textContent = gene + " — Isoform composition";
+    div.appendChild(h3i);
+
     // Discovery panel — per barcode
     const geneIsoforms = allData.isoforms.filter(r => r.gene === gene);
-    // Get barcodes that have data for this gene (from selected samples)
     const activeBarcodes = [...new Set(geneCounts.map(r => r.sample.split("/")[0]))].sort(naturalSort);
-    let discHtml = '';
     if (geneIsoforms.length > 0) {
       for (const bc of activeBarcodes) {
         const bcIso = geneIsoforms.filter(r => r.barcode === bc);
         if (bcIso.length === 0 || bcIso.every(r => r.pooled_count === 0)) continue;
-        discHtml += `<div class="discovery-panel"><h4>Pooled isoform discovery — ${bc}</h4><table style="width:100%;font-size:12px;">` +
-          '<tr><th>Pattern</th><th style="text-align:right">Pooled</th><th style="text-align:right">Samples</th><th style="text-align:right">%</th></tr>';
+        const panel = document.createElement("div");
+        panel.className = "discovery-panel";
+        const h4 = document.createElement("h4");
+        h4.textContent = "Pooled isoform discovery — " + bc;
+        panel.appendChild(h4);
+        const tbl = document.createElement("table");
+        tbl.style.cssText = "width:100%;font-size:12px;";
+        const thead = tbl.insertRow();
+        for (const hdr of ["Pattern", "Pooled", "Samples", "%"]) {
+          const th = document.createElement("th");
+          th.textContent = hdr;
+          if (hdr !== "Pattern") th.style.textAlign = "right";
+          thead.appendChild(th);
+        }
         for (const iso of bcIso) {
           if (iso.pooled_count === 0) continue;
-          const label = iso.splice_pattern === "none" ? "unspliced" : "N@" + iso.splice_pattern;
-          discHtml += `<tr><td>${label}</td><td style="text-align:right">${iso.pooled_count}</td>` +
-            `<td style="text-align:right">${iso.n_samples}</td><td style="text-align:right">${iso.pct_of_gene}</td></tr>`;
+          const isoLabel = iso.splice_pattern === "none" ? "unspliced" : "N@" + iso.splice_pattern;
+          const tr = tbl.insertRow();
+          const td0 = tr.insertCell(); td0.textContent = isoLabel;
+          const td1 = tr.insertCell(); td1.textContent = iso.pooled_count; td1.style.textAlign = "right";
+          const td2 = tr.insertCell(); td2.textContent = iso.n_samples; td2.style.textAlign = "right";
+          const td3 = tr.insertCell(); td3.textContent = iso.pct_of_gene; td3.style.textAlign = "right";
         }
-        discHtml += '</table></div>';
+        panel.appendChild(tbl);
+        div.appendChild(panel);
       }
     }
 
-    div.innerHTML = `<h3>${gene} — Isoform composition</h3>${discHtml}<canvas></canvas>`;
+    div.appendChild(document.createElement("canvas"));
     area.appendChild(div);
 
     // Legend
@@ -791,7 +862,13 @@ function renderIsoforms(area, samples) {
     legend.className = "isoform-legend";
     patterns.forEach((p, i) => {
       const label = p === "none" ? "unspliced" : "N@" + p;
-      legend.innerHTML += `<span><span class="iso-swatch" style="background:${isoformColor(i, 0.7)}"></span>${label}</span>`;
+      const span = document.createElement("span");
+      const swatch = document.createElement("span");
+      swatch.className = "iso-swatch";
+      swatch.style.background = isoformColor(i, 0.7);
+      span.appendChild(swatch);
+      span.appendChild(document.createTextNode(label));
+      legend.appendChild(span);
     });
     div.appendChild(legend);
 
@@ -844,7 +921,10 @@ async function renderCoverage(area, samples) {
   for (const gene of genes) {
     const div = document.createElement("div");
     div.className = "chart-container";
-    div.innerHTML = `<h3>${gene} — Coverage depth</h3><canvas></canvas>`;
+    const h3c = document.createElement("h3");
+    h3c.textContent = gene + " — Coverage depth";
+    div.appendChild(h3c);
+    div.appendChild(document.createElement("canvas"));
     area.appendChild(div);
 
     const datasets = [];
