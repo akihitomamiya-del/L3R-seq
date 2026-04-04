@@ -82,6 +82,8 @@ check_range() {
     local lo hi
     lo=$(echo "$expected $tolerance" | awk '{printf "%.0f", $1 * (1 - $2)}')
     hi=$(echo "$expected $tolerance" | awk '{printf "%.0f", $1 * (1 + $2)}')
+    # Floor: if expected > 0, never allow 0 to pass
+    if [ "$expected" -gt 0 ] && [ "$lo" -lt 1 ]; then lo=1; fi
     if [ "$got" -ge "$lo" ] && [ "$got" -le "$hi" ]; then
         pass "$label: $got (expected $expected ±${tolerance})"
     else
@@ -112,7 +114,8 @@ while [ $# -gt 0 ]; do
         --no-viewer)       START_VIEWER=0; shift ;;
         --test)
             shift
-            case "${1:-}" in
+            if [ -z "${1:-}" ]; then echo "ERROR: --test requires a value" >&2; exit 1; fi
+            case "$1" in
                 # Name aliases
                 preprocess)  RUN_TEST="1" ;;
                 negative)    RUN_TEST="1c" ;;
@@ -192,6 +195,10 @@ echo ""
 
 SUITE_START=$SECONDS
 
+# Default OUT so downstream tests (demo, 2b) can reference it even when --test
+# skips test 2.  Test 2 overwrites this after running the pipeline.
+OUT="$OUTPUT_DIR/pipeline_CT"
+
 # Clean previous output
 rm -rf "$OUTPUT_DIR"
 mkdir -p "$OUTPUT_DIR"
@@ -242,7 +249,11 @@ if [ "$SKIP_PREPROCESS" -eq 0 ] && should_run 1; then
             check_range "Step 03 demux $bc/$rpi" "$got" "1530" "0.10"
         done
     done
-    # Test filter step: run on demux output, check reads retained
+fi  # should_run 1
+# ---------------------------------------------------------------------------
+# Test 1b: Optional filter step (depends on test 1 output)
+# ---------------------------------------------------------------------------
+if [ "$SKIP_PREPROCESS" -eq 0 ] && { should_run 1 || should_run 1b; }; then
     echo "[TEST 1b] Optional filter step"
     echo ""
 
@@ -273,9 +284,9 @@ if [ "$SKIP_PREPROCESS" -eq 0 ] && should_run 1; then
             fail "Filter output missing for $bc"
         fi
     done
-    echo "  ⏱ Test 1+1b: $(( SECONDS - T_START ))s"
+    echo "  ⏱ Test 1b: $(( SECONDS - T_START ))s"
     echo ""
-fi
+fi  # should_run 1b
 
 # ---------------------------------------------------------------------------
 # Test 1c: Negative tests (error handling)
@@ -440,12 +451,22 @@ for bc in $TEST2_BARCODES; do
             fail "Step 10 quality report missing"
         fi
 
-        # Step 08: observed variants file exists (0 matching variants is valid
-        # when the sample's editing pattern differs from the search pattern)
+        # Step 08: observed variants file — sample-aware assertion.
+        # Under --pattern CT: RPI_1 samples have C→T editing (expect variants),
+        # RPI_2 samples have A→G or T→C editing (expect 0 CT variants).
         _vf="$OUT/08_variants/$bc/$rpi/observed_variants.txt"
         if [ -f "$_vf" ]; then
             _vlines=$(wc -l < "$_vf")
-            pass "Step 08 variants ($rpi): $_vlines positions"
+            case "$rpi" in
+                *_RPI_1) # Has CT editing — must produce variants
+                    if [ "$_vlines" -gt 0 ]; then
+                        pass "Step 08 variants ($rpi): $_vlines positions"
+                    else
+                        fail "Step 08 variants ($rpi): empty (expected CT variants)"
+                    fi ;;
+                *) # Non-CT editing — 0 variants is valid
+                    pass "Step 08 variants ($rpi): $_vlines positions (non-CT sample)" ;;
+            esac
         else
             fail "Step 08 variants file missing"
         fi
@@ -925,7 +946,7 @@ for r in chimeric_18S_head chimeric_18S_mid chimeric_28S chimeric_Rubisco; do
     fi
 done
 
-chimeric_count=$(grep -cv '^@' "$CHIM_SAM")
+chimeric_count=$(grep -cv '^@' "$CHIM_SAM" || true)
 check_exact "Chimeric read count" "$chimeric_count" "4"
 
 # --- Poly-A retention assertions (4 reads) ---
@@ -947,7 +968,7 @@ for r in unid_clip_70 unid_clip_90 unid_clip_55 unid_clip_110; do
 done
 
 # --- Count and file assertions ---
-corrected_count=$(grep -cv '^@' "$BLAST_SAM")
+corrected_count=$(grep -cv '^@' "$BLAST_SAM" || true)
 check_exact "Corrected read count" "$corrected_count" "28"
 
 csv_rows=$(tail -n+2 "$BLAST_CSV" | wc -l | tr -d ' ')
@@ -959,7 +980,7 @@ else
     fail "BLAST query FASTA missing or empty"
 fi
 
-control_count=$(grep -c 'control_' "$BLAST_SAM")
+control_count=$(grep -c 'control_' "$BLAST_SAM" || true)
 check_exact "Control reads in corrected" "$control_count" "8"
 
 echo "  ⏱ Test 5: $(( SECONDS - T_START ))s"
@@ -1224,7 +1245,7 @@ check_exact "per-sample count TSVs" "$_sample_files" "4"
 # Merged counts
 if [ -f "$COUNT_DIR/gene_counts_all.tsv" ]; then
     pass "gene_counts_all.tsv exists"
-    _merged_rows=$(grep -cv '^gene' "$COUNT_DIR/gene_counts_all.tsv" 2>/dev/null || echo 0)
+    _merged_rows=$(tail -n +2 "$COUNT_DIR/gene_counts_all.tsv" 2>/dev/null | wc -l | tr -d ' ')
     if [ "$_merged_rows" -gt 0 ]; then
         pass "gene_counts_all.tsv has data rows ($_merged_rows)"
     else
