@@ -1,5 +1,33 @@
 # L3Rseq — Claude Code Guidelines
 
+## Memory
+
+Actively use the memory system (`~/.claude/projects/-workspace/memory/`).
+Save user preferences, feedback corrections, and project context as they
+come up — don't wait to be asked. When you encounter a non-obvious bug or
+environment issue and find the fix, save it to memory so the same problem
+is never debugged twice. Personal details stay in memory files (not
+committed); only behavioral instructions belong in this CLAUDE.md.
+
+## Proactive workflow tips
+
+When the situation fits, suggest these features the user may not know about:
+
+- **`/loop`** — when debugging iteratively, suggest `/loop 2m bash tests/run_tests.sh --quick`
+  to auto-run tests in the background while editing
+- **Plan mode** (`/plan`) — suggest before complex multi-step changes (new pipeline
+  steps, major viewer refactors) to align on approach before writing code
+- **Custom slash commands** — if a workflow is being repeated manually, suggest
+  creating a `.claude/commands/` shortcut for it
+- **Hooks** — if the user keeps forgetting a step (e.g., testing all 3 viewer pages),
+  suggest a hook to automate the reminder
+- **Parallel subagents** — when debugging independent issues, suggest spawning
+  parallel agents instead of debugging sequentially
+- **`/effort low`** for quick lookups — remind that simple searches and file reads
+  don't need max effort
+
+Don't nag — mention each tip once per session, only when genuinely relevant.
+
 ## Container environment
 
 This is a **sandboxed devcontainer** with a network firewall. Key constraints:
@@ -74,6 +102,16 @@ Quick sync: `cp .devcontainer/claude-code/CLAUDE.md ~/.claude/CLAUDE.md`
   to verify visual rendering in their real browser when canvas output matters.
   Puppeteer screenshots are still useful for verifying layout, sticky headers,
   z-index layering, and non-canvas UI elements.
+- **Viewer — primary usage pattern (test this!)**: The core workflow is
+  gene-centric back-and-forth between the gene counts and alignment pages:
+  1. On Gene Counts page: find a gene of interest in the barplot, click it
+  2. Click "Alignment Viewer" to jump to that gene's locus with tracks loaded
+  3. Inspect read quality/mapping at that locus — toggle barcode groups on/off
+  4. Navigate back to Gene Counts → select another gene → return to alignment
+  5. Optionally zoom into the barplot to see per-sample counts for that gene
+  Every viewer change MUST be tested against this flow. Verify: locus is
+  preserved when toggling tracks, controls bar stays visible when deselecting
+  all tracks, navigation between pages preserves dataset and state.
 - **Viewer — apply fixes across all 3 pages**: Sticky headers, nav link syncing,
   state persistence, auto-select — all need to be applied to index.html, umi.html,
   AND genes.html. Fixing one page and forgetting the others causes repeated reports.

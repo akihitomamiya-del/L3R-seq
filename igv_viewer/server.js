@@ -173,17 +173,6 @@ function discoverTracks(outdir) {
       }
     }
   }
-  // Promote hidden aligned.sort.bam to visible when primary.sort.bam is absent
-  // (e.g. demo data generated before v1.0.11).
-  const hasPrimary = new Set();
-  for (const t of tracks) {
-    if (t.url.includes("primary.sort.bam")) hasPrimary.add(t.name.split(" —")[0]);
-  }
-  for (const t of tracks) {
-    if (t.hidden && t.url.includes("aligned.sort.bam") && !hasPrimary.has(t.name.split(" —")[0])) {
-      delete t.hidden;
-    }
-  }
   return tracks;
 }
 
@@ -742,11 +731,26 @@ const server = http.createServer((req, res) => {
     }
   }
 
-  const headers = { "Content-Type": mime, "Content-Length": stat.size, "Accept-Ranges": "bytes" };
+  const headers = { "Content-Type": mime, "Accept-Ranges": "bytes" };
   // Prevent browser caching of HTML pages so edits take effect on refresh
   if (ext === ".html") headers["Cache-Control"] = "no-cache, no-store, must-revalidate";
-  res.writeHead(200, headers);
-  fs.createReadStream(filePath).pipe(res);
+  // Cache immutable library bundles (igv.js, chart.js) for 1 day
+  else if (urlPath.startsWith("/igv/") || urlPath.startsWith("/chartjs/"))
+    headers["Cache-Control"] = "public, max-age=86400";
+
+  // Gzip compressible content (text, JS, CSS, JSON, FASTA) — big win over port forwarding
+  const compressible = /^(text\/|application\/javascript|application\/json)/.test(mime);
+  const acceptGzip = (req.headers["accept-encoding"] || "").includes("gzip");
+  if (compressible && acceptGzip) {
+    headers["Content-Encoding"] = "gzip";
+    delete headers["Content-Length"];
+    res.writeHead(200, headers);
+    fs.createReadStream(filePath).pipe(zlib.createGzip()).pipe(res);
+  } else {
+    headers["Content-Length"] = stat.size;
+    res.writeHead(200, headers);
+    fs.createReadStream(filePath).pipe(res);
+  }
 });
 
 // Sanitize all reference FASTA files before starting

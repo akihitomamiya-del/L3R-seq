@@ -6,8 +6,7 @@ module.exports = {
   PIPELINE_STEPS: [
     { dir: "01_raw_bin", label: "raw bin reads", color: "#e8d5b7" },
     { dir: "02_consensus", label: "consensus", color: "#5dade2" },
-    { dir: "07_map", file: "primary.sort.bam", label: "mapping primary (step 07)", color: "#b0b0b0" },
-    { dir: "07_map", file: "aligned.sort.bam", label: "mapping all (step 07)", color: "#d0d0d0", hidden: true },
+    { dir: "07_map", file: "primary.sort.bam", label: "mapping (step 07)", color: "#b0b0b0" },
     { dir: "09_correct", label: "corrected (step 09)", color: "#f5e6ca" },
     { dir: "09_correct", file: "chimeric_rightclip.sort.bam", label: "chimeric (removed)", color: "#e74c3c" },
   ],

@@ -81,6 +81,105 @@ Other pages read `sessionStorage["l3rseq_genes_hash_<name>"]` to build Gene Coun
 
 **When changing one page, test all three.** A genes.html change can break the alignment viewer (nav links) or UMI page (shared state keys).
 
+## Maintenance
+
+### Version management
+
+Version is tracked in three files — **all three must match**:
+
+| File | Field | Current (as of April 2026) |
+|------|-------|---------------------------|
+| `L3Rseq` line 31 | `VERSION="1.0.11"` | **outdated** |
+| `CITATION.cff` line 4 | `version: "1.0.10"` | **outdated** |
+| `CHANGELOG.md` line 5 | `## [1.0.12]` | latest |
+
+These have drifted apart because updates are manual. To prevent this, use the
+bump script (once created — see `scripts/bump-version.sh` below) or update all
+three by hand every time.
+
+### Release checklist
+
+Every release should follow this sequence:
+
+```bash
+# 1. Ensure tests pass
+bash tests/run_tests.sh
+
+# 2. Update version in all three files
+#    - L3Rseq:       VERSION="X.Y.Z"
+#    - CITATION.cff:  version: "X.Y.Z"   AND   date-released: "YYYY-MM-DD"
+#    - CHANGELOG.md:  ## [X.Y.Z] - YYYY-MM-DD  (move items from Unreleased)
+
+# 3. Commit, tag, push
+git add L3Rseq CITATION.cff CHANGELOG.md
+git commit -m "Release vX.Y.Z"
+git tag vX.Y.Z
+git push origin main --tags    # triggers docker-publish.yml
+```
+
+A `scripts/bump-version.sh` script that automates step 2 would prevent the
+version skew problem. See `docs/improvements.md` item 6 for the design.
+
+### Running tests during development
+
+The test suite supports several modes for fast iteration:
+
+```bash
+bash tests/run_tests.sh --quick            # Smoke test (~26s) — good for CI
+bash tests/run_tests.sh --skip-preprocess  # Skip steps 01-03 (~30s)
+bash tests/run_tests.sh                    # Full suite, 156 checks (~45s)
+bash tests/test_shell_functions.sh         # Unit tests only (~1s)
+```
+
+**Current gap:** There is no way to run a single test group (e.g., only the
+SLAM-seq tests or only the viewer API tests). The test suite uses numbered
+blocks (TEST 1 through TEST 8) that are conditionally skipped by `--quick` or
+`--skip-preprocess`, but individual selection is not supported. Adding a
+`--test N` flag would speed up iteration when working on a specific step.
+
+Test blocks in `tests/run_tests.sh`:
+
+| Block | Scope | Skipped by |
+|-------|-------|-----------|
+| TEST 1 | Steps 01-03 (preprocess) | `--skip-preprocess` |
+| TEST 1b | Filter step | `--skip-preprocess` |
+| TEST 1c | Negative/error tests | never (always runs) |
+| TEST 2 | Steps 04-10, CT pattern | never |
+| TEST 2b | CT,AG dual pattern | `--quick` |
+| TEST 3 | SLAM-seq + count-pattern | `--quick` |
+| TEST 4 | Splicing + introns | `--quick` |
+| TEST 5 | BLAST + walk correction | `--quick` |
+| TEST 6 | IGV viewer API | `--quick` |
+| TEST 7 | Plot generation | `--quick` |
+| TEST 8 | Gene counting (step 11) | `--quick` |
+
+### Linting
+
+Shell scripts are not currently linted. Adding shellcheck would catch common
+bugs (unquoted variables, incorrect test operators, unreachable code).
+
+```bash
+# Manual shellcheck run (shellcheck must be installed)
+shellcheck -x L3Rseq scripts/*.sh longread_umi_L3Rseq/scripts/*.sh
+```
+
+Known: `scripts/04_umi.sh` line 166 has one intentional `# shellcheck disable=SC2086`
+for unquoted expansion. Other scripts have not been audited with shellcheck.
+
+### Dispatcher test coverage
+
+The `L3Rseq` dispatcher (argument parsing, subcommand routing, `--help` output)
+is only tested for `--help` and `--version` (in `tests/test_docker_image.sh`
+lines 89-92, Docker-only). There are no tests for:
+
+- Unknown subcommand error messages
+- Invalid argument combinations (e.g., `--ref` without a file)
+- `--start-at` / `--stop-at` range validation
+- Help text for individual subcommands (`L3Rseq map --help`)
+
+Adding dispatcher tests to `tests/run_tests.sh` (or a new
+`tests/test_dispatcher.sh`) would catch argument parsing regressions.
+
 ## Build the Docker image from source
 
 For developers who want to modify the pipeline or Dockerfile. If you use VS Code, clone the repo and select **Reopen in Container** > **L3Rseq Pipeline (build)** — this builds the image and drops you into a ready-to-edit environment. Otherwise, build manually:
