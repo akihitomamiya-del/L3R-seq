@@ -45,6 +45,11 @@ There are three copies of this file — update all three when making changes:
 
 Quick sync: `cp .devcontainer/claude-code/CLAUDE.md ~/.claude/CLAUDE.md`
 
+## Before starting work
+
+- **Always fetch and pull the latest commits** on `main` before starting any task:
+  `git fetch --all && git pull`. Upstream fixes may already address the issue.
+
 ## Common gotchas
 
 - **Inverted `.gitignore`**: The repo ignores everything (`*`) and allowlists
@@ -59,6 +64,16 @@ Quick sync: `cp .devcontainer/claude-code/CLAUDE.md ~/.claude/CLAUDE.md`
   5. **Read the screenshots** and confirm the UI is correct before telling the user
   Never rely solely on API responses or JS state — screenshots are the only
   reliable way to catch caching, layout, and navigation bugs.
+- **Viewer — IGV.js uses Shadow DOM**: Since IGV.js v3 renders inside a Shadow
+  Root, external CSS cannot style IGV internals (navbar, tracks, etc.). To
+  inspect or style them, access `browser.root.getRootNode()` in JS after
+  `igv.createBrowser()`. Puppeteer headless mode can read the Shadow DOM state
+  (e.g. `window.browser.trackViews.length`) but does NOT render IGV canvases
+  visually — track areas appear blank in headless screenshots. Use DOM/JS
+  assertions (like `test_buttons.js`) for automated checks, and ask the user
+  to verify visual rendering in their real browser when canvas output matters.
+  Puppeteer screenshots are still useful for verifying layout, sticky headers,
+  z-index layering, and non-canvas UI elements.
 - **Viewer — apply fixes across all 3 pages**: Sticky headers, nav link syncing,
   state persistence, auto-select — all need to be applied to index.html, umi.html,
   AND genes.html. Fixing one page and forgetting the others causes repeated reports.

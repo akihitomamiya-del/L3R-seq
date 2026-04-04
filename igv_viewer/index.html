@@ -11,7 +11,10 @@
              position: sticky; top: 0; z-index: 100; }
     header h1 { font-size: 18px; font-weight: 600; }
     header select { padding: 4px 8px; border-radius: 4px; font-size: 14px; }
-    #igv-container { margin: 12px; }
+    header a { color: #aaa; text-decoration: none; font-size: 14px; margin-left: auto; }
+    header a + a { margin-left: 0; }
+    header a:hover { color: #fff; }
+    #igv-container { margin: 12px; position: relative; z-index: 1; }
     .info { margin: 12px 12px 0; padding: 12px; background: #fff;
             border-radius: 6px 6px 0 0; font-size: 13px; color: #555; }
     .info code { background: #eee; padding: 2px 6px; border-radius: 3px; }
@@ -19,7 +22,7 @@
 
     .controls-bar { display: none; margin: 0 12px 12px; background: #fff;
                     border-radius: 0 0 6px 6px; border-top: 1px solid #eee;
-                    font-size: 13px; }
+                    font-size: 13px; position: sticky; top: 0; z-index: 99; }
     .controls-header { padding: 8px 12px; cursor: pointer;
                        display: flex; align-items: center; gap: 8px;
                        user-select: none; color: #333; }
@@ -66,8 +69,8 @@
     </label>
     <span id="locus-badge" style="display:none; font-size:12px; background:#3498db; color:#fff;
           padding:2px 8px; border-radius:10px; margin-left:auto;"></span>
-    <a href="/umi" id="umi-link" style="color: #aaa; text-decoration: none; font-size: 14px;">UMI Analysis</a>
-    <a href="/genes" id="genes-link" style="color: #aaa; text-decoration: none; font-size: 14px;">Gene Counts</a>
+    <a href="/umi" id="umi-link">UMI Analysis</a>
+    <a href="/genes" id="genes-link">Gene Counts</a>
   </header>
   <script>
     // Sync nav links + locus badge immediately from URL params (before slow async init)
@@ -114,7 +117,13 @@
     </div>
     <div class="controls-panel" id="controls-panel">
       <div class="ctrl-row">
-        <label class="ctrl-label">Tracks:</label>
+        <label class="ctrl-label" style="cursor:pointer" onclick="toggleTrackList()">
+          <span class="arrow" id="tracks-arrow" style="font-size:10px; display:inline-block; transition:transform 0.15s;">&#9654;</span>
+          Tracks:
+        </label>
+        <span id="track-summary" style="color:#888; font-size:12px;"></span>
+      </div>
+      <div id="track-list-panel" style="display:none; padding:0 12px 8px 78px;">
         <div class="ctrl-toggles" id="track-toggles"></div>
       </div>
       <div class="ctrl-row">
@@ -355,12 +364,24 @@
       if (locus) browserCfg.locus = locus;
       browser = await igv.createBrowser(container, browserCfg);
 
+      /* Inject sticky navbar into IGV.js Shadow DOM */
+      if (browser.root) {
+        const shadowRoot = browser.root.getRootNode();
+        if (shadowRoot && shadowRoot !== document) {
+          const style = document.createElement("style");
+          style.textContent = ".igv-navbar { position: sticky !important; top: 0; z-index: 98 !important; }";
+          shadowRoot.appendChild(style);
+        }
+      }
+
       /* Also set groupBy on AlignmentTrack objects for sort/color to reference */
       if (groupBy) {
         eachBAMTrack((tv, at) => { at.groupBy = groupBy; });
       }
 
-      document.getElementById("controls-bar").style.display = "block";
+      const cbar = document.getElementById("controls-bar");
+      cbar.style.display = "block";
+      updateStickyTops();
 
       /* Re-apply color setting if active */
       const colorSel = document.getElementById("color-by");
@@ -609,11 +630,12 @@
         cb.type = "checkbox";
         cb.checked = !t.hidden;  // hidden tracks start unchecked
         cb.dataset.trackIdx = i;
-        cb.onchange = () => toggleTrack(i, cb.checked);
+        cb.onchange = () => { toggleTrack(i, cb.checked); updateTrackSummary(); };
         label.appendChild(cb);
         label.appendChild(document.createTextNode(" " + t.name));
         container.appendChild(label);
       }
+      updateTrackSummary();
     }
 
     function getEnabledTracks(showAll) {
@@ -665,11 +687,42 @@
       showStatus("Showing " + loaded + " of " + allTracks.length + " tracks.");
     }
 
+    function updateStickyTops() {
+      const headerH = document.querySelector("header").offsetHeight;
+      const cbar = document.getElementById("controls-bar");
+      cbar.style.top = headerH + "px";
+      /* IGV navbar is inside Shadow DOM — reach it through browser.root */
+      if (browser && browser.root) {
+        const sr = browser.root.getRootNode();
+        const navbar = sr && sr !== document ? sr.querySelector(".igv-navbar") : null;
+        if (navbar) {
+          navbar.style.top = (headerH + cbar.offsetHeight) + "px";
+        }
+      }
+    }
+
+    function toggleTrackList() {
+      const panel = document.getElementById("track-list-panel");
+      const arrow = document.getElementById("tracks-arrow");
+      const isOpen = panel.style.display === "none";
+      panel.style.display = isOpen ? "block" : "none";
+      arrow.style.transform = isOpen ? "rotate(90deg)" : "";
+      updateStickyTops();
+    }
+
+    function updateTrackSummary() {
+      const cbs = document.getElementById("track-toggles").querySelectorAll("input[type=checkbox]");
+      const total = cbs.length;
+      const checked = [...cbs].filter(cb => cb.checked).length;
+      document.getElementById("track-summary").textContent = checked + " / " + total + " shown";
+    }
+
     function toggleControlsPanel() {
       const panel = document.getElementById("controls-panel");
       const arrow = document.getElementById("controls-arrow");
       const isOpen = panel.classList.toggle("open");
       arrow.classList.toggle("open", isOpen);
+      updateStickyTops();
     }
 
     init();
