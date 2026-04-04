@@ -440,9 +440,15 @@ for bc in $TEST2_BARCODES; do
             fail "Step 10 quality report missing"
         fi
 
-        # Step 08: observed variants file exists
-        if [ -f "$OUT/08_variants/$bc/$rpi/observed_variants.txt" ]; then
-            pass "Step 08 variants file exists"
+        # Step 08: observed variants file has content
+        _vf="$OUT/08_variants/$bc/$rpi/observed_variants.txt"
+        if [ -f "$_vf" ]; then
+            _vlines=$(wc -l < "$_vf")
+            if [ "$_vlines" -ge 1 ]; then
+                pass "Step 08 variants ($rpi): $_vlines positions"
+            else
+                fail "Step 08 variants ($rpi): file empty"
+            fi
         else
             fail "Step 08 variants file missing"
         fi
