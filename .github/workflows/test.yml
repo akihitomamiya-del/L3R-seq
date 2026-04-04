@@ -34,9 +34,9 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - name: Run quick test suite
+        shell: bash
         run: |
-          eval "$(/opt/miniforge/bin/conda shell.bash hook)"
-          export PATH="/opt/miniforge/bin:$PATH"
+          export PATH="/opt/miniforge/bin:/opt/miniforge/condabin:$PATH"
           bash tests/run_tests.sh --quick --no-viewer
 
   full-test:
@@ -54,7 +54,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - name: Run full test suite
+        shell: bash
         run: |
-          eval "$(/opt/miniforge/bin/conda shell.bash hook)"
-          export PATH="/opt/miniforge/bin:$PATH"
+          export PATH="/opt/miniforge/bin:/opt/miniforge/condabin:$PATH"
           bash tests/run_tests.sh --no-viewer
