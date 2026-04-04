@@ -297,6 +297,7 @@ async function init() {
     sel.addEventListener("change", () => {
       const name = sel.value;
       syncNavLinks(name);
+      history.replaceState(null, "", name ? "?name=" + encodeURIComponent(name) + location.hash : "/genes");
       if (name) loadDataset(name); else clearAll();
     });
     document.getElementById("hk-gene").addEventListener("change", () => { render(); saveState(); });
@@ -637,11 +638,6 @@ function renderTable(area, samples) {
     html += "</tbody></table>";
     div.innerHTML = html;
 
-    // Event delegation for gene links (replaces inline onclick handlers)
-    div.addEventListener("click", function(e) {
-      const link = e.target.closest("a[data-gene]");
-      if (link) { e.preventDefault(); selectGeneLocus(link.dataset.gene); }
-    });
     div.querySelectorAll("th").forEach(th => {
       th.addEventListener("click", () => {
         const col = th.dataset.col;
@@ -652,6 +648,12 @@ function renderTable(area, samples) {
   }
 
   buildTable();
+  // Event delegation for gene links — added once on div, outside buildTable()
+  // so it doesn't accumulate on each sort click.
+  div.addEventListener("click", function(e) {
+    const link = e.target.closest("a[data-gene]");
+    if (link) { e.preventDefault(); selectGeneLocus(link.dataset.gene); }
+  });
   area.appendChild(div);
 }
 
@@ -949,7 +951,12 @@ async function renderCoverage(area, samples) {
     }
 
     if (datasets.length === 0) {
-      div.innerHTML = `<h3>${gene} — Coverage depth</h3><p class="empty">No coverage data available.</p>`;
+      const h3 = document.createElement("h3");
+      h3.textContent = gene + " — Coverage depth";
+      const p = document.createElement("p");
+      p.className = "empty";
+      p.textContent = "No coverage data available.";
+      div.replaceChildren(h3, p);
       continue;
     }
 

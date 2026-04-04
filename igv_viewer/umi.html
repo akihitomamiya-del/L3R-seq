@@ -198,6 +198,7 @@ async function init() {
     sel.addEventListener("change", () => {
       const name = sel.value;
       syncNavLinks(name);
+      history.replaceState(null, "", name ? "?name=" + encodeURIComponent(name) : "/umi");
       if (name) loadDataset(name); else clearAll();
     });
     document.getElementById("show-singletons").addEventListener("change", () => { render(); saveState(); });

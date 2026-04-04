@@ -226,12 +226,12 @@ async function main() {
     await page.evaluate(() => setView("table"));
     await new Promise(r => setTimeout(r, 500));
     const geneLinks = await page.evaluate(() =>
-      document.querySelectorAll('#chart-area a[onclick*="selectGeneLocus"]').length);
+      document.querySelectorAll('#chart-area a[data-gene]').length);
     assert(geneLinks > 0, "Gene links in table: " + geneLinks);
 
     // Click first gene
     const clickedGene = await page.evaluate(() => {
-      const link = document.querySelector('#chart-area a[onclick*="selectGeneLocus"]');
+      const link = document.querySelector('#chart-area a[data-gene]');
       if (link) { link.click(); return link.textContent; }
       return null;
     });
@@ -278,7 +278,7 @@ async function main() {
     await new Promise(r => setTimeout(r, 500));
 
     const gene = await page.evaluate(() => {
-      const link = document.querySelector('#chart-area a[onclick*="selectGeneLocus"]');
+      const link = document.querySelector('#chart-area a[data-gene]');
       if (link) { link.click(); return link.textContent; }
       return null;
     });

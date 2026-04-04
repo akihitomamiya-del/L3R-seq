@@ -289,6 +289,7 @@
 
       sel.onchange = () => {
         syncNavLinks(sel.value);
+        history.replaceState(null, "", sel.value ? "?name=" + encodeURIComponent(sel.value) : "/");
         loadDataset(sel.value);
       };
 
