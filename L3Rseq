@@ -1048,7 +1048,7 @@ VIEWERHELP
     pkill -f "node.*igv_viewer/server.js" 2>/dev/null || true
     sleep 0.5
 
-    IGV_PORT="$port" IGV_SCAN_DIR="$scan_env" IGV_DATA_DIR="${IGV_DATA_DIR:-}" node "$SCRIPT_DIR/igv_viewer/server.js" &
+    IGV_PORT="$port" IGV_WORKSPACE="$SCRIPT_DIR" IGV_SCAN_DIR="$scan_env" IGV_DATA_DIR="${IGV_DATA_DIR:-}" node "$SCRIPT_DIR/igv_viewer/server.js" &
     echo ""
     echo "  IGV.js viewer running at http://localhost:${port}"
     if [ -n "$scan_env" ]; then

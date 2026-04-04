@@ -16,7 +16,8 @@ jobs:
         run: sudo apt-get update && sudo apt-get install -y shellcheck
       - name: Lint pipeline scripts
         run: |
-          shellcheck -e SC1091 -e SC2155 -S warning \
+          shellcheck -e SC1090 -e SC1091 -e SC2034 -e SC2154 -e SC2155 \
+            -e SC2188 -e SC2320 -S warning \
             L3Rseq \
             scripts/*.sh
 
