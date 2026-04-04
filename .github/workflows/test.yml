@@ -33,6 +33,8 @@ jobs:
       packages: read
     steps:
       - uses: actions/checkout@v4
+      - name: Install viewer dependencies
+        run: cd igv_viewer && npm install --ignore-scripts && node scripts/patch-igv.js
       - name: Run quick test suite
         shell: bash
         run: |

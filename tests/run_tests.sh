@@ -995,7 +995,7 @@ else
     pass "Viewer started on port 8080"
 
     # /api/datasets — check dataset count and known names
-    _ds_json=$(curl -sf http://localhost:8080/api/datasets 2>/dev/null)
+    _ds_json=$(curl -sf http://localhost:8080/api/datasets 2>/dev/null || true)
     if [ -n "$_ds_json" ]; then
         _ds_count=$(echo "$_ds_json" | python3 -c "import json,sys; print(len(json.load(sys.stdin)['datasets']))" 2>/dev/null)
         _min_ds=$( [ "$QUICK" -eq 1 ] && echo 5 || echo 6 )
@@ -1026,7 +1026,7 @@ else
     fi
 
     # /api/tracks — check pipeline tracks
-    _tracks_json=$(curl -sf "http://localhost:8080/api/tracks?name=$(echo "$_ds_json" | python3 -c "import json,sys; ds=json.load(sys.stdin)['datasets']; print(next(d for d in ds if 'pipeline' == d.split('/')[-1]))" 2>/dev/null)" 2>/dev/null)
+    _tracks_json=$(curl -sf "http://localhost:8080/api/tracks?name=$(echo "$_ds_json" | python3 -c "import json,sys; ds=json.load(sys.stdin)['datasets']; print(next(d for d in ds if 'pipeline' == d.split('/')[-1]))" 2>/dev/null)" 2>/dev/null || true)
     if [ -n "$_tracks_json" ]; then
         _track_count=$(echo "$_tracks_json" | python3 -c "import json,sys; print(len(json.load(sys.stdin)['tracks']))" 2>/dev/null)
         check_exact "API /tracks: pipeline track count" "$_track_count" "4"
@@ -1036,7 +1036,7 @@ else
 
     # /api/pileup — check pileup has tag summaries (was silently broken before refactor)
     _pileup_ds=$(echo "$_ds_json" | python3 -c "import json,sys; ds=json.load(sys.stdin)['datasets']; print(next(d for d in ds if 'pipeline' == d.split('/')[-1]))" 2>/dev/null)
-    _pileup=$(curl -sf "http://localhost:8080/api/pileup?name=$_pileup_ds" 2>/dev/null)
+    _pileup=$(curl -sf "http://localhost:8080/api/pileup?name=$_pileup_ds" 2>/dev/null || true)
     if [ -n "$_pileup" ]; then
         _ec_lines=$(echo "$_pileup" | grep -c '  EC: total=' || true)
         if [ "$_ec_lines" -ge 2 ]; then
