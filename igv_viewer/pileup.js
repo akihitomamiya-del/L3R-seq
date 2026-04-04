@@ -14,7 +14,7 @@ function findSamtools() {
     "/opt/miniforge/envs/LoFreq/bin/samtools",
   ];
   for (const p of candidates) { if (fs.existsSync(p)) return p; }
-  try { return execSync("which samtools 2>/dev/null", { encoding: "utf8" }).trim(); } catch {}
+  try { return execSync("which samtools 2>/dev/null", { encoding: "utf8", timeout: 5000 }).trim(); } catch {}
   console.error("WARNING: samtools not found in any conda environment or PATH.");
   console.error("  Pileup generation will not work. Install samtools or activate a conda env.");
   return "samtools";
@@ -52,7 +52,7 @@ function generatePileup(outdir, region, width, callback, deps) {
     let viewRegion = region;
     if (!viewRegion && refName) {
       try {
-        const idxstats = execSync(`${SAMTOOLS} idxstats "${firstBamPath}" 2>/dev/null`, { encoding: "utf8" });
+        const idxstats = execSync(`${SAMTOOLS} idxstats "${firstBamPath}" 2>/dev/null`, { encoding: "utf8", timeout: 10000 });
         const line = idxstats.split("\n").find(l => l.startsWith(refName));
         if (line) {
           const refLen = parseInt(line.split("\t")[1], 10);
@@ -73,7 +73,7 @@ function generatePileup(outdir, region, width, callback, deps) {
 
       const label = track.name.split(" — ")[1] || track.name;
       let readCount = 0;
-      try { readCount = parseInt(execSync(`${SAMTOOLS} view -c "${bamPath}" 2>/dev/null`, { encoding: "utf8" }).trim(), 10); } catch {}
+      try { readCount = parseInt(execSync(`${SAMTOOLS} view -c "${bamPath}" 2>/dev/null`, { encoding: "utf8", timeout: 10000 }).trim(), 10); } catch {}
 
       lines.push(`── ${label} (${readCount} reads) ──`);
       if (readCount === 0) { lines.push("  (empty)"); lines.push(""); continue; }
@@ -82,7 +82,7 @@ function generatePileup(outdir, region, width, callback, deps) {
       try {
         const out = execSync(
           `${SAMTOOLS} view "${bamPath}" 2>/dev/null | head -200 | awk -f "${SCRIPTS_DIR}/tag_summary.awk"`,
-          { encoding: "utf8" }
+          { encoding: "utf8", timeout: 10000 }
         );
         if (out.trim()) lines.push(out.trimEnd());
       } catch (e) { console.warn(`[pileup] tag_summary failed for ${label}:`, e.message); }
@@ -91,7 +91,7 @@ function generatePileup(outdir, region, width, callback, deps) {
       try {
         const out = execSync(
           `${SAMTOOLS} view "${bamPath}" 2>/dev/null | head -200 | awk -f "${SCRIPTS_DIR}/cigar_summary.awk"`,
-          { encoding: "utf8" }
+          { encoding: "utf8", timeout: 10000 }
         );
         if (out.trim()) lines.push(out.trimEnd());
       } catch (e) { console.warn(`[pileup] cigar_summary failed for ${label}:`, e.message); }
@@ -100,7 +100,7 @@ function generatePileup(outdir, region, width, callback, deps) {
       try {
         const out = execSync(
           `${SAMTOOLS} view "${bamPath}" ${viewRegion || ""} 2>/dev/null | head -8 | awk -f "${SCRIPTS_DIR}/sample_reads.awk"`,
-          { encoding: "utf8" }
+          { encoding: "utf8", timeout: 10000 }
         );
         if (out.trim()) {
           lines.push("  Sample reads:");
@@ -113,7 +113,7 @@ function generatePileup(outdir, region, width, callback, deps) {
         try {
           const out = execSync(
             `${SAMTOOLS} depth -r "${viewRegion}" "${bamPath}" 2>/dev/null | awk -v width=${width} -f "${SCRIPTS_DIR}/depth_sparkline.awk"`,
-            { encoding: "utf8" }
+            { encoding: "utf8", timeout: 15000 }
           );
           if (out.trim()) lines.push(out.trimEnd());
         } catch (e) { console.warn(`[pileup] depth_sparkline failed for ${label}:`, e.message); }

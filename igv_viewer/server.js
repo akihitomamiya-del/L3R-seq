@@ -44,7 +44,7 @@ if (DATA_DIR && fs.existsSync(DATA_DIR)) {
 // Safe filesystem helpers
 // ---------------------------------------------------------------------------
 function readdirSafe(dir) {
-  try { return fs.readdirSync(dir).sort(naturalCompare); } catch { return []; }
+  try { return fs.readdirSync(dir).sort(naturalCompare); } catch (e) { console.warn("[warn] readdir " + dir + ": " + e.message); return []; }
 }
 
 // Natural sort: "RPI_2" before "RPI_10", "barcode3" before "barcode12"
@@ -155,7 +155,7 @@ function discoverTracks(outdir) {
               }
               if (!hasData) continue;  // empty BAI = no reads
             }
-          } catch { /* if we can't read BAI, skip this track */ continue; }
+          } catch (e) { console.warn("[warn] BAI read: " + e.message); /* if we can't read BAI, skip this track */ continue; }
           const urlBam = trackUrl(bamPath);
           const urlBai = trackUrl(baiPath);
           if (!urlBam || !urlBai) continue;
@@ -548,7 +548,7 @@ const server = http.createServer((req, res) => {
             const faiPath = path.join(WORKSPACE, r.indexURL.replace(/^\/ref\//, "resources/references/"));
             const faiLines = fs.readFileSync(faiPath, "utf8").trim().split("\n");
             return faiLines.some(l => usedRefNames.has(l.split("\t")[0]));
-          } catch { return false; }
+          } catch (e) { console.warn("[warn] dataset check: " + e.message); return false; }
         })
       : allRefs;
     const data = { references: refs, datasets: names, datasetInfo: dsInfo };
@@ -611,13 +611,13 @@ const server = http.createServer((req, res) => {
     try {
       const correctedTrack = ds.tracks.find(t => t.name.includes("corrected") || t.name.includes("step 09")) || ds.tracks[0];
       const correctedBam = path.join(WORKSPACE, correctedTrack.url.replace(/^\/data\//, ""));
-      const tags = execSync(`${SAMTOOLS} view "${correctedBam}" 2>/dev/null | head -5 | tr '\\t' '\\n' | grep -oP '^[A-Z]{2}(?=:)' | sort -u`, { encoding: "utf8" }).trim().split("\n");
+      const tags = execSync(`${SAMTOOLS} view "${correctedBam}" 2>/dev/null | head -5 | tr '\\t' '\\n' | grep -oP '^[A-Z]{2}(?=:)' | sort -u`, { encoding: "utf8", timeout: 10000 }).trim().split("\n");
       if (tags.includes("EC")) state.sorting_tips.push("Sort by EC tag: groups reads by editing count");
       if (tags.includes("SC")) state.sorting_tips.push("Sort by SC tag: separates SLAM labeling gradient (0→high)");
       if (tags.includes("SJ")) state.sorting_tips.push("Sort by SJ tag: groups spliced (S) vs retained (R) vs unspanned (-)");
       if (tags.includes("TL")) state.sorting_tips.push("Sort by TL tag: separates translocations (TL:i:1) from normal");
       if (tags.includes("NC")) state.sorting_tips.push("Sort by NC tag: groups by noise level");
-    } catch {}
+    } catch (e) { console.warn("[warn] tag discovery: " + e.message); }
 
     const json = JSON.stringify(state, null, 2);
     res.writeHead(200, { "Content-Type": "application/json" });
@@ -767,3 +767,11 @@ server.listen(PORT, () => {
   console.log(`IGV.js server running at http://localhost:${PORT}`);
   console.log("Open this URL in your browser (port will be auto-forwarded in Codespaces/VS Code)");
 });
+
+function shutdown(signal) {
+  console.log(`${signal} received, shutting down...`);
+  server.close(() => process.exit(0));
+  setTimeout(() => process.exit(1), 5000);
+}
+process.on("SIGTERM", () => shutdown("SIGTERM"));
+process.on("SIGINT", () => shutdown("SIGINT"));
