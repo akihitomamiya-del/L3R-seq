@@ -421,7 +421,7 @@ function renderGrid(area, samples) {
 function renderTable(area, samples) {
   const div = document.createElement("div");
   div.className = "chart-container";
-  div.style.overflowX = "auto";
+  div.style.overflowX = "clip";
 
   const cols = [
     { key: "barcode", label: "Barcode", fmt: v => v },

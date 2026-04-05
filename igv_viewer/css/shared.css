@@ -64,7 +64,8 @@ header a:hover { color: #fff; background: rgba(255,255,255,0.1); }
 /* Tables */
 table.stats { width: 100%; border-collapse: collapse; font-size: 13px; }
 table.stats th { background: #f0f0f0; padding: 6px 10px; text-align: left;
-                 cursor: pointer; user-select: none; position: sticky; top: 48px; }
+                 cursor: pointer; user-select: none; position: sticky; top: 48px;
+                 z-index: 2; }
 table.stats th:hover { background: #e0e0e0; }
 table.stats td { padding: 5px 10px; border-top: 1px solid #eee; }
 table.stats tr:hover td { background: #fafafa; }
