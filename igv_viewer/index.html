@@ -231,6 +231,7 @@
 
   <script src="/igv/igv.min.js"></script>
   <script src="/js/shared.js"></script>
+  <script src="/js/dev-overlay.js"></script>
   <script>
     var browser = null;  // var so Puppeteer tools can access window.browser
     let references = [];
@@ -406,6 +407,10 @@
       const cbar = document.getElementById("controls-bar");
       cbar.style.display = "block";
       updateStickyTops();
+
+      /* Re-apply display mode if not default */
+      const activeMode = document.getElementById("btn-expanded").classList.contains("active") ? "EXPANDED" : null;
+      if (activeMode) setAllDisplay(activeMode);
 
       /* Re-apply color setting if active */
       const colorSel = document.getElementById("color-by");
