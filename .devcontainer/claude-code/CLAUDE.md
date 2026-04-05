@@ -217,6 +217,31 @@ shared code, navigation, or sample selectors.
 **Slash command**: Type `/stress-test` in Claude Code to run the full stress
 test cycle (restart viewer + automated tests + screenshots + report).
 
+### Viewer API stress test (curl-based, no browser needed)
+
+Run after any viewer or server change to catch regressions without Puppeteer:
+
+```bash
+# All pages serve with shared.css
+for p in "/" "/umi" "/genes"; do curl -sf "http://localhost:8080${p}" | grep -q shared.css && echo "$p OK"; done
+
+# APIs return valid JSON for all datasets
+for ds in demo pipeline_blast pipeline_splice pipeline_SLAM pipeline pipeline_dual; do
+  curl -sf "http://localhost:8080/api/tracks?name=tests/output/$ds" | python3 -c "import sys,json; json.load(sys.stdin)" && echo "$ds tracks OK"
+done
+
+# Error handling: bad inputs return 400/404, not 500
+curl -s -o /dev/null -w "%{http_code}" 'http://localhost:8080/api/tracks?name=DOESNOTEXIST'  # expect 404
+curl -s -o /dev/null -w "%{http_code}" 'http://localhost:8080/api/tracks?name='               # expect 400
+
+# Byte-range BAM requests (critical for IGV.js)
+curl -s -I -H "Range: bytes=0-100" "http://localhost:8080/data/tests/output/pipeline/09_correct/barcode01/barcode01_RPI_1/barcode01_RPI_1_corrected.sort.bam" | grep "206 Partial"
+
+# JS/CSS no-cache headers (edits take effect on reload)
+curl -s -I http://localhost:8080/js/shared.js | grep "no-cache"
+curl -s -I http://localhost:8080/css/shared.css | grep "no-cache"
+```
+
 ## IGV viewer
 
 ```bash
