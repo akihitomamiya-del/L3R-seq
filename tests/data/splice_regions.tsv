@@ -1,0 +1,4 @@
+#gene_name	chr	start	end	strand	source
+exon1	test_gene_with_intron	1	300	+	splice_test
+intron	test_gene_with_intron	301	500	+	splice_test
+exon2	test_gene_with_intron	501	750	+	splice_test

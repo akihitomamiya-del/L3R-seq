@@ -49,7 +49,7 @@
 
     table.stats { width: 100%; border-collapse: collapse; font-size: 13px; }
     table.stats th { background: #f0f0f0; padding: 6px 10px; text-align: left;
-                     cursor: pointer; user-select: none; position: sticky; top: 0; }
+                     cursor: pointer; user-select: none; position: sticky; top: 48px; }
     table.stats th:hover { background: #e0e0e0; }
     table.stats td { padding: 5px 10px; border-top: 1px solid #eee; }
     table.stats tr:hover td { background: #fafafa; }
@@ -89,6 +89,9 @@
       }
     })();
   </script>
+
+  <div id="dataset-desc" style="display:none; margin: 12px 12px 0; padding: 10px 16px; background: #fff;
+       border-radius: 6px; font-size: 13px; color: #333; font-weight: 500; white-space: pre-line;"></div>
 
   <div class="panel" id="sample-panel">
     <div class="panel-header" onclick="togglePanel('sample-panel')">
@@ -140,6 +143,7 @@
 let allData = null;
 let selectedIds = new Set();
 let viewMode = "chart";
+let datasetDescriptions = {};
 let chartInstances = [];
 let selectedGene = null;  // gene selected for alignment viewer
 let chartZoomed = false;  // whether chart is zoomed to single gene
@@ -289,6 +293,11 @@ async function init() {
       opt.value = ds; opt.textContent = ds;
       sel.appendChild(opt);
     }
+    if (data.datasetInfo) {
+      for (const di of data.datasetInfo) {
+        if (di.description) datasetDescriptions[di.name] = di.description;
+      }
+    }
     // Auto-select: URL param first, then single-dataset auto-pick
     const urlName = new URLSearchParams(location.search).get("name");
     let pick = null;
@@ -317,6 +326,10 @@ async function init() {
 
 async function loadDataset(name) {
   clearAll();
+  const descEl = document.getElementById("dataset-desc");
+  const desc = datasetDescriptions[name];
+  if (desc) { descEl.textContent = desc; descEl.style.display = "block"; }
+  else { descEl.style.display = "none"; }
   try {
     const resp = await fetch("/api/gene-counts?name=" + encodeURIComponent(name));
     if (!resp.ok) { showEmpty("Failed to load gene count data."); return; }

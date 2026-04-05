@@ -694,6 +694,8 @@ Command:
 L3Rseq run --pattern CT --method longread-umi --start-at 4 --stop-at 10
 EOF
 ln -sfn "$OUT/09_correct" "$PIPE_DIR/09_correct"
+ln -sfn "$OUT/04_umi"     "$PIPE_DIR/04_umi"
+ln -sfn "$OUT/11_count"   "$PIPE_DIR/11_count"
 echo "  Pipeline CT viewer: linked corrected BAMs for all samples"
 
 # CT+AG dual-pattern viewer tab
@@ -1335,6 +1337,31 @@ if [ -f "$COUNT_DIR/gene_counts_normalized.tsv" ]; then
     fi
 else
     fail "gene_counts_normalized.tsv not created"
+fi
+
+# 8f. Splice-aware counting: intron region should exclude spliced reads
+if [ -d "$OUTPUT_DIR/pipeline_splice/09_correct" ]; then
+    SPLICE_COUNT_DIR="$OUTPUT_DIR/pipeline_splice/11_count"
+    rm -rf "$SPLICE_COUNT_DIR"
+    if "$PIPELINE_DIR/L3Rseq" count \
+        --input "$OUTPUT_DIR/pipeline_splice" \
+        --outdir "$OUTPUT_DIR/pipeline_splice" \
+        --regions "$DATA_DIR/splice_regions.tsv" \
+        --min-frac 0.50 \
+        > "$OUTPUT_DIR/test8_splice.log" 2>&1; then
+        pass "splice-aware count ran successfully"
+    else
+        fail "splice-aware count failed (see test8_splice.log)"
+    fi
+    if [ -f "$SPLICE_COUNT_DIR/gene_counts_all.tsv" ]; then
+        _exon1=$(awk -F'\t' '$1=="exon1" { sum+=$3 } END { print sum+0 }' "$SPLICE_COUNT_DIR/gene_counts_all.tsv")
+        _intron=$(awk -F'\t' '$1=="intron" { sum+=$3 } END { print sum+0 }' "$SPLICE_COUNT_DIR/gene_counts_all.tsv")
+        if [ "$_intron" -lt "$_exon1" ]; then
+            pass "splice counting: intron($_intron) < exon1($_exon1)"
+        else
+            fail "splice counting: intron($_intron) should be < exon1($_exon1)"
+        fi
+    fi
 fi
 
 echo "  ⏱ Test 8: $(( SECONDS - T_START ))s"

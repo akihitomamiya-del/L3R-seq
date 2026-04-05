@@ -49,18 +49,26 @@ count_gene_reads() {
         return n
     }
     {
-        pos = $4; cigar = $6; reflen = 0
+        pos = $4; cigar = $6
         nc = parse_cigar(cigar)
-        for (i = 1; i <= nc; i++) {
-            op = cig_op[i]
-            if (op=="M"||op=="D"||op=="N"||op=="="||op=="X") reflen += cig_len[i]
-        }
-        aend = pos + reflen - 1
 
-        # Compute overlap with gene region (fractional)
-        ov_start = (pos > gs) ? pos : gs
-        ov_end = (aend < ge) ? aend : ge
-        overlap = (ov_end >= ov_start) ? (ov_end - ov_start + 1) : 0
+        # Walk CIGAR and sum bases covering the gene region,
+        # excluding N (intron skip) — spliced reads should not
+        # count toward regions they skip over.
+        overlap = 0; rpos = pos
+        for (i = 1; i <= nc; i++) {
+            op = cig_op[i]; oplen = cig_len[i]
+            if (op=="M"||op=="D"||op=="="||op=="X") {
+                # This block covers rpos..rpos+oplen-1 on the reference
+                ov_s = (rpos > gs) ? rpos : gs
+                ov_e = (rpos + oplen - 1 < ge) ? (rpos + oplen - 1) : ge
+                if (ov_e >= ov_s) overlap += ov_e - ov_s + 1
+                rpos += oplen
+            } else if (op=="N") {
+                rpos += oplen   # skip intron, no overlap counted
+            }
+            # I, S, H, P: no reference movement
+        }
         frac = overlap / gene_len
 
         if (frac >= min_frac) {
@@ -122,7 +130,7 @@ run_step_11() {
     local -a REGION_NAMES=() REGION_CHRS=() REGION_STARTS=() REGION_ENDS=()
 
     while IFS=$'\t' read -r name chr start end _strand _source; do
-        [[ "$name" == "#"* ]] && continue
+        [[ "$name" == "#"* || "$name" == "gene" ]] && continue
         [ -z "$name" ] && continue
         REGION_NAMES+=("$name")
         REGION_CHRS+=("$chr")
@@ -141,16 +149,19 @@ run_step_11() {
     local merged_file="$count_dir/gene_counts_all.tsv"
     printf "gene\tsample\ttotal_count\tsplice_pattern\tpattern_count\n" > "$merged_file"
 
-    # --- Loop barcode/RPI directories (same pattern as 07_map.sh) ---
-    local map_base="$map_dir/07_map"
-    if [ ! -d "$map_base" ]; then
-        # Allow passing the 07_map dir directly
-        if [ -d "$map_dir" ] && ls "$map_dir"/*/primary.sort.bam >/dev/null 2>&1; then
-            map_base="$map_dir"
-        else
-            echo "  ERROR: 07_map directory not found at $map_dir/07_map" >&2
-            return 1
-        fi
+    # --- Find BAM source: prefer 09_correct (splice-aware CIGARs) over 07_map ---
+    local map_base=""
+    local bam_suffix="primary.sort.bam"
+    if [ -d "$map_dir/09_correct" ]; then
+        map_base="$map_dir/09_correct"
+        bam_suffix="corrected.sort.bam"
+    elif [ -d "$map_dir/07_map" ]; then
+        map_base="$map_dir/07_map"
+    elif [ -d "$map_dir" ] && ls "$map_dir"/*/*.sort.bam >/dev/null 2>&1; then
+        map_base="$map_dir"
+    else
+        echo "  ERROR: No 09_correct or 07_map directory found in $map_dir" >&2
+        return 1
     fi
 
     local sample_count=0
@@ -165,10 +176,10 @@ run_step_11() {
             local rpi_name
             rpi_name=$(basename "$rpi_dir")
 
-            # Find primary BAM
-            local bam="$rpi_dir/${rpi_name}_primary.sort.bam"
+            # Find BAM (corrected or primary depending on source)
+            local bam="$rpi_dir/${rpi_name}_${bam_suffix}"
             if [ ! -f "$bam" ]; then
-                echo "  WARNING: No ${rpi_name}_primary.sort.bam in $bname/$rpi_name, skipping"
+                echo "  WARNING: No ${rpi_name}_${bam_suffix} in $bname/$rpi_name, skipping"
                 continue
             fi
 
