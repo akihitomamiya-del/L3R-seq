@@ -1,4 +1,4 @@
-[README](../README.md) | **Advanced** | [Testing](testing.md) | [Development](development.md) | [Requirements](requirements.md)
+[README](../README.md) | **Advanced** | [Development](development.md) | [Requirements](requirements.md)
 
 ---
 
@@ -217,4 +217,4 @@ L3Rseq run --introns out/candidate_introns.bed ...
 
 ---
 
-[README](../README.md) | **Advanced** | [Testing](testing.md) | [Development](development.md) | [Requirements](requirements.md)
+[README](../README.md) | **Advanced** | [Development](development.md) | [Requirements](requirements.md)

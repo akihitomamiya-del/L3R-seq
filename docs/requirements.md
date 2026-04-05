@@ -1,4 +1,4 @@
-[README](../README.md) | [Advanced](advanced.md) | [Testing](testing.md) | [Development](development.md) | **Requirements**
+[README](../README.md) | [Advanced](advanced.md) | [Development](development.md) | **Requirements**
 
 ---
 
@@ -33,4 +33,4 @@ The conda environments listed below are managed automatically — no manual acti
 
 ---
 
-[README](../README.md) | [Advanced](advanced.md) | [Testing](testing.md) | [Development](development.md) | **Requirements**
+[README](../README.md) | [Advanced](advanced.md) | [Development](development.md) | **Requirements**

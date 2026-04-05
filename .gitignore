@@ -1,8 +1,6 @@
 *
 !.gitignore
 !.dockerignore
-!.pre-commit-config.yaml
-!CONTRIBUTING.md
 !.devcontainer/
 !.devcontainer/**
 !dev/

@@ -1,4 +1,4 @@
-[README](../README.md) | [Advanced](advanced.md) | [Testing](testing.md) | **Development** | [Requirements](requirements.md)
+[README](../README.md) | [Advanced](advanced.md) | **Development** | [Requirements](requirements.md)
 
 ---
 
@@ -128,7 +128,7 @@ git push origin main --tags    # triggers docker-publish.yml
 ```
 
 A `scripts/bump-version.sh` script that automates step 2 would prevent the
-version skew problem. See `docs/improvements.md` item 6 for the design.
+version skew problem. This is now handled by `scripts/bump-version.sh`.
 
 ### Running tests during development
 
@@ -299,4 +299,4 @@ The firewall restricts outbound network access to GitHub, Anthropic API, npm, an
 
 ---
 
-[README](../README.md) | [Advanced](advanced.md) | [Testing](testing.md) | **Development** | [Requirements](requirements.md)
+[README](../README.md) | [Advanced](advanced.md) | **Development** | [Requirements](requirements.md)

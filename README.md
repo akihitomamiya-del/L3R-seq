@@ -25,7 +25,7 @@ L3Rseq was developed for analyzing the *Arabidopsis thaliana* mitochondrial *ccm
 9. [Acknowledgments](#9-acknowledgments)
 
 **More documentation:**
-[Advanced usage](docs/advanced.md) (adapting, viewer, CIGAR-walk, splicing) | [Testing](docs/testing.md) | [Development](docs/development.md) | [Requirements](docs/requirements.md)
+[Advanced usage](docs/advanced.md) (adapting, viewer, CIGAR-walk, splicing) | [Development](docs/development.md) | [Requirements](docs/requirements.md)
 
 ## 1. Quick start
 
