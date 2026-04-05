@@ -113,6 +113,10 @@ async function main() {
     const page = await browser.newPage();
     await page.setViewport({ width: 1400, height: 900 });
 
+    // Forward browser console/errors to Node stdout for CI debugging
+    page.on("console", msg => console.log(`  [browser] ${msg.type()}: ${msg.text()}`));
+    page.on("pageerror", err => console.log(`  [browser error] ${err.message}`));
+
     // ── Load viewer ──
     console.log("Loading viewer...");
     await page.goto(BASE_URL, { waitUntil: "networkidle0", timeout: TIMEOUT });
@@ -129,10 +133,18 @@ async function main() {
     const dataset = targetDataset || ui.datasetOptions[0];
     console.log(`\n[Test 2] Load dataset: ${dataset}`);
     await page.select("#dataset", dataset);
-    await page.waitForFunction(
-      () => document.getElementById("status")?.textContent.includes("Ready"),
-      { timeout: TIMEOUT }
-    );
+    try {
+      await page.waitForFunction(
+        () => document.getElementById("status")?.textContent.includes("Ready"),
+        { timeout: TIMEOUT }
+      );
+    } catch (e) {
+      const status = await page.evaluate(() => document.getElementById("status")?.textContent || "(no status element)");
+      const igvState = await page.evaluate(() => typeof window.browser);
+      console.log(`  Status text: "${status}"`);
+      console.log(`  IGV browser object: ${igvState}`);
+      throw e;
+    }
     await new Promise(r => setTimeout(r, 1500));
 
     ui = await getUIState(page);
