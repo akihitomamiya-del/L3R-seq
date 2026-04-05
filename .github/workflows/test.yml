@@ -42,7 +42,7 @@ jobs:
           export PATH="/opt/miniforge/bin:/opt/miniforge/condabin:$PATH"
           bash tests/run_tests.sh --quick --no-viewer
       - name: Install Chrome for Puppeteer
-        run: cd igv_viewer && npx puppeteer browsers install chrome --install-deps
+        run: cd igv_viewer && npx puppeteer browsers install chrome-headless-shell
       - name: Run viewer tests (Puppeteer)
         shell: bash
         run: |
