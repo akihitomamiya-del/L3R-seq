@@ -84,3 +84,45 @@ jobs:
             -t ${{ env.IMAGE }}:${{ github.ref_name }} \
             -t ${{ env.IMAGE }}:latest \
             $(printf '${{ env.IMAGE }}@sha256:%s ' *)
+
+  test:
+    needs: merge
+    runs-on: ubuntu-latest
+    container:
+      image: ghcr.io/akihitomamiya-del/l3rseq:latest
+      credentials:
+        username: ${{ github.actor }}
+        password: ${{ secrets.GITHUB_TOKEN }}
+      options: --user 0:0
+    permissions:
+      contents: read
+      packages: read
+    steps:
+      - uses: actions/checkout@v6
+      - name: Install viewer dependencies
+        run: cd igv_viewer && npm install --ignore-scripts && node scripts/patch-igv.js
+      - name: Run quick test suite
+        shell: bash
+        run: |
+          export PATH="/opt/miniforge/bin:/opt/miniforge/condabin:$PATH"
+          bash tests/run_tests.sh --quick --no-viewer
+      - name: Install Chrome for Puppeteer
+        run: |
+          cd igv_viewer
+          SHELL_PATH=$(npx puppeteer browsers install chrome-headless-shell --format '{{path}}')
+          echo "PUPPETEER_EXECUTABLE_PATH=$SHELL_PATH" >> "$GITHUB_ENV"
+      - name: Run viewer tests (Puppeteer)
+        shell: bash
+        run: |
+          export PATH="/opt/miniforge/bin:/opt/miniforge/condabin:$PATH"
+          export LD_LIBRARY_PATH="/opt/miniforge/envs/analysis/lib"
+          export PUPPETEER_TIMEOUT=30000
+          ./L3Rseq viewer --dir tests/output &
+          sleep 2
+          curl -sf http://localhost:8080/healthz || { echo "Viewer failed to start"; exit 1; }
+          cd igv_viewer && node test_buttons.js && node test_stress.js
+      - name: Stop viewer
+        if: always()
+        run: |
+          export PATH="/opt/miniforge/bin:/opt/miniforge/condabin:$PATH"
+          ./L3Rseq viewer --stop 2>/dev/null || true
