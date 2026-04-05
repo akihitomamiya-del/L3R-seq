@@ -41,6 +41,22 @@ jobs:
         run: |
           export PATH="/opt/miniforge/bin:/opt/miniforge/condabin:$PATH"
           bash tests/run_tests.sh --quick --no-viewer
+      - name: Install Chrome for Puppeteer
+        run: cd igv_viewer && npx puppeteer browsers install chrome --install-deps
+      - name: Run viewer tests (Puppeteer)
+        shell: bash
+        run: |
+          export PATH="/opt/miniforge/bin:/opt/miniforge/condabin:$PATH"
+          export LD_LIBRARY_PATH="/opt/miniforge/envs/analysis/lib"
+          L3Rseq viewer --dir tests/output &
+          sleep 2
+          curl -sf http://localhost:8080/healthz || { echo "Viewer failed to start"; exit 1; }
+          cd igv_viewer && node test_buttons.js && node test_stress.js
+      - name: Stop viewer
+        if: always()
+        run: |
+          export PATH="/opt/miniforge/bin:/opt/miniforge/condabin:$PATH"
+          L3Rseq viewer --stop 2>/dev/null || true
 
   full-test:
     if: github.event_name == 'schedule'
