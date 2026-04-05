@@ -3,59 +3,8 @@
 <head>
   <meta charset="utf-8">
   <title>L3Rseq — Gene Counts</title>
+  <link rel="stylesheet" href="/css/shared.css">
   <style>
-    * { margin: 0; padding: 0; box-sizing: border-box; }
-    body { font-family: system-ui, sans-serif; background: #f5f5f5; }
-    header { background: #2c3e50; color: #fff; padding: 12px 24px;
-             display: flex; align-items: center; gap: 16px; flex-wrap: wrap;
-             position: sticky; top: 0; z-index: 100; }
-    header h1 { font-size: 18px; font-weight: 600; }
-    header select { padding: 4px 8px; border-radius: 4px; font-size: 14px; }
-    header a { color: #aaa; text-decoration: none; font-size: 14px; margin-left: auto; }
-    header a + a { margin-left: 0; }
-    header a:hover { color: #fff; }
-
-    .panel { margin: 12px 12px 0; padding: 12px 16px; background: #fff;
-             border-radius: 6px; font-size: 13px; }
-    .panel + .panel { margin-top: 8px; }
-    .panel-header { cursor: pointer; display: flex; align-items: center; gap: 8px;
-                    user-select: none; color: #333; font-weight: 600; }
-    .panel-header:hover { color: #000; }
-    .panel-header .arrow { display: inline-block; font-size: 10px;
-                           transition: transform 0.15s; }
-    .panel-header .arrow.open { transform: rotate(90deg); }
-    .panel-body { display: none; padding-top: 10px; }
-    .panel-body.open { display: block; }
-
-    .bc-group { margin-bottom: 6px; }
-    .bc-group-header { font-weight: 600; margin-bottom: 3px; display: flex; align-items: center; gap: 6px; }
-    .bc-group-header .swatch { display: inline-block; width: 10px; height: 10px;
-                                border-radius: 2px; border: 1px solid #999; }
-    .sample-checks { display: flex; flex-wrap: wrap; gap: 2px 12px; margin-left: 18px; }
-    .sample-checks label { cursor: pointer; display: flex; align-items: center; gap: 3px; }
-
-    .controls { margin: 8px 12px; display: flex; flex-wrap: wrap; gap: 8px; align-items: center;
-                font-size: 13px; }
-    .ctrl-btn { padding: 4px 12px; border: 1px solid #ccc; border-radius: 4px;
-                background: #f8f8f8; cursor: pointer; font-size: 13px; }
-    .ctrl-btn:hover { background: #e8e8e8; }
-    .ctrl-btn.active { background: #2c3e50; color: #fff; border-color: #2c3e50; }
-    .ctrl-sep { color: #ccc; margin: 0 4px; }
-
-    .chart-area { margin: 8px 12px 16px; }
-    .chart-container { background: #fff; border-radius: 6px; padding: 16px; margin-bottom: 8px; }
-    .chart-container h3 { font-size: 14px; color: #555; margin-bottom: 8px; }
-    .chart-container canvas { width: 100% !important; }
-
-    table.stats { width: 100%; border-collapse: collapse; font-size: 13px; }
-    table.stats th { background: #f0f0f0; padding: 6px 10px; text-align: left;
-                     cursor: pointer; user-select: none; position: sticky; top: 48px; }
-    table.stats th:hover { background: #e0e0e0; }
-    table.stats td { padding: 5px 10px; border-top: 1px solid #eee; }
-    table.stats tr:hover td { background: #fafafa; }
-    table.stats .num { text-align: right; font-variant-numeric: tabular-nums; }
-    .heatcell { transition: background 0.1s; }
-
     .isoform-legend { margin: 8px 0; display: flex; flex-wrap: wrap; gap: 6px 14px; font-size: 12px; }
     .isoform-legend span { display: inline-flex; align-items: center; gap: 3px; }
     .iso-swatch { display: inline-block; width: 12px; height: 12px; border-radius: 2px; border: 1px solid #ccc; }
@@ -64,7 +13,6 @@
                        padding: 12px; margin-bottom: 12px; font-size: 12px; }
     .discovery-panel h4 { font-size: 13px; margin-bottom: 6px; color: #555; }
 
-    .empty { margin: 24px; color: #888; font-size: 15px; line-height: 1.6; }
     .empty code { background: #eee; padding: 2px 6px; border-radius: 3px; }
   </style>
 </head>
@@ -79,19 +27,10 @@
           title="Click a gene name to set locus, then click Alignment Viewer to go there"></span>
     <a href="/umi" id="umi-link">UMI Analysis</a>
   </header>
-  <script>
-    (function() {
-      var n = new URLSearchParams(location.search).get("name");
-      if (n) {
-        var e = encodeURIComponent(n);
-        document.getElementById("viewer-link").href = "/?name=" + e;
-        document.getElementById("umi-link").href = "/umi?name=" + e;
-      }
-    })();
-  </script>
+  <script src="/js/shared.js"></script>
+  <script>syncNavLinksFromUrl();</script>
 
-  <div id="dataset-desc" style="display:none; margin: 12px 12px 0; padding: 10px 16px; background: #fff;
-       border-radius: 6px; font-size: 13px; color: #333; font-weight: 500; white-space: pre-line;"></div>
+  <div id="dataset-desc"></div>
 
   <div class="panel" id="sample-panel">
     <div class="panel-header" onclick="togglePanel('sample-panel')">
@@ -135,7 +74,6 @@
   <div class="chart-area" id="chart-area"></div>
 
   <script src="/chartjs/chart.umd.js"></script>
-  <script src="/js/shared.js"></script>
   <script src="/js/dev-overlay.js"></script>
   <script>
 "use strict";
@@ -144,6 +82,7 @@ let allData = null;
 let selectedIds = new Set();
 let viewMode = "chart";
 let datasetDescriptions = {};
+let _sampleList = [];
 let chartInstances = [];
 let selectedGene = null;  // gene selected for alignment viewer
 let chartZoomed = false;  // whether chart is zoomed to single gene
@@ -247,11 +186,11 @@ function restoreState() {
     });
     document.querySelectorAll('#sample-body .bc-group-header input[data-barcode]').forEach(cb => {
       const bc = cb.dataset.barcode;
-      const bcSamples = allData.samples.filter(sm => sm.startsWith(bc + "/"));
-      cb.checked = bcSamples.every(sm => selectedIds.has(sm));
+      const bcSamples = _sampleList.filter(sm => sm.barcode === bc);
+      cb.checked = bcSamples.every(sm => selectedIds.has(sm.id));
     });
-    syncAllCheckbox();
-    updateSampleCount();
+    _syncAllCheckbox(_sampleList, selectedIds);
+    _updateSampleCount(_sampleList, selectedIds);
   }
 
   // Restore view mode — URL hash takes priority over sessionStorage
@@ -308,7 +247,7 @@ async function init() {
       const name = sel.value;
       syncNavLinks(name);
       history.replaceState(null, "", name ? "?name=" + encodeURIComponent(name) + location.hash : "/genes");
-      if (name) loadDataset(name); else clearAll();
+      if (name) loadDataset(name); else { clearPage(chartInstances); allData = null; }
     });
     document.getElementById("hk-gene").addEventListener("change", () => { render(); saveState(); });
     document.getElementById("gene-select").addEventListener("change", () => { render(); saveState(); });
@@ -325,11 +264,9 @@ async function init() {
 }
 
 async function loadDataset(name) {
-  clearAll();
-  const descEl = document.getElementById("dataset-desc");
-  const desc = datasetDescriptions[name];
-  if (desc) { descEl.textContent = desc; descEl.style.display = "block"; }
-  else { descEl.style.display = "none"; }
+  clearPage(chartInstances);
+  allData = null;
+  showDatasetDesc(name, datasetDescriptions);
   try {
     const resp = await fetch("/api/gene-counts?name=" + encodeURIComponent(name));
     if (!resp.ok) { showEmpty("Failed to load gene count data."); return; }
@@ -343,7 +280,11 @@ async function loadDataset(name) {
     }
     resetBarcodeHues();
     selectedIds = new Set(allData.samples);
-    buildSampleSelector();
+    _sampleList = allData.samples.map(s => ({
+      id: s, barcode: s.split("/")[0],
+      shortName: s.split("/").pop().replace(s.split("/")[0] + "_", "")
+    }));
+    buildSampleSelector(_sampleList, selectedIds, {onRender: render, onSave: saveState});
     buildGeneSelector();
     buildHkSelector();
     document.getElementById("controls").style.display = "flex";
@@ -353,117 +294,6 @@ async function loadDataset(name) {
   } catch { showEmpty("Error loading gene count data."); }
 }
 
-function clearAll() {
-  destroyCharts();
-  document.getElementById("chart-area").innerHTML = "";
-  document.getElementById("sample-body").innerHTML = "";
-  document.getElementById("sample-count").textContent = "";
-  document.getElementById("controls").style.display = "none";
-  allData = null;
-}
-
-function showEmpty(msg) {
-  document.getElementById("chart-area").innerHTML = `<p class="empty">${msg}</p>`;
-}
-
-// --- Sample selector ---
-function buildSampleSelector() {
-  const body = document.getElementById("sample-body");
-  body.innerHTML = "";
-  const barcodes = [...new Set(allData.samples.map(s => s.split("/")[0]))].sort(naturalSort);
-
-  const allDiv = document.createElement("div");
-  allDiv.style.marginBottom = "8px";
-  const allLabel = document.createElement("label");
-  allLabel.style.cssText = "cursor:pointer;font-weight:600;";
-  const allCb = document.createElement("input");
-  allCb.type = "checkbox"; allCb.id = "check-all"; allCb.checked = true;
-  allCb.addEventListener("change", function() { toggleAll(this.checked); });
-  allLabel.appendChild(allCb);
-  allLabel.appendChild(document.createTextNode(" Select all"));
-  allDiv.appendChild(allLabel);
-  body.appendChild(allDiv);
-
-  for (const bc of barcodes) {
-    const hue = barcodeHue(bc);
-    const samples = allData.samples.filter(s => s.startsWith(bc + "/"));
-    const groupDiv = document.createElement("div");
-    groupDiv.className = "bc-group";
-
-    const headerDiv = document.createElement("div");
-    headerDiv.className = "bc-group-header";
-    const swatch = document.createElement("span");
-    swatch.className = "swatch";
-    swatch.style.background = "hsl(" + hue + ",70%,50%)";
-    headerDiv.appendChild(swatch);
-    const bcLabel = document.createElement("label");
-    bcLabel.style.cursor = "pointer";
-    const bcCb = document.createElement("input");
-    bcCb.type = "checkbox"; bcCb.checked = true;
-    bcCb.dataset.barcode = bc;
-    bcCb.addEventListener("change", (function(bcName) {
-      return function() { toggleBarcode(bcName, this.checked); };
-    })(bc));
-    bcLabel.appendChild(bcCb);
-    bcLabel.appendChild(document.createTextNode(" " + bc + " (" + samples.length + ")"));
-    headerDiv.appendChild(bcLabel);
-    groupDiv.appendChild(headerDiv);
-
-    const checksDiv = document.createElement("div");
-    checksDiv.className = "sample-checks";
-    for (const s of samples) {
-      const short = s.split("/").pop().replace(bc + "_", "");
-      const sLabel = document.createElement("label");
-      const sCb = document.createElement("input");
-      sCb.type = "checkbox"; sCb.checked = true;
-      sCb.dataset.id = s; sCb.dataset.bc = bc;
-      sCb.addEventListener("change", (function(sId) {
-        return function() { toggleSample(sId, this.checked); };
-      })(s));
-      sLabel.appendChild(sCb);
-      sLabel.appendChild(document.createTextNode(" " + short));
-      checksDiv.appendChild(sLabel);
-    }
-    groupDiv.appendChild(checksDiv);
-    body.appendChild(groupDiv);
-  }
-  updateSampleCount();
-}
-
-function toggleAll(checked) {
-  if (checked) selectedIds = new Set(allData.samples);
-  else selectedIds.clear();
-  document.querySelectorAll('#sample-body input[data-id]').forEach(cb => cb.checked = checked);
-  document.querySelectorAll('#sample-body .bc-group-header input').forEach(cb => cb.checked = checked);
-  updateSampleCount(); render(); saveState();
-}
-
-function toggleBarcode(bc, checked) {
-  document.querySelectorAll(`#sample-body input[data-bc="${bc}"]`).forEach(cb => {
-    cb.checked = checked;
-    if (checked) selectedIds.add(cb.dataset.id); else selectedIds.delete(cb.dataset.id);
-  });
-  syncAllCheckbox(); updateSampleCount(); render(); saveState();
-}
-
-function toggleSample(id, checked) {
-  if (checked) selectedIds.add(id); else selectedIds.delete(id);
-  const bc = id.split("/")[0];
-  const bcSamples = allData.samples.filter(s => s.startsWith(bc + "/"));
-  const bcCb = document.querySelector(`#sample-body .bc-group-header input[data-barcode="${bc}"]`);
-  if (bcCb) bcCb.checked = bcSamples.every(s => selectedIds.has(s));
-  syncAllCheckbox(); updateSampleCount(); render(); saveState();
-}
-
-function syncAllCheckbox() {
-  const all = document.getElementById("check-all");
-  if (all) all.checked = selectedIds.size === allData.samples.length;
-}
-
-function updateSampleCount() {
-  document.getElementById("sample-count").textContent =
-    `(${selectedIds.size}/${allData.samples.length} selected)`;
-}
 
 function buildGeneSelector() {
   const sel = document.getElementById("gene-select");
@@ -488,10 +318,7 @@ function buildHkSelector() {
 // --- View mode ---
 function setView(mode) {
   viewMode = mode;
-  document.querySelectorAll(".controls .ctrl-btn[data-view]").forEach(btn =>
-    btn.classList.toggle("active", btn.dataset.view === mode));
-  updateZoomButton();
-  render(); saveState();
+  setViewMode(mode, function() { updateZoomButton(); render(); }, saveState);
 }
 
 // --- Rendering ---
@@ -508,13 +335,9 @@ function getFilteredCounts() {
   });
 }
 
-function destroyCharts() {
-  for (const c of chartInstances) c.destroy();
-  chartInstances = [];
-}
 
 function render() {
-  destroyCharts();
+  destroyCharts(chartInstances);
   const area = document.getElementById("chart-area");
   area.innerHTML = "";
   if (!allData || !allData.hasData) return;

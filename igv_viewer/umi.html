@@ -3,64 +3,9 @@
 <head>
   <meta charset="utf-8">
   <title>L3Rseq — UMI Analysis</title>
+  <link rel="stylesheet" href="/css/shared.css">
   <style>
-    * { margin: 0; padding: 0; box-sizing: border-box; }
-    body { font-family: system-ui, sans-serif; background: #f5f5f5; }
-    header { background: #2c3e50; color: #fff; padding: 12px 24px;
-             display: flex; align-items: center; gap: 16px; flex-wrap: wrap;
-             position: sticky; top: 0; z-index: 100; }
-    header h1 { font-size: 18px; font-weight: 600; }
-    header select { padding: 4px 8px; border-radius: 4px; font-size: 14px; }
-    header a { color: #aaa; text-decoration: none; font-size: 14px; margin-left: auto; }
-    header a:hover { color: #fff; }
-
-    .panel { margin: 12px 12px 0; padding: 12px 16px; background: #fff;
-             border-radius: 6px; font-size: 13px; }
-    .panel + .panel { margin-top: 8px; }
-    .panel-header { cursor: pointer; display: flex; align-items: center; gap: 8px;
-                    user-select: none; color: #333; font-weight: 600; }
-    .panel-header:hover { color: #000; }
-    .panel-header .arrow { display: inline-block; font-size: 10px;
-                           transition: transform 0.15s; }
-    .panel-header .arrow.open { transform: rotate(90deg); }
-    .panel-body { display: none; padding-top: 10px; }
-    .panel-body.open { display: block; }
-
-    .bc-group { margin-bottom: 6px; }
-    .bc-group-header { font-weight: 600; margin-bottom: 3px; display: flex; align-items: center; gap: 6px; }
-    .bc-group-header .swatch { display: inline-block; width: 10px; height: 10px;
-                                border-radius: 2px; border: 1px solid #999; }
-    .sample-checks { display: flex; flex-wrap: wrap; gap: 2px 12px; margin-left: 18px; }
-    .sample-checks label { cursor: pointer; display: flex; align-items: center; gap: 3px; }
-
-    .controls { margin: 8px 12px; display: flex; flex-wrap: wrap; gap: 8px; align-items: center;
-                font-size: 13px; }
-    .ctrl-btn { padding: 4px 12px; border: 1px solid #ccc; border-radius: 4px;
-                background: #f8f8f8; cursor: pointer; font-size: 13px; }
-    .ctrl-btn:hover { background: #e8e8e8; }
-    .ctrl-btn.active { background: #2c3e50; color: #fff; border-color: #2c3e50; }
-    .ctrl-sep { color: #ccc; margin: 0 4px; }
-
-    .chart-area { margin: 8px 12px 16px; }
-    .chart-container { background: #fff; border-radius: 6px; padding: 16px; margin-bottom: 8px; }
-    .chart-container h3 { font-size: 14px; color: #555; margin-bottom: 8px; }
-    .chart-container canvas { width: 100% !important; }
-
-    .grid-wrap { display: grid; grid-template-columns: repeat(auto-fill, minmax(320px, 1fr));
-                 gap: 8px; }
-    .grid-cell { background: #fff; border-radius: 6px; padding: 12px; }
-    .grid-cell h4 { font-size: 12px; color: #555; margin-bottom: 4px; text-align: center; }
-
-    table.stats { width: 100%; border-collapse: collapse; font-size: 13px; }
-    table.stats th { background: #f0f0f0; padding: 6px 10px; text-align: left;
-                     cursor: pointer; user-select: none; position: sticky; top: 48px; }
-    table.stats th:hover { background: #e0e0e0; }
-    table.stats td { padding: 5px 10px; border-top: 1px solid #eee; }
-    table.stats tr:hover td { background: #fafafa; }
-    table.stats .num { text-align: right; font-variant-numeric: tabular-nums; }
     table.stats .low { color: #e67e22; font-weight: 600; }
-
-    .empty { margin: 24px; color: #888; font-size: 15px; }
   </style>
 </head>
 <body>
@@ -71,21 +16,10 @@
     <a href="/" id="viewer-link">Alignment Viewer</a>
     <a href="/genes" id="genes-link">Gene Counts</a>
   </header>
-  <script>
-    (function() {
-      var n = new URLSearchParams(location.search).get("name");
-      if (n) {
-        var e = encodeURIComponent(n);
-        document.getElementById("viewer-link").href = "/?name=" + e;
-        var gh = "";
-        try { gh = sessionStorage.getItem("l3rseq_genes_hash_" + n) || ""; } catch(ex) {}
-        document.getElementById("genes-link").href = "/genes?name=" + e + gh;
-      }
-    })();
-  </script>
+  <script src="/js/shared.js"></script>
+  <script>syncNavLinksFromUrl();</script>
 
-  <div id="dataset-desc" style="display:none; margin: 12px 12px 0; padding: 10px 16px; background: #fff;
-       border-radius: 6px; font-size: 13px; color: #333; font-weight: 500; white-space: pre-line;"></div>
+  <div id="dataset-desc"></div>
 
   <div class="panel" id="sample-panel">
     <div class="panel-header" onclick="togglePanel('sample-panel')">
@@ -109,7 +43,6 @@
   <div class="chart-area" id="chart-area"></div>
 
   <script src="/chartjs/chart.umd.js"></script>
-  <script src="/js/shared.js"></script>
   <script src="/js/dev-overlay.js"></script>
   <script>
 "use strict";
@@ -120,6 +53,7 @@ let allData = null;      // raw API response
 let selectedIds = new Set();
 let viewMode = "grid";
 let chartInstances = [];
+let _sampleList = [];    // normalized for shared selector
 
 function sampleColor(sample, alpha) {
   const hue = barcodeHue(sample.barcode);
@@ -163,15 +97,13 @@ function restoreState() {
       document.querySelectorAll('#sample-body input[data-id]').forEach(cb => {
         cb.checked = selectedIds.has(cb.dataset.id);
       });
-      document.querySelectorAll('#sample-body .bc-group-header input').forEach(cb => {
-        const bc = cb.getAttribute("onchange").match(/'([^']+)'/)?.[1];
-        if (bc) {
-          const bcSamples = allData.samples.filter(sm => sm.barcode === bc);
-          cb.checked = bcSamples.every(sm => selectedIds.has(sm.id));
-        }
+      document.querySelectorAll('#sample-body .bc-group-header input[data-barcode]').forEach(cb => {
+        const bc = cb.dataset.barcode;
+        const bcSamples = _sampleList.filter(sm => sm.barcode === bc);
+        cb.checked = bcSamples.every(sm => selectedIds.has(sm.id));
       });
-      syncAllCheckbox();
-      updateSampleCount();
+      _syncAllCheckbox(_sampleList, selectedIds);
+      _updateSampleCount(_sampleList, selectedIds);
     }
     if (s.viewMode) { viewMode = s.viewMode; }
     document.querySelectorAll(".controls .ctrl-btn[data-view]").forEach(btn =>
@@ -209,7 +141,7 @@ async function init() {
       const name = sel.value;
       syncNavLinks(name);
       history.replaceState(null, "", name ? "?name=" + encodeURIComponent(name) : "/umi");
-      if (name) loadDataset(name); else clearAll();
+      if (name) loadDataset(name); else { clearPage(chartInstances); allData = null; }
     });
     document.getElementById("show-singletons").addEventListener("change", () => { render(); saveState(); });
 
@@ -223,11 +155,9 @@ async function init() {
 }
 
 async function loadDataset(name) {
-  clearAll();
-  const descEl = document.getElementById("dataset-desc");
-  const desc = datasetDescriptions[name];
-  if (desc) { descEl.textContent = desc; descEl.style.display = "block"; }
-  else { descEl.style.display = "none"; }
+  clearPage(chartInstances);
+  allData = null;
+  showDatasetDesc(name, datasetDescriptions);
   try {
     const resp = await fetch("/api/umi-stats?name=" + encodeURIComponent(name));
     if (!resp.ok) { showEmpty("No UMI data found for this dataset."); return; }
@@ -237,7 +167,11 @@ async function loadDataset(name) {
     resetBarcodeHues();
     // Select all by default
     selectedIds = new Set(allData.samples.map(s => s.id));
-    buildSampleSelector();
+    _sampleList = allData.samples.map(s => ({
+      id: s.id, barcode: s.barcode,
+      shortName: s.rpi.replace(s.barcode + "_", "")
+    }));
+    buildSampleSelector(_sampleList, selectedIds, {onRender: render, onSave: saveState});
     document.getElementById("controls").style.display = "flex";
     restoreState();
     render();
@@ -245,91 +179,9 @@ async function loadDataset(name) {
   } catch { showEmpty("Error loading UMI data."); }
 }
 
-function clearAll() {
-  destroyCharts();
-  document.getElementById("chart-area").innerHTML = "";
-  document.getElementById("sample-body").innerHTML = "";
-  document.getElementById("sample-count").textContent = "";
-  document.getElementById("controls").style.display = "none";
-  allData = null;
-}
-
-function showEmpty(msg) {
-  document.getElementById("chart-area").innerHTML = `<p class="empty">${msg}</p>`;
-}
-
-// --- Sample selector ---
-function buildSampleSelector() {
-  const body = document.getElementById("sample-body");
-  const barcodes = [...new Set(allData.samples.map(s => s.barcode))].sort(naturalSort);
-
-  // Select-all checkbox
-  let html = '<div style="margin-bottom:8px;"><label style="cursor:pointer;font-weight:600;">' +
-    '<input type="checkbox" id="check-all" checked onchange="toggleAll(this.checked)"> Select all</label></div>';
-
-  for (const bc of barcodes) {
-    const hue = barcodeHue(bc);
-    const samples = allData.samples.filter(s => s.barcode === bc);
-    html += `<div class="bc-group">`;
-    html += `<div class="bc-group-header">
-      <span class="swatch" style="background:hsl(${hue},70%,50%)"></span>
-      <label style="cursor:pointer"><input type="checkbox" checked
-        onchange="toggleBarcode('${bc}',this.checked)"> ${bc} (${samples.length})</label></div>`;
-    html += `<div class="sample-checks">`;
-    for (const s of samples) {
-      const short = s.rpi.replace(bc + "_", "");
-      html += `<label><input type="checkbox" data-id="${s.id}" data-bc="${bc}" checked
-        onchange="toggleSample('${s.id}',this.checked)"> ${short}</label>`;
-    }
-    html += `</div></div>`;
-  }
-  body.innerHTML = html;
-  updateSampleCount();
-}
-
-function toggleAll(checked) {
-  if (checked) selectedIds = new Set(allData.samples.map(s => s.id));
-  else selectedIds.clear();
-  document.querySelectorAll('#sample-body input[data-id]').forEach(cb => cb.checked = checked);
-  document.querySelectorAll('#sample-body .bc-group-header input').forEach(cb => cb.checked = checked);
-  updateSampleCount(); render(); saveState();
-}
-
-function toggleBarcode(bc, checked) {
-  document.querySelectorAll(`#sample-body input[data-bc="${bc}"]`).forEach(cb => {
-    cb.checked = checked;
-    if (checked) selectedIds.add(cb.dataset.id); else selectedIds.delete(cb.dataset.id);
-  });
-  syncAllCheckbox(); updateSampleCount(); render(); saveState();
-}
-
-function toggleSample(id, checked) {
-  if (checked) selectedIds.add(id); else selectedIds.delete(id);
-  const bc = allData.samples.find(s => s.id === id)?.barcode;
-  if (bc) {
-    const bcSamples = allData.samples.filter(s => s.barcode === bc);
-    const bcCheckbox = document.querySelector(`#sample-body .bc-group-header input[onchange*="${bc}"]`);
-    if (bcCheckbox) bcCheckbox.checked = bcSamples.every(s => selectedIds.has(s.id));
-  }
-  syncAllCheckbox(); updateSampleCount(); render(); saveState();
-}
-
-function syncAllCheckbox() {
-  const all = document.getElementById("check-all");
-  if (all) all.checked = selectedIds.size === allData.samples.length;
-}
-
-function updateSampleCount() {
-  document.getElementById("sample-count").textContent =
-    `(${selectedIds.size}/${allData.samples.length} selected)`;
-}
-
-// --- View mode ---
 function setView(mode) {
   viewMode = mode;
-  document.querySelectorAll(".controls .ctrl-btn[data-view]").forEach(btn =>
-    btn.classList.toggle("active", btn.dataset.view === mode));
-  render(); saveState();
+  setViewMode(mode, render, saveState);
 }
 
 // --- Rendering ---
@@ -408,13 +260,9 @@ function cumulativePoints(dist, maxSize) {
   return pts;
 }
 
-function destroyCharts() {
-  for (const c of chartInstances) c.destroy();
-  chartInstances = [];
-}
 
 function render() {
-  destroyCharts();
+  destroyCharts(chartInstances);
   const area = document.getElementById("chart-area");
   area.innerHTML = "";
   const selected = getSelected();
