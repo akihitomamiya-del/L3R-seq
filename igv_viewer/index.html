@@ -3,22 +3,12 @@
 <head>
   <meta charset="utf-8">
   <title>L3Rseq — IGV.js Viewer</title>
+  <link rel="stylesheet" href="/css/shared.css">
   <style>
-    * { margin: 0; padding: 0; box-sizing: border-box; }
-    body { font-family: system-ui, sans-serif; background: #f5f5f5; }
-    header { background: #2c3e50; color: #fff; padding: 12px 24px;
-             display: flex; align-items: center; gap: 16px; flex-wrap: wrap;
-             position: sticky; top: 0; z-index: 100; }
-    header h1 { font-size: 18px; font-weight: 600; }
-    header select { padding: 4px 8px; border-radius: 4px; font-size: 14px; }
-    header a { color: #aaa; text-decoration: none; font-size: 14px; margin-left: auto; }
-    header a + a { margin-left: 0; }
-    header a:hover { color: #fff; }
-    #igv-container { margin: 12px; position: relative; z-index: 1; }
+    #igv-container { margin: 12px; }
     .info { margin: 12px 12px 0; padding: 12px; background: #fff;
             border-radius: 6px 6px 0 0; font-size: 13px; color: #555; }
     .info code { background: #eee; padding: 2px 6px; border-radius: 3px; }
-    .empty { margin: 24px; color: #888; font-size: 15px; }
 
     .controls-bar { display: none; margin: 0 12px 12px; background: #fff;
                     border-radius: 0 0 6px 6px; border-top: 1px solid #eee;
