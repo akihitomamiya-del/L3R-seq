@@ -746,8 +746,9 @@ const server = http.createServer((req, res) => {
   }
 
   const headers = { "Content-Type": mime, "Accept-Ranges": "bytes" };
-  // Prevent browser caching of HTML pages so edits take effect on refresh
-  if (ext === ".html") headers["Cache-Control"] = "no-cache, no-store, must-revalidate";
+  // Prevent browser caching of HTML, JS, CSS so edits take effect on refresh
+  if (ext === ".html" || urlPath.startsWith("/js/") || urlPath.startsWith("/css/"))
+    headers["Cache-Control"] = "no-cache, no-store, must-revalidate";
   // Cache immutable library bundles (igv.js, chart.js) for 1 day
   else if (urlPath.startsWith("/igv/") || urlPath.startsWith("/chartjs/"))
     headers["Cache-Control"] = "public, max-age=86400";

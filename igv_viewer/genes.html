@@ -23,8 +23,8 @@
     <select id="dataset"><option value="">loading...</option></select>
     <a href="/" id="viewer-link">Alignment Viewer</a>
     <span id="locus-badge" style="display:none; font-size:12px; background:#3498db; color:#fff;
-          padding:2px 8px; border-radius:10px; margin-left:-8px; cursor:default;"
-          title="Click a gene name to set locus, then click Alignment Viewer to go there"></span>
+          padding:2px 8px; border-radius:10px; cursor:pointer;"
+          title="Click to clear gene selection" onclick="clearGeneLocus()"></span>
     <a href="/umi" id="umi-link">UMI Analysis</a>
   </header>
   <script src="/js/shared.js"></script>
@@ -838,6 +838,22 @@ function selectGeneLocus(gene) {
   saveState();
   // Re-render only if we're NOT in chart view (chart shows all genes for context)
   if (viewMode !== "chart") render();
+}
+
+function clearGeneLocus() {
+  selectedGene = null;
+  const badge = document.getElementById("locus-badge");
+  badge.style.display = "none";
+  const link = document.getElementById("viewer-link");
+  const dsName = document.getElementById("dataset").value;
+  link.href = dsName ? "/?name=" + encodeURIComponent(dsName) : "/";
+  link.style.color = "";
+  link.style.fontWeight = "";
+  document.getElementById("gene-select").value = "";
+  chartZoomed = false;
+  updateZoomButton();
+  saveState();
+  render();
 }
 
 // --- Chart zoom (focus on single gene) ---
