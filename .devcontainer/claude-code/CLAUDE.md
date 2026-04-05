@@ -118,14 +118,22 @@ Quick sync: `cp .devcontainer/claude-code/CLAUDE.md ~/.claude/CLAUDE.md`
   Every viewer change MUST be tested against this flow. Verify: locus is
   preserved when toggling tracks, controls bar stays visible when deselecting
   all tracks, navigation between pages preserves dataset and state.
-- **Viewer — apply fixes across all 3 pages**: Sticky headers, nav link syncing,
-  state persistence, auto-select — all need to be applied to index.html, umi.html,
-  AND genes.html. Fixing one page and forgetting the others causes repeated reports.
+- **Viewer — shared code architecture**: Common CSS lives in `css/shared.css`,
+  common JS in `js/shared.js` (sample selector, toggles, chart cleanup, nav
+  sync, dataset descriptions). Page-specific CSS/JS stays inline. When adding
+  a feature that applies to multiple pages, add it to the shared files — not
+  copy-pasted into each HTML. The alignment page (index.html) has its own
+  track/IGV logic and does not use the shared sample selector.
+- **Viewer — dev overlay**: Click the grey "DEV" button (bottom-right) to
+  toggle. Hover shows component name + CSS selector. Right-click copies the
+  label to clipboard. Uses `document.execCommand("copy")` because VS Code
+  Simple Browser blocks the clipboard API. The overlay never modifies element
+  styles and never intercepts left clicks.
 - **Viewer — state architecture**: Pages share dataset via `?name=` URL param.
   The genes page stores view state in URL hash (`#v=table&sel=GENE&g=FILTER`).
-  Nav links are set by inline `<script>` in `<header>` (immediate, before async
-  init) and by `syncNavLinks()` (after dataset loads). The inline script is
-  critical for the alignment page which is slow to initialize (30+ BAM tracks).
+  Nav links are set by `syncNavLinksFromUrl()` (immediate, from shared.js)
+  and by `syncNavLinks()` (after dataset loads). Immediate sync is critical
+  for the alignment page which is slow to initialize (30+ BAM tracks).
   URL hash is the primary state channel; sessionStorage is backup for sample
   selections. Gene clicks update the header link instead of navigating away
   (`target="_blank"` doesn't work in VS Code Simple Browser).
@@ -280,6 +288,13 @@ L3Rseq count ... --min-mapq 20               # filter multi-mappers (homologue f
 Output in `11_count/`: per-sample counts, merged counts with per-isoform
 breakdown, pooled isoform discovery (per barcode), housekeeping normalization,
 and per-base coverage depth files.
+
+**Splice-aware counting**: Gene counting prefers `09_correct/` BAMs (where
+intron D→N conversion has been applied) over `07_map/` BAMs, falling back
+to `07_map` if step 09 wasn't run. The CIGAR overlap calculation excludes
+`N` (intron skip) operations, so spliced reads don't count toward intron
+regions they skip over. Regions TSV files may include a header line
+(`gene\tchr\tstart\tend\t...`) which is automatically skipped.
 
 **Strand note**: Gene counting is strand-agnostic (counts all primary alignments).
 Step 09 CIGAR-walk correction assumes reads map to + strand (3' tail = right clip).

@@ -30,7 +30,7 @@ The [UMI analysis page](advanced.md#alignment-viewer) in the viewer (`/umi`) pro
 
 ## Viewer development
 
-The IGV viewer is a multi-page web app (`/` alignment, `/umi` UMI analysis, `/genes` gene counts). Pages interact via URL parameters, URL hash, sessionStorage, and shared nav links. Follow this cycle for every change:
+The IGV viewer is a multi-page web app (`/` alignment, `/umi` UMI analysis, `/genes` gene counts). Shared CSS lives in `css/shared.css`, shared JS in `js/shared.js` (sample selector, toggle functions, chart cleanup, nav sync, dataset descriptions). Page-specific code stays inline. Follow this cycle for every change:
 
 ### Edit → Restart → Screenshot → Confirm
 
@@ -77,9 +77,19 @@ All three pages share dataset via `?name=`. The genes page additionally stores v
 - `&sel=GENE` — selected gene for alignment viewer
 - `&g=GENE` — gene filter, `&hk=GENE` — housekeeping, `&iso=1` — isoform rows
 
-Other pages read `sessionStorage["l3rseq_genes_hash_<name>"]` to build Gene Counts nav links with the hash. Each page has an inline `<script>` that sets links immediately, before async init.
+Other pages read `sessionStorage["l3rseq_genes_hash_<name>"]` to build Gene Counts nav links with the hash. Each page calls `syncNavLinksFromUrl()` from shared.js immediately in an inline `<script>`, before async init.
 
-**When changing one page, test all three.** A genes.html change can break the alignment viewer (nav links) or UMI page (shared state keys).
+**When changing shared code, test all three pages.** When changing page-specific code, test that page plus navigation to/from the other two.
+
+### Dev overlay
+
+All viewer pages include `js/dev-overlay.js`. Click the grey **DEV** button (bottom-right corner) to activate. When active:
+
+- **Hover** any element → tooltip shows component name + CSS selector
+- **Right-click** → copies the label to clipboard (uses `execCommand("copy")` — clipboard API is blocked in VS Code Simple Browser)
+- **Left clicks work normally** — no interference with links, buttons, or charts
+
+The overlay auto-derives labels from `id`, `data-*` attributes, class names, and parent context. No registry to maintain when adding new components.
 
 ## Maintenance
 
@@ -151,7 +161,7 @@ Test blocks in `tests/run_tests.sh`:
 | TEST 5 | BLAST + walk correction | `--quick` |
 | TEST 6 | IGV viewer API | `--quick` |
 | TEST 7 | Plot generation | `--quick` |
-| TEST 8 | Gene counting (step 11) | `--quick` |
+| TEST 8 | Gene counting (step 11) + splice-aware counting (8f) | `--quick` |
 
 ### Test coverage gaps (as of 2026-04-04)
 
@@ -165,7 +175,7 @@ Comprehensive audit of code paths with zero test coverage.
 | 2 | `--no-target-fwd` | Changes step 06 extraction to skip forward primer. Never invoked in any test. |
 | 3 | `regions --gff` / `--discover-from` / `--append` | Major real-world features for gene counting. Only `--coordinates` and `--bed` are tested (Test 8). |
 | 4 | `count --min-mapq` | MAPQ filtering for homologue families. Always defaults to 0 in tests. |
-| 5 | Multi-gene counting (step 11) | Test data has 1 gene (`test_gene`). Real data has dozens. Multi-gene region files, overlapping regions, and cross-gene isoform discovery are untested. |
+| 5 | Multi-gene counting (step 11) | Main pipeline test has 1 gene (`test_gene`). Test 8f adds splice-aware counting with 3 regions (exon1/intron/exon2) on the splice dataset. Real-world multi-gene with overlapping regions and cross-gene isoform discovery remain untested. |
 | 6 | Multi-chromosome references | All tests use single-contig `test_gene.fasta`. Multi-chromosome FAI reference matching in the viewer and step 07 is untested. |
 | 7 | `validate_introns()` | Input validation function (L3Rseq:120-163) for BED format, `start >= end`, bad extensions, empty files — never called in tests. |
 | 8 | `--prefilter` inside `L3Rseq run` | Standalone `filter` is tested (Test 1b), but the `--prefilter` flag that runs it as part of `run` is never invoked. |
