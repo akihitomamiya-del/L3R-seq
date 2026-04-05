@@ -51,6 +51,7 @@ jobs:
         run: |
           export PATH="/opt/miniforge/bin:/opt/miniforge/condabin:$PATH"
           export LD_LIBRARY_PATH="/opt/miniforge/envs/analysis/lib"
+          export PUPPETEER_TIMEOUT=30000
           L3Rseq viewer --dir tests/output &
           sleep 2
           curl -sf http://localhost:8080/healthz || { echo "Viewer failed to start"; exit 1; }

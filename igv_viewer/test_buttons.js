@@ -14,6 +14,7 @@ const puppeteer = require("puppeteer");
 
 const PORT = process.env.IGV_PORT || 8080;
 const BASE_URL = `http://localhost:${PORT}`;
+const TIMEOUT = Number(process.env.PUPPETEER_TIMEOUT) || 15000;
 
 let pass = 0, fail = 0;
 
@@ -114,7 +115,7 @@ async function main() {
 
     // ── Load viewer ──
     console.log("Loading viewer...");
-    await page.goto(BASE_URL, { waitUntil: "networkidle0", timeout: 15000 });
+    await page.goto(BASE_URL, { waitUntil: "networkidle0", timeout: TIMEOUT });
 
     // ── Test 1: Initial page load ──
     console.log("\n[Test 1] Initial page load");
@@ -130,7 +131,7 @@ async function main() {
     await page.select("#dataset", dataset);
     await page.waitForFunction(
       () => document.getElementById("status")?.textContent.includes("Ready"),
-      { timeout: 15000 }
+      { timeout: TIMEOUT }
     );
     await new Promise(r => setTimeout(r, 1500));
 
@@ -198,7 +199,7 @@ async function main() {
     await page.click("#show-all");
     await page.waitForFunction(
       () => document.getElementById("status")?.textContent.includes("Ready"),
-      { timeout: 15000 }
+      { timeout: TIMEOUT }
     );
     await new Promise(r => setTimeout(r, 1500));
 
@@ -211,7 +212,7 @@ async function main() {
     await page.click("#show-all");
     await page.waitForFunction(
       () => document.getElementById("status")?.textContent.includes("Ready"),
-      { timeout: 15000 }
+      { timeout: TIMEOUT }
     );
     await new Promise(r => setTimeout(r, 1500));
 
@@ -250,7 +251,7 @@ async function main() {
     await page.select("#sort-by", "none");
     await page.waitForFunction(
       () => document.getElementById("status")?.textContent.includes("Ready"),
-      { timeout: 15000 }
+      { timeout: TIMEOUT }
     );
     await new Promise(r => setTimeout(r, 1500));
 
@@ -293,7 +294,7 @@ async function main() {
       await page.select("#dataset", otherDs);
       await page.waitForFunction(
         () => document.getElementById("status")?.textContent.includes("Ready"),
-        { timeout: 15000 }
+        { timeout: TIMEOUT }
       );
       await new Promise(r => setTimeout(r, 1500));
 
@@ -312,7 +313,7 @@ async function main() {
       try {
         await page.waitForFunction(
           () => document.getElementById("status")?.textContent.includes("Ready"),
-          { timeout: 15000 }
+          { timeout: TIMEOUT }
         );
         await new Promise(r => setTimeout(r, 500));
         const state = await getIGVState(page);
