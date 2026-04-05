@@ -2,6 +2,29 @@
 
 All notable changes are documented here.
 
+## [1.1.2] - 2026-04-05
+
+### Added
+- Shared viewer architecture: common CSS (`css/shared.css`) and JS (`js/shared.js`) extracted from inline code across all three pages
+- Dev overlay for viewer (click "DEV" button to inspect component names and CSS selectors)
+- Splice-aware gene counting: `N` (intron skip) operations excluded from overlap calculation
+- Dataset descriptions shown in viewer dropdown and API responses
+- Puppeteer viewer tests added to CI pipeline (Chrome installed in container)
+- Viewer API stress test checklist in CLAUDE.md
+
+### Fixed
+- Header z-index: all content forced below sticky header via `z-index: 0` stacking context
+- Header link click targets (nav links were unclickable in some layouts)
+- Gene deselect on counts page
+- Dev cache headers (`Cache-Control: no-cache`) on JS/CSS assets
+- Display mode lost when re-grouping tracks
+- Viewer listener leak, URL state preservation, test selectors
+- 6 test suite issues: variant check tolerance, grep guards, `--test` flag coverage
+
+### Changed
+- Alignment page migrated to shared.css for consistent header behavior
+- Removed unused `compression` dependency from viewer
+
 ## [1.0.15] - 2026-04-04
 
 ### Added
