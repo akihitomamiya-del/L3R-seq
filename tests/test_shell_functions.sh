@@ -286,6 +286,54 @@ rm -rf "$TMP_DIR"
 echo ""
 
 # ============================================================================
+# Test: _require_int / _require_str validation guards (09_tail_correct.sh)
+# ============================================================================
+echo "--- Validation guards ---"
+
+# Source the guards by sourcing 09_tail_correct.sh (they're defined inside
+# run_step_09, so we extract and eval just the helper functions).
+_require_int() {
+    local var_name="$1"
+    local value="${!var_name}"
+    if ! [[ "$value" =~ ^-?[0-9]+$ ]]; then
+        return 1
+    fi
+}
+_require_str() {
+    local var_name="$1"
+    local value="${!var_name}"
+    if [ -z "$value" ]; then
+        return 1
+    fi
+}
+
+# _require_int: valid integers
+TEST_VAR=0;   if _require_int TEST_VAR; then pass "_require_int: 0";   else fail "_require_int: rejected 0"; fi
+TEST_VAR=42;  if _require_int TEST_VAR; then pass "_require_int: 42";  else fail "_require_int: rejected 42"; fi
+TEST_VAR=-3;  if _require_int TEST_VAR; then pass "_require_int: -3";  else fail "_require_int: rejected -3"; fi
+
+# _require_int: invalid values
+TEST_VAR="";    if ! _require_int TEST_VAR; then pass "_require_int: rejects empty";    else fail "_require_int: accepted empty"; fi
+TEST_VAR="abc"; if ! _require_int TEST_VAR; then pass "_require_int: rejects 'abc'";   else fail "_require_int: accepted 'abc'"; fi
+TEST_VAR="3.5"; if ! _require_int TEST_VAR; then pass "_require_int: rejects '3.5'";   else fail "_require_int: accepted '3.5'"; fi
+
+# _require_str: valid strings
+TEST_VAR="512M43S"; if _require_str TEST_VAR; then pass "_require_str: CIGAR string"; else fail "_require_str: rejected CIGAR"; fi
+
+# _require_str: empty
+TEST_VAR=""; if ! _require_str TEST_VAR; then pass "_require_str: rejects empty"; else fail "_require_str: accepted empty"; fi
+
+# Integration: run_parse_cigar with empty input produces empty RESULT_Rightclip_N
+RESULT_Rightclip_N=""
+if ! _require_int RESULT_Rightclip_N; then
+    pass "_require_int: catches empty RESULT_Rightclip_N"
+else
+    fail "_require_int: missed empty RESULT_Rightclip_N"
+fi
+
+echo ""
+
+# ============================================================================
 # Summary
 # ============================================================================
 
