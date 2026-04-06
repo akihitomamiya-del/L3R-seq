@@ -59,6 +59,16 @@ This is a **sandboxed devcontainer** with a network firewall. Key constraints:
   (e.g., `node igv_viewer/screenshot.js`). Use `--no-sandbox` flag when
   launching Puppeteer directly.
 
+## Devcontainer configurations
+
+Three configs live under `.devcontainer/`:
+
+| Directory | Name | Notes |
+|---|---|---|
+| `devcontainer.json` (root) | L3Rseq Pipeline | **Default for Codespaces.** Uses pre-built ghcr image |
+| `claude-code/` | L3Rseq Pipeline (Claude Code Sandbox) | Builds from Dockerfile. Adds Claude CLI, firewall, dev tooling |
+| `build/` | L3Rseq Pipeline (build) | Builds from Dockerfile. For testing local image changes |
+
 ## Docker image publishing
 
 The base image is `ghcr.io/akihitomamiya-del/l3rseq`. CI publishes it on
@@ -342,7 +352,7 @@ not yet implemented. Use per-gene references for 3' tail analysis.
 - `tests/` — test suite, test data, generators, expected output
 - `tests/data/` — synthetic test datasets
 - `resources/` — reference FASTAs, RPI barcodes, BLAST DBs
-- `docs/` — detailed docs: [advanced](../docs/advanced.md), [testing](../docs/testing.md), [development](../docs/development.md), [requirements](../docs/requirements.md)
+- `docs/` — detailed docs: [adaptation](../docs/adaptation.md), [testing](../docs/testing.md), [development](../docs/development.md), [requirements](../docs/requirements.md)
 - `runs/` — pipeline output directories (gitignored)
 
 ## Coding conventions

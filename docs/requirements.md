@@ -1,10 +1,10 @@
-[README](../README.md) | [Advanced](advanced.md) | **Requirements** | [Code Overview](code-overview.md) | [Development](development.md)
+[README](../README.md) | [Adaptation](adaptation.md) | **Requirements** | [Code Overview](code-overview.md) | [Development](development.md)
 
 ---
 
 # Requirements
 
-L3Rseq runs inside a Docker container where all dependencies are pre-installed. You need [Docker Desktop](https://www.docker.com/products/docker-desktop/) (macOS, Windows) or Docker Engine (Linux). The pipeline is CPU-only and does not require a GPU. An NVIDIA GPU is recommended for basecalling with dorado (SUP model).
+L3Rseq runs inside a Docker container where all dependencies are pre-installed. You need [Docker Desktop](https://www.docker.com/products/docker-desktop/) (macOS, Windows) or Docker Engine (Linux). The pipeline is CPU-only and does not require a GPU. An NVIDIA GPU is recommended for nanopore basecalling with dorado (SUP model).
 
 ## Platform support
 
@@ -33,4 +33,4 @@ The conda environments listed below are managed automatically — no manual acti
 
 ---
 
-[README](../README.md) | [Advanced](advanced.md) | **Requirements** | [Code Overview](code-overview.md) | [Development](development.md)
+[README](../README.md) | [Adaptation](adaptation.md) | **Requirements** | [Code Overview](code-overview.md) | [Development](development.md)

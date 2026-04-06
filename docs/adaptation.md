@@ -1,19 +1,19 @@
-[README](../README.md) | **Advanced** | [Requirements](requirements.md) | [Code Overview](code-overview.md) | [Development](development.md)
+[README](../README.md) | **Adaptation** | [Requirements](requirements.md) | [Code Overview](code-overview.md) | [Development](development.md)
 
 ---
 
-# Advanced usage
+# Adaptation
 
 ## Adapting to your experiment
 
-L3Rseq ships with default adapter sequences and reference files for the *Arabidopsis* ccmC gene. To use with a different organism or library:
+L3Rseq ships with default adapter sequences and reference files for the *Arabidopsis* ccmC gene. To use with a different organism or library, adjust the flags below. If you are using the [L3Rseq Pipeline (Claude Code Sandbox)](development.md#claude-code-ai-assisted-development), you can also ask Claude to guide you through these adjustments interactively.
 
 | What to change | How |
 |---|---|
 | Reference sequence | `--ref your_gene.fa` |
 | Sample barcodes (RPI) | `--rpi-fasta your_barcodes.fa` |
 | UMI flanking sequences | `--umi-flank5 NNNNN --umi-flank3 NNNNN` |
-| BLAST databases | `bash scripts/setup_blast_db.sh --organelle-fasta your_mtDNA.fa --transcriptome-fasta your_cDNA.fa` then `--blast-db` / `--blast-db2` |
+| BLAST databases | `bash scripts/setup_blast_db.sh --organelle-fasta your_mtDNA.fa --transcriptome-fasta your_cDNA.fa` then `--blast-db` / `--blast-db2` (see [below](#blast-databases)) |
 | Adapter sequences | `L3Rseq trim --adapter-fwd ... --adapter-rev ...` (defaults match the protocol in the manuscript; override for different library designs) |
 | Target extraction primers | `L3Rseq extract --target-fwd ... --target-rev ...` (users analyzing shorter amplicons may need to reduce `--min-overlap`). Use `--no-target-fwd` to skip the forward primer and trim only the reverse (adapter) side — useful for library checks or when the forward primer is unknown |
 | Editing pattern | `--pattern AG` (for A-to-I editing), or `--pattern CT,AG` to count multiple editing types as primary editing |
@@ -193,6 +193,42 @@ The CIGAR-walk correction parses the right-clipped portion and performs a base-b
 
 Right-clipped sequences exceeding 50 bp are additionally searched by BLAST against the organellar genome to detect translocation events (e.g., trans-splicing or DNA recombination). Reads with an organellar hit are flagged (`TL:i:1`). Reads with no organellar hit are searched against a cDNA database; those matching elsewhere (e.g., ribosomal RNA) are classified as chimeric artifacts and separated for manual review. A user-supplied file of known editing positions (`--var`) can be used in addition to or instead of the positions detected in step 08.
 
+## BLAST databases
+
+Step 09 (tail correction) uses BLAST to classify reads whose 3' soft-clipped
+region exceeds 50 bp. These long extensions may indicate trans-splicing,
+genomic translocation, or chimeric ligation artifacts — events that cannot be
+resolved by the walk algorithm alone.
+
+Two BLAST databases are searched in order:
+
+1. **Organelle genome** (`--blast-db`) — the full organellar genome (e.g.
+   mitochondrial or chloroplast DNA). Reads with a hit here are flagged as
+   translocations (`TL:i:1` SAM tag), meaning the 3' extension maps to a
+   distant locus on the same genome.
+2. **Transcriptome / cDNA** (`--blast-db2`) — a cDNA or transcript database.
+   Reads that had no organellar hit but match here (e.g. ribosomal RNA
+   contamination) are classified as chimeric artifacts and written to a
+   separate file (`abnormal_rightclip.sam`) for manual review.
+
+The default databases are for *Arabidopsis thaliana* (TAIR10 ChrM and cDNA).
+For other organisms, build your own databases:
+
+```bash
+bash scripts/setup_blast_db.sh \
+    --organelle-fasta your_mtDNA.fa \
+    --transcriptome-fasta your_cDNA.fa
+```
+
+Then pass `--blast-db <path>` and `--blast-db2 <path>` to `L3Rseq correct` or
+`L3Rseq run`.
+
+> **When can you skip BLAST?** If your target gene is short and you do not
+> expect 3' extensions longer than 50 bp (e.g. short poly(A) tails only),
+> BLAST will rarely be triggered. The pipeline still runs without BLAST
+> databases — reads exceeding the threshold are simply left unannotated for
+> translocation status.
+
 ## Strand specificity and genome-wide mapping
 
 L3R-seq libraries are inherently strand-specific: the adapter is ligated to the 3' end of the RNA, so every read originates from the sense strand. Steps 02 and 06 use cutadapt `--rc` to orient reads consistently based on adapter/primer sequences.
@@ -227,4 +263,4 @@ L3Rseq run --introns out/candidate_introns.bed ...
 
 ---
 
-[README](../README.md) | **Advanced** | [Requirements](requirements.md) | [Code Overview](code-overview.md) | [Development](development.md)
+[README](../README.md) | **Adaptation** | [Requirements](requirements.md) | [Code Overview](code-overview.md) | [Development](development.md)

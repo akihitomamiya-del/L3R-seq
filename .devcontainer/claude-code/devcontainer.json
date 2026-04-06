@@ -1,5 +1,5 @@
 {
-  "name": "Claude Code Sandbox",
+  "name": "L3Rseq Pipeline (Claude Code Sandbox)",
   "build": {
     "dockerfile": "Dockerfile",
     "context": "../..",

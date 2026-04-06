@@ -1,4 +1,4 @@
-[README](../README.md) | [Advanced](advanced.md) | [Requirements](requirements.md) | **Code Overview** | [Development](development.md)
+[README](../README.md) | [Adaptation](adaptation.md) | [Requirements](requirements.md) | **Code Overview** | [Development](development.md)
 
 ---
 
@@ -108,72 +108,210 @@ logging helpers, and `_summary_append()` for metrics output.
 
 ## Layer 2: Pipeline steps
 
-### `scripts/01_concat.sh` (50 lines)
-Concatenate per-barcode `fastq.gz` files into single files.
-**Tools:** gzip, awk. **Env:** none. **Output:** `01_concat/*.fastq.gz`
+Steps 01–10 form the core pipeline, running sequentially from raw reads to
+per-molecule CSV tables. The entire pipeline can be run at once with
+`L3Rseq run`, or any contiguous range of steps with `--start-at` / `--stop-at`.
+Each step is also available as a standalone subcommand.
 
-### `scripts/02_trim.sh` (70 lines)
-Three-pass adapter trimming with linked adapter search to filter chimeric reads.
-**Tools:** cutadapt (3 passes, `--rc`). **Env:** cutadaptenv.
-**Output:** `02_trim/{barcode}/trim{1,2,3}.fastq.gz`
+---
 
-### `scripts/03_demultiplex.sh` (85 lines)
-RPI barcode demultiplexing — assigns reads to sample-specific barcodes.
-**Tools:** cutadapt. **Env:** cutadaptenv.
-**Output:** `03_demux/{barcode}/*.fastq`
+### Step 01 — Concatenate (`scripts/01_concat.sh`)
 
-### `scripts/04_umi.sh` (201 lines)
-UMI extraction and clustering. Two methods: **longread-umi** (default,
-flank-based) or **UMIC-seq** (probe-alignment-based). Delegates heavy lifting
-to `longread_umi_L3Rseq/scripts/umi_binning_single.sh`.
-**Tools:** minimap2, cutadapt, vsearch. **Env:** longread_umi or UMIC-seq.
-**Output:** `04_umi/{barcode}/{rpi}/UMIclusterfull_*/`
+Merge per-barcode `fastq.gz` files (as produced by MinKNOW/dorado) into a
+single file per ONT barcode.
 
-### `scripts/05_consensus.sh` (109 lines)
-Racon-based consensus from UMI-clustered reads. Finds median-length seed read,
-iteratively polishes with minimap2+racon.
-**Tools:** racon, minimap2. **Env:** longread_umi.
-**Output:** `05_consensus/{barcode}/{rpi}/consensus_*.fa`
+| | |
+|---|---|
+| **Input** | Directory of per-barcode `fastq.gz` files |
+| **Output** | `01_concat/{barcode}.fastq.gz` |
+| **Command** | `L3Rseq concat --input <dir> --outdir <dir>` |
+| **Tools** | gzip, awk |
 
-### `scripts/06_extract.sh` (95 lines)
-Extract target region from consensus using flanking primer sequences.
-**Tools:** cutadapt (`--action=none`). **Env:** cutadaptenv.
-**Output:** `06_extract/{barcode}/{rpi}/*_extracted_{trimmed,uncut}.fa`
+---
 
-### `scripts/07_map.sh` (116 lines)
-Map consensus reads to reference genome, generate indexed BAM.
-**Tools:** minimap2 (`lr:hq`), samtools. **Env:** NanoporeMap.
-**Output:** `07_map/{barcode}/{rpi}/*_{aligned,primary}.sort.bam`
+### Step 02 — Trim (`scripts/02_trim.sh`)
 
-### `scripts/08_variants.sh` (77 lines)
-Variant calling, filtering by allele frequency and RNA editing pattern (e.g. C→T).
-**Tools:** lofreq, bcftools. **Env:** LoFreq.
-**Output:** `08_variants/{barcode}/{rpi}/variants.vcf`
+Three-pass adapter trimming using cutadapt. Removes the 3'-Adap adapter and
+PCR primer sequences introduced during library preparation. A linked adapter
+search filters chimeric reads where internal adapters indicate ligation
+artifacts.
 
-### `scripts/09_tail_correct.sh` (~470 lines) — orchestrator
-Right-clip CIGAR correction: discovers translocations via BLAST, corrects clip
-boundaries with a walk algorithm, converts intron D→N, re-calls variants.
-Uses `set +e` inside per-read workers for arithmetic tolerance. Sources six
-subscripts (09a–09f). Includes `_require_int`/`_require_str` validation guards
-that check `RESULT_*` variables after each subscript call — catches silent
-failures under `set +e` during development.
-**Tools:** BLAST, samtools, LoFreq. **Env:** NanoporeMap.
-**Output:** `09_correct/{barcode}/{rpi}/*_corrected.sort.bam`
+| | |
+|---|---|
+| **Input** | `01_concat/{barcode}.fastq.gz` |
+| **Output** | `02_trim/{barcode}/trim3.fastq.gz` (final trimmed reads) |
+| **Command** | `L3Rseq trim --input <dir> --outdir <dir>` |
+| **Key options** | `--adapter-fwd`, `--adapter-rev` (override default adapter sequences) |
+| **Tools** | cutadapt (3 passes, `--rc`) |
 
-| Subscript | Lines | Purpose |
-|---|---|---|
-| `09a_parse_cigar.sh` | 42 | Parse CIGAR into operation arrays, map read↔ref positions |
-| `09b_blast_rightclip.sh` | 104 | Extract soft clips, batch BLAST against 2 DBs |
-| `09c_walk_correction.sh` | 55 | Walk algorithm adjusting clip boundaries by mismatch |
-| `09d_rebuild_cigar.sh` | 38 | Rebuild CIGAR string + update AS/NM tags |
-| `09e_call_variants.sh` | 77 | Re-call variants on corrected BAM |
-| `09f_splice_check.sh` | 291 | Validate intron annotations, skip splice sites |
+---
 
-### `scripts/10_export_csv.sh` (242 lines)
-Convert corrected SAM to annotated CSV with quality metrics (substitution types,
-error counts, coverage stats).
-**Tools:** python3, awk. **Env:** none.
-**Output:** `10_export_csv/{barcode}/{rpi}/*_reads.csv + *_quality_report.txt`
+### Step 03 — Demultiplex (`scripts/03_demultiplex.sh`)
+
+Demultiplex reads by RPI (Reverse Primer Index) barcodes — the sample-specific
+index primers introduced during PCR. This assigns reads to individual samples
+within each ONT barcode.
+
+| | |
+|---|---|
+| **Input** | `02_trim/{barcode}/trim3.fastq.gz` + RPI barcode FASTA |
+| **Output** | `03_demux/{barcode}/{rpi}.fastq` |
+| **Command** | `L3Rseq demux --input <dir> --outdir <dir> --rpi-fasta <barcodes.fa>` |
+| **Key options** | `--rpi-fasta` (required: FASTA with one entry per sample barcode, 20 nt) |
+| **Tools** | cutadapt |
+
+> **Tip:** Steps 01–03 are preprocessing. If your data is already demultiplexed
+> by sample, skip them with `--start-at 4`.
+
+---
+
+### Step 04 — UMI clustering (`scripts/04_umi.sh`)
+
+Locates the 15-nt UMI within each read by aligning a probe sequence to the
+adapter region flanking the UMI. Reads sharing the same UMI — i.e. reads
+derived from the same original RNA molecule — are grouped by hierarchical
+clustering. A cluster test is first run on a subset of reads to determine the
+optimal alignment score threshold, then full clustering is applied at that
+threshold.
+
+| | |
+|---|---|
+| **Input** | `03_demux/{barcode}/{rpi}.fastq` + probe FASTA |
+| **Output** | `04_umi/{barcode}/{rpi}/UMIclusterfull_*/` (one directory per UMI cluster) |
+| **Command** | `L3Rseq umi --input <dir> --outdir <dir> --probe <probe.fa>` |
+| **Key options** | `--method longread-umi\|umic-seq`, `--size-thresh` (min reads per cluster, default 4), `--aln-thresh` (alignment score threshold) |
+| **Tools** | minimap2, cutadapt, vsearch (UMIC-seq method); or bwa, samtools (longread-umi method) |
+
+---
+
+### Step 05 — Consensus (`scripts/05_consensus.sh`)
+
+Within each UMI cluster, reads are aligned with minimap2 and polished through
+four iterative rounds of Racon to produce a single high-accuracy consensus
+sequence per original RNA molecule. This corrects random ONT sequencing errors
+and collapses PCR duplicates, yielding per-molecule sequences suitable for
+single-nucleotide variant detection.
+
+| | |
+|---|---|
+| **Input** | `04_umi/{barcode}/{rpi}/UMIclusterfull_*/` |
+| **Output** | `05_consensus/{barcode}/{rpi}/consensus_{rpi}.fa` |
+| **Command** | `L3Rseq consensus --input <dir> --outdir <dir>` |
+| **Key options** | `--rounds` (Racon polishing rounds, default 4) |
+| **Tools** | minimap2, racon |
+
+---
+
+### Step 06 — Extract (`scripts/06_extract.sh`)
+
+Trims the flanking primer and adapter sequences from each consensus using
+cutadapt, isolating the region of biological interest. Reads that do not
+match both target sequences are written to a separate file
+(`extracted_uncut.fa`) and excluded from downstream analysis.
+
+| | |
+|---|---|
+| **Input** | `05_consensus/{barcode}/{rpi}/consensus_{rpi}.fa` |
+| **Output** | `06_extract/{barcode}/{rpi}/{rpi}_extracted_trimmed.fa` |
+| **Command** | `L3Rseq extract --input <dir> --outdir <dir>` |
+| **Key options** | `--target-fwd`, `--target-rev` (override target sequences), `--min-overlap` (default 52 bp) |
+| **Tools** | cutadapt |
+
+---
+
+### Step 07 — Map (`scripts/07_map.sh`)
+
+Aligns the extracted consensus sequences to the reference (genomic DNA)
+sequence using minimap2 with the `lr:hq` preset (optimized for high-quality
+long reads). Output is converted to sorted, indexed BAM. After this step,
+**each alignment represents a single original RNA molecule**. The CIGAR string
+encodes the matched region and any 3' sequence extending beyond the reference
+as soft-clipped bases.
+
+| | |
+|---|---|
+| **Input** | `06_extract/{barcode}/{rpi}/{rpi}_extracted_trimmed.fa` + reference FASTA |
+| **Output** | `07_map/{barcode}/{rpi}/{rpi}_aligned.sort.bam`, `{rpi}_primary.sort.bam`, `{rpi}_mapped_only.sam` |
+| **Command** | `L3Rseq map --input <dir> --outdir <dir> --ref <reference.fa>` |
+| **Tools** | minimap2, samtools |
+
+---
+
+### Step 08 — Variants (`scripts/08_variants.sh`)
+
+Identifies single-nucleotide variants in the mapped reads using LoFreq, a
+variant caller designed for low-frequency variant detection. Variants are
+filtered by the user-specified editing pattern (e.g. `CT` for C-to-U RNA
+editing, `AG` for A-to-I). The detected editing positions are recorded for
+use in the tail correction step.
+
+| | |
+|---|---|
+| **Input** | `07_map/{barcode}/{rpi}/{rpi}_primary.sort.bam` + reference FASTA |
+| **Output** | `08_variants/{barcode}/{rpi}/variants.vcf`, `observed_variants.txt` |
+| **Command** | `L3Rseq variants --input <dir> --outdir <dir> --ref <reference.fa> --pattern CT` |
+| **Key options** | `--pattern` (editing pattern, e.g. `CT`, `AG`, or `CT,AG` for dual), `--min-af` (min allele frequency, default 0.01) |
+| **Tools** | lofreq, bcftools |
+
+---
+
+### Step 09 — Correct (`scripts/09_tail_correct.sh`)
+
+Resolves the 3' soft-clipped region of each mapped read — the sequence
+extending beyond the reference endpoint. The CIGAR string is parsed, and a
+base-by-base "walk" comparison is performed between the clipped sequence and
+the downstream reference, tolerating mismatches at known RNA editing positions.
+This is necessary because edited positions near the 3' end would otherwise
+appear as mismatches against the genomic reference, causing premature
+assignment of the 3' boundary. Right-clipped sequences exceeding 50 bp are
+searched by BLAST to detect trans-splicing or translocation events.
+
+The corrected alignments are annotated with custom SAM tags:
+
+| Tag | Description |
+|---|---|
+| `3E` | 3' end position on reference |
+| `RC` | Remaining tail length after correction |
+| `RS` | Remaining tail sequence |
+| `TL` | Translocation flag (0 or 1) |
+| `EC` | RNA editing event count |
+
+| | |
+|---|---|
+| **Input** | `07_map/{barcode}/{rpi}/{rpi}_mapped_only.sam` + `08_variants/.../observed_variants.txt` + reference FASTA |
+| **Output** | `09_correct/{barcode}/{rpi}/{rpi}_corrected.sort.bam` |
+| **Command** | `L3Rseq correct --input <dir> --outdir <dir> --ref <reference.fa> --pattern CT` |
+| **Key options** | `--var` (known editing positions file), `--clip-thresh` (BLAST threshold, default 50 bp), `--blast-db` / `--blast-db2` (organism-specific BLAST databases), `--introns` (splice-aware D→N conversion) |
+| **Tools** | samtools, BLAST, lofreq |
+
+Internally sources six subscripts:
+
+| Subscript | Purpose |
+|---|---|
+| `09a_parse_cigar.sh` | Parse CIGAR into operation arrays, map read↔ref positions |
+| `09b_blast_rightclip.sh` | Extract soft clips, batch BLAST against 2 databases |
+| `09c_walk_correction.sh` | Walk algorithm adjusting clip boundaries by mismatch |
+| `09d_rebuild_cigar.sh` | Rebuild CIGAR string + update AS/NM tags |
+| `09e_call_variants.sh` | Re-call variants on corrected BAM |
+| `09f_splice_check.sh` | Validate intron annotations, skip splice sites |
+
+---
+
+### Step 10 — Export (`scripts/10_export_csv.sh`)
+
+Converts the annotated alignments to a flat CSV file with one row per molecule.
+Each row contains standard SAM fields together with the custom annotations:
+3' end position, 3' tail length, 3' tail sequence, translocation flag,
+editing count, matched alignment length, and all detected variants. This table
+is the primary output for downstream statistical analysis in R, Python, or
+spreadsheet software.
+
+| | |
+|---|---|
+| **Input** | `09_correct/{barcode}/{rpi}/{rpi}_corrected.sort.bam` |
+| **Output** | `10_export_csv/{barcode}/{rpi}/{rpi}_reads.csv` + `{rpi}_quality_report.txt` |
+| **Command** | `L3Rseq export --input <dir> --outdir <dir>` |
+| **Tools** | python3, awk |
 
 ## Layer 3: Post-analysis
 
@@ -410,4 +548,4 @@ Auto-discovers largest dataset; gracefully skips if no real data.
 
 ---
 
-[README](../README.md) | [Advanced](advanced.md) | [Requirements](requirements.md) | **Code Overview** | [Development](development.md)
+[README](../README.md) | [Adaptation](adaptation.md) | [Requirements](requirements.md) | **Code Overview** | [Development](development.md)

@@ -1,46 +1,39 @@
-**README** | [Advanced](docs/advanced.md) | [Requirements](docs/requirements.md) | [Code Overview](docs/code-overview.md) | [Development](docs/development.md)
+**README** | [Adaptation](docs/adaptation.md) | [Requirements](docs/requirements.md) | [Code Overview](docs/code-overview.md) | [Development](docs/development.md)
 
 ---
 
 # L3Rseq
 
-**L3Rseq** is the accompanying bioinformatics pipeline for **L3R-seq** (Long-read 3' RACE-seq), a targeted long-read sequencing method for deep quantitative analysis of RNA processing. It takes raw Oxford Nanopore reads and produces per-molecule annotations of RNA editing, 3' end cleavage, polyadenylation, and splicing.
-
-The pipeline groups cDNA reads by UMI to build a consensus for each original molecule, then maps, corrects, and annotates each consensus read. Results are exported as per-molecule CSV tables and can be explored in a built-in browser-based alignment viewer.
+**L3Rseq** is the accompanying bioinformatics pipeline for **[L3R-seq](#citation)** (Long-read 3' RACE-seq), a targeted long-read sequencing method for deep quantitative analysis of RNA processing. Starting from raw Oxford Nanopore reads, the pipeline groups them by unique molecular identifier (UMI) and builds a consensus sequence for each original RNA molecule, correcting random sequencing errors and mitigating PCR-duplicate-driven quantification biases. Each consensus read is then mapped, corrected, and annotated to produce per-molecule tables of RNA editing, 3' end cleavage, polyadenylation, and splicing. Results can be explored in a built-in browser-based alignment viewer.
 
 ![L3R-seq library preparation and pipeline overview](docs/figures/L3Rseq_overview.png)
 
 ## Quick start
 
-### Option A: GitHub Codespaces (no installation)
+**Option A: GitHub Codespaces (no installation)**
 
-1. Click **Code** > **Codespaces** > **Create codespace** on this repository
-2. Wait ~10 minutes for the environment to build
-3. Run:
+Click **Code** > **Codespaces** > **...** > **New with options**. On the options page, select:
 
-```bash
-bash tests/run_tests.sh --quick     # verify everything works (~30s)
-L3Rseq viewer                       # open the viewer (check Ports tab for URL)
-```
+- **Branch** — `main`
+- **Dev container configuration** — choose one (see table below)
+- **Machine type** — 4-core or higher recommended for pipeline runs
 
-### Option B: Docker (local data)
+Clicking **Create codespace** directly (without "New with options") uses the default configuration (L3Rseq Pipeline).
 
+| Configuration | Use case |
+|---|---|
+| **L3Rseq Pipeline** (default) | Run the pipeline and explore results. Uses a pre-built image — fastest to start |
+| **L3Rseq Pipeline (Claude Code Sandbox)** | AI-assisted analysis and development with [Claude Code](docs/development.md#claude-code-ai-assisted-development). Useful if you are less familiar with command-line tools — Claude can run the pipeline, explain results, and help you adapt the code. Also useful for development: Claude can edit, test, commit, and push changes. Includes a network firewall for safe autonomous use |
+| **L3Rseq Pipeline (build)** | Build the Docker image from source for development and testing local changes to the Dockerfile or conda environments |
+
+**Option B: Docker (local data)**
 ```bash
 docker pull ghcr.io/akihitomamiya-del/l3rseq:latest
-
-docker run --rm \
-    -v ~/data/fastq:/data/input:ro \
-    -v ~/results:/data/output \
-    ghcr.io/akihitomamiya-del/l3rseq:latest \
-    L3Rseq run --input /data/input --outdir /data/output \
-    --ref /data/input/reference.fa --rpi-fasta /data/input/barcodes.fa --pattern CT
 ```
-
 See [Docker usage details](#docker-usage) below for interactive mode, docker compose, and data mount explanation.
 
-### Option C: VS Code devcontainer (local)
-
-Clone the repo, open in VS Code, and select **Reopen in Container** > **L3Rseq Pipeline** from the command palette.
+**Option C: VS Code devcontainer (local)**
+Clone the repo, open in VS Code, and select **Reopen in Container**, then choose a configuration (see table above).
 
 ## What you need
 
@@ -52,25 +45,31 @@ Clone the repo, open in VS Code, and select **Reopen in Container** > **L3Rseq P
 
 ## Running the pipeline
 
+To verify the installation with synthetic test data:
+
+```bash
+bash tests/run_tests.sh --quick     # smoke test (~30s)
+L3Rseq viewer                       # open the viewer (check Ports tab for URL)
+```
+
 ```bash
 L3Rseq run --input data/ --outdir results/ --ref ref.fa \
     --rpi-fasta barcodes.fa --pattern CT --threads 8
 ```
 
-This runs all 10 steps. Output goes to `results/01_concat/` through `results/10_csv/`.
+This runs all 10 steps. Output goes to `results/01_concat/` through `results/10_csv/`. Use `--start-at` and `--stop-at` to run a subset of steps (e.g. `--start-at 4` skips preprocessing for pre-demultiplexed data). Each step is also available as a standalone subcommand (e.g. `L3Rseq map --input <dir> --outdir <dir> --ref <ref.fa>`); see the [code overview](docs/code-overview.md) for per-step usage and [adaptation](docs/adaptation.md) for applying L3Rseq to different organisms and library designs. If you prefer AI-assisted analysis, see [Claude Code](docs/development.md#claude-code-ai-assisted-development).
 
 **Common options:**
 
 ```bash
 --start-at 4              # skip preprocessing (steps 01-03)
---introns "847-2891"      # classify reads as spliced/unspliced
---count-pattern TC        # SLAM-seq T-to-C counting
+--stop-at 7               # stop after mapping
 --pattern CT,AG           # dual editing patterns
+--count-pattern TC        # SLAM-seq T-to-C counting
+--introns "847-2891"      # classify reads as spliced/unspliced
 --prefilter               # rough-map pre-filter for noisy libraries
 --method umic-seq --probe probe.fa   # alternative UMI method
 ```
-
-Each step is also available as a standalone subcommand: `L3Rseq map --help`, `L3Rseq correct --help`, etc.
 
 ## Pipeline overview
 
@@ -234,7 +233,7 @@ GPL-3.0 (required by UMIC-seq and longread_umi dependencies). See [LICENSE](LICE
 
 ## Citation
 
-> Mamiya A, Takenaka M, Sugiyama M. L3R-seq: A long-read 3'RACE approach for deep quantitative analysis of RNA processing. In: *Methods in Molecular Biology*. Springer. (in press)
+> Mamiya A, Takenaka M, Sugiyama M. L3R-seq: A long-read 3'RACE approach for deep quantitative analysis of RNA processing. In: *Methods in Molecular Biology*. Springer. (*in press*)
 
 ## Acknowledgments
 
