@@ -20,6 +20,7 @@
   "customizations": {
     "vscode": {
       "extensions": [
+        "GitHub.codespaces",
         "anthropic.claude-code",
         "eamodio.gitlens",
         "bierner.markdown-mermaid"

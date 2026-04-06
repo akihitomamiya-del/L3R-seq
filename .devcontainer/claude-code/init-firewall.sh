@@ -101,10 +101,16 @@ done
 # to download the VS Code server, install extensions, and establish the
 # websocket tunnel.  Resolution failures are non-fatal because some
 # domains may not resolve outside Codespaces or may use CNAME-only records.
+#
+# NOTE: gallerycdn.vsassets.io uses a wildcard CNAME — the bare domain has
+# no A record, but {publisher}.gallerycdn.vsassets.io resolves via Akamai.
+# We resolve a synthetic subdomain ("x.gallerycdn.vsassets.io") to discover
+# the CDN IPs.  Similarly for gallery.vsassets.io.
 for domain in \
     "github.dev" \
     "vscode-cdn.net" \
-    "gallerycdn.vsassets.io" \
+    "x.gallerycdn.vsassets.io" \
+    "x.gallery.vsassets.io" \
     "global.rel.tunnels.api.visualstudio.com" \
     "online.visualstudio.com" \
     "dc.services.visualstudio.com" \
