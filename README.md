@@ -150,10 +150,10 @@ L3Rseq count   --input results/ --outdir results/ --regions regions.tsv
 
 - **UMI consensus** -- groups reads by UMI, polishes each cluster into one high-accuracy sequence
 - **RNA editing quantification** -- per-read editing count (C-to-U default; configurable)
-- **3' tail correction** -- [CIGAR-walk algorithm](docs/advanced.md#how-cigar-walk-works) corrects mis-assigned soft-clip boundaries
+- **3' tail correction** -- [CIGAR-walk algorithm](docs/adaptation.md#how-cigar-walk-works) corrects mis-assigned soft-clip boundaries
 - **Splicing detection** -- per-intron spliced/retained classification; automatic intron discovery
 - **Gene-level counting** -- qPCR-style molecule counting with isoform discovery and housekeeping normalization
-- **Built-in viewer** -- browser-based [IGV.js alignment viewer](docs/advanced.md#alignment-viewer) with SAM tag sorting/coloring
+- **Built-in viewer** -- browser-based [IGV.js alignment viewer](docs/adaptation.md#alignment-viewer) with SAM tag sorting/coloring
 - **Noise separation** -- per-read noise count distinguishes editing from residual sequencing errors
 - **Flexible entry** -- enter at any step with `--start-at` / `--stop-at`; re-runs skip completed samples
 
@@ -225,7 +225,7 @@ On Linux, add `--user "$(id -u):$(id -g)"` so output files are owned by your hos
 
 | Page | Contents |
 |---|---|
-| [Advanced usage](docs/advanced.md) | Adapting to your experiment, viewer guide, CIGAR-walk, splicing, gene counting |
+| [Adaptation](docs/adaptation.md) | Adapting to your experiment, viewer guide, CIGAR-walk, splicing, gene counting |
 | [Requirements](docs/requirements.md) | Platform support, conda environments |
 | [Code overview](docs/code-overview.md) | Architecture, data flow, per-file summaries |
 | [Development](docs/development.md) | Viewer development, testing, known issues, Docker builds |
