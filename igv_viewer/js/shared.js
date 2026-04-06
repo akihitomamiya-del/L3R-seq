@@ -219,3 +219,58 @@ function syncNavLinksFromUrl() {
   const n = new URLSearchParams(location.search).get("name");
   if (n) syncNavLinks(n);
 }
+
+// --- Shared dataset page initialization (UMI + Genes pages) ---
+// Extracts the common pattern: fetch datasets, populate dropdown,
+// build description map, auto-select from URL, wire event listeners.
+//
+// opts.basePath      — default URL when no dataset selected (e.g. "/umi")
+// opts.descriptions  — object to populate with name→description map
+// opts.loadDataset   — async function(name) for page-specific data loading
+// opts.onClear       — function() called when dataset is deselected
+// opts.buildUrl      — optional function(name) returning URL for replaceState
+// opts.extraListeners— optional [{id, fn}] additional change listeners
+async function initDatasetPage(opts) {
+  const sel = document.getElementById("dataset");
+  try {
+    const resp = await fetch("/api/datasets");
+    const data = await resp.json();
+    sel.innerHTML = '<option value="">-- select --</option>';
+    for (const ds of data.datasets) {
+      const opt = document.createElement("option");
+      opt.value = ds; opt.textContent = ds;
+      sel.appendChild(opt);
+    }
+    if (data.datasetInfo) {
+      for (const di of data.datasetInfo) {
+        if (di.description) opts.descriptions[di.name] = di.description;
+      }
+    }
+    const urlName = new URLSearchParams(location.search).get("name");
+    let pick = null;
+    if (urlName && data.datasets.includes(urlName)) pick = urlName;
+    else if (data.datasets.length === 1) pick = data.datasets[0];
+
+    sel.addEventListener("change", () => {
+      const name = sel.value;
+      syncNavLinks(name);
+      const url = opts.buildUrl
+        ? opts.buildUrl(name)
+        : (name ? "?name=" + encodeURIComponent(name) : opts.basePath);
+      history.replaceState(null, "", url);
+      if (name) opts.loadDataset(name); else opts.onClear();
+    });
+
+    if (opts.extraListeners) {
+      for (const el of opts.extraListeners) {
+        document.getElementById(el.id).addEventListener("change", el.fn);
+      }
+    }
+
+    if (pick) {
+      sel.value = pick;
+      syncNavLinks(pick);
+      await opts.loadDataset(pick);
+    }
+  } catch { sel.innerHTML = '<option value="">error loading datasets</option>'; }
+}

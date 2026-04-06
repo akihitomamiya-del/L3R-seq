@@ -120,10 +120,14 @@ Quick sync: `cp .devcontainer/claude-code/CLAUDE.md ~/.claude/CLAUDE.md`
   all tracks, navigation between pages preserves dataset and state.
 - **Viewer — shared code architecture**: Common CSS lives in `css/shared.css`,
   common JS in `js/shared.js` (sample selector, toggles, chart cleanup, nav
-  sync, dataset descriptions). Page-specific CSS/JS stays inline. When adding
-  a feature that applies to multiple pages, add it to the shared files — not
-  copy-pasted into each HTML. The alignment page (index.html) has its own
-  track/IGV logic and does not use the shared sample selector.
+  sync, `initDatasetPage()`). Page-specific JS lives in separate files:
+  `js/alignment.js`, `js/umi.js`, `js/genes.js`. HTML files are slim shells
+  (no inline JS). Server domain logic is in `lib/` modules (`bam.js`,
+  `discovery.js`, `pipeline-stats.js`, `fasta.js`, `helpers.js`); `server.js`
+  is a thin HTTP adapter. When adding a feature that applies to multiple
+  pages, add it to the shared files — not copy-pasted into each page JS.
+  The alignment page has its own track/IGV logic and does not use the shared
+  sample selector or `initDatasetPage()`.
 - **Viewer — dev overlay**: Click the grey "DEV" button (bottom-right) to
   toggle. Hover shows component name + CSS selector. Right-click copies the
   label to clipboard. Uses `document.execCommand("copy")` because VS Code
@@ -146,7 +150,10 @@ Quick sync: `cp .devcontainer/claude-code/CLAUDE.md ~/.claude/CLAUDE.md`
   viewer restart automatically. Use `--quick` for fast iteration.
 - **Step 09 error handling**: `09_tail_correct.sh` uses `set -euo pipefail` at
   file level, but the per-read worker `_process_one_read()` starts with `set +e`
-  to tolerate arithmetic and grep exit codes. Other scripts use `set -euo pipefail`.
+  to tolerate arithmetic and grep exit codes. Validation guards (`_require_int`,
+  `_require_str`) check `RESULT_*` variables after each subscript call — if a
+  subscript fails silently under `set +e`, the guard writes `FAILED` status and
+  skips the read with a `BUG:` warning. Other scripts use `set -euo pipefail`.
 - **Known issues**: See `docs/development.md` § "Known issues" for tracked bugs
   in the pipeline (coverage ignoring min-mapq, stale file globs after rename) and
   test suite (variant check too lenient, grep -c unguarded, --test flag gaps).

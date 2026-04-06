@@ -1,4 +1,4 @@
-[README](../README.md) | **Advanced** | [Development](development.md) | [Requirements](requirements.md)
+[README](../README.md) | **Advanced** | [Requirements](requirements.md) | [Code Overview](code-overview.md) | [Development](development.md)
 
 ---
 
@@ -18,6 +18,16 @@ L3Rseq ships with default adapter sequences and reference files for the *Arabido
 | Target extraction primers | `L3Rseq extract --target-fwd ... --target-rev ...` (users analyzing shorter amplicons may need to reduce `--min-overlap`). Use `--no-target-fwd` to skip the forward primer and trim only the reverse (adapter) side — useful for library checks or when the forward primer is unknown |
 | Editing pattern | `--pattern AG` (for A-to-I editing), or `--pattern CT,AG` to count multiple editing types as primary editing |
 | Known editing positions | `--var known_sites.txt` (use when a control sample with established editing sites is available, in addition to or instead of LoFreq-detected positions) |
+
+### UMI bin size tuning
+
+The default `min_bin_size=3` balances consensus quality and yield. On real data (*Arabidopsis* ccmC), quality plateaus at n>=3 (89% error-free, 0.22 noise/1000bp). Increase to n>=4 or n>=5 for lower noise at the cost of fewer consensus reads.
+
+To evaluate your data, generate bin analysis plots or use the viewer's [UMI analysis page](#alignment-viewer) (`/umi`):
+
+```bash
+conda run -n analysis python3 scripts/plot_umi_bins.py results/ --quality
+```
 
 ## Alignment viewer
 
@@ -217,4 +227,4 @@ L3Rseq run --introns out/candidate_introns.bed ...
 
 ---
 
-[README](../README.md) | **Advanced** | [Development](development.md) | [Requirements](requirements.md)
+[README](../README.md) | **Advanced** | [Requirements](requirements.md) | [Code Overview](code-overview.md) | [Development](development.md)

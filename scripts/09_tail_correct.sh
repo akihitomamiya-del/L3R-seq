@@ -58,12 +58,36 @@ run_step_09() {
     echo "    Reference loaded: ${#ref_seq}bp"
 
     # -----------------------------------------------------------------
+    # Validate RESULT_* variables after subscript calls.
+    # Under set +e, a crashed subscript leaves variables empty/stale.
+    # These guards catch that immediately rather than propagating garbage.
+    # -----------------------------------------------------------------
+    _require_int() {
+        local var_name="$1"
+        local value="${!var_name}"
+        if ! [[ "$value" =~ ^-?[0-9]+$ ]]; then
+            echo "    BUG: $var_name='$value' (expected integer) in read $read_idx" >&2
+            echo "FAILED" > "$tmp_dir/result_${read_idx}.status"
+            return 1
+        fi
+    }
+    _require_str() {
+        local var_name="$1"
+        local value="${!var_name}"
+        if [ -z "$value" ]; then
+            echo "    BUG: $var_name is empty in read $read_idx" >&2
+            echo "FAILED" > "$tmp_dir/result_${read_idx}.status"
+            return 1
+        fi
+    }
+
+    # -----------------------------------------------------------------
     # Worker function: process a single read
     # Accesses variables from the calling scope (dynamic scoping):
     #   tmp_dir, ref_seq, active_var_file,
     #   pattern, count_pattern, clip_thresh, blast_batched, blast_available
     # Writes results to:
-    #   $tmp_dir/result_${read_idx}.status  (CORRECTED | ABNORMAL)
+    #   $tmp_dir/result_${read_idx}.status  (CORRECTED | CHIMERIC | FAILED)
     #   $tmp_dir/result_${read_idx}.line    (annotated SAM line)
     # -----------------------------------------------------------------
     _process_one_read() {
@@ -79,6 +103,11 @@ run_step_09() {
 
         # Parse CIGAR from read line (no samtools call)
         run_parse_cigar "$read_line"
+        _require_int RESULT_Rightclip_N  || return 0
+        _require_int RESULT_Aln_Start    || return 0
+        _require_int RESULT_Total_M      || return 0
+        _require_int RESULT_Total_D      || return 0
+        _require_str RESULT_Aln_CIGAR    || return 0
 
         local translocation=0
 
@@ -87,6 +116,8 @@ run_step_09() {
 
             # CIGAR-walk variant calling (no bcftools, no SAM file needed)
             run_call_variants "$read_line" "$ref_seq" "$pattern" "$count_pattern"
+            _require_int RESULT_EC || return 0
+            _require_int RESULT_NC || return 0
 
             # Splice check (if introns annotated)
             local sj_tags=""
@@ -153,14 +184,19 @@ run_step_09() {
         local ref_position=$((RESULT_Aln_Start - 1 + RESULT_Total_M + RESULT_Total_D + 1))
         run_walk_correction "$ref_position" "$RESULT_Rightclip_seq" \
             "$ref_seq" "$active_var_file" "$pattern"
+        _require_int RESULT_Match_counter || return 0
 
         # Rebuild CIGAR
         run_rebuild_cigar "$RESULT_Aln_CIGAR" "$RESULT_Match_counter"
+        _require_str RESULT_New_CIGAR        || return 0
+        _require_int RESULT_CIGAR_Tail_new_S || return 0
 
         # CIGAR-walk variant calling on corrected alignment
         local corrected_read_line
         corrected_read_line=$(printf '%s\n' "$read_line" | awk -F'\t' -v OFS='\t' -v c="$RESULT_New_CIGAR" '{$6=c; print}')
         run_call_variants "$corrected_read_line" "$ref_seq" "$pattern" "$count_pattern"
+        _require_int RESULT_EC || return 0
+        _require_int RESULT_NC || return 0
 
         # Splice check on corrected CIGAR (if introns annotated)
         local sj_tags=""
@@ -395,6 +431,8 @@ run_step_09() {
                     cat "$tmp_dir/result_${i}.line" >> "$odir/${prefix}corrected.sam"
                 elif [ "$read_status" = "CHIMERIC" ]; then
                     cat "$tmp_dir/result_${i}.line" >> "$odir/${prefix}chimeric_rightclip.sam"
+                elif [ "$read_status" = "FAILED" ]; then
+                    echo "    WARNING: Validation failed for read $i (possible bug — see BUG messages above)"
                 else
                     echo "    WARNING: Missing result for read $i"
                 fi
