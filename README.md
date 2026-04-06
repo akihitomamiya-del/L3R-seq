@@ -16,9 +16,9 @@ Runs entirely in the cloud from this repository's GitHub page — no local insta
 
 - **Branch** — `main`
 - **Dev container configuration** — choose one (see table below)
-- **Machine type** — 4-core or higher recommended for pipeline runs
+- **Machine type** — 4-core or higher recommended for pipeline runs (the default 2-core will be slow)
 
-Clicking **Create codespace** directly (without "New with options") uses the default configuration (L3Rseq Pipeline).
+Clicking **Create codespace** directly (without "New with options") uses the default configuration (L3Rseq Pipeline) with a 2-core machine. Use **New with options** to select a faster machine type.
 
 > **L3Rseq Pipeline** (default)
 > Run the pipeline and explore results. Uses a pre-built image — fastest to start.
