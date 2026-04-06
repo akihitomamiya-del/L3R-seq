@@ -23,7 +23,8 @@
         "GitHub.codespaces",
         "anthropic.claude-code",
         "eamodio.gitlens",
-        "bierner.markdown-mermaid"
+        "bierner.markdown-mermaid",
+        "mechatroner.rainbow-csv"
       ],
       "settings": {
         "terminal.integrated.defaultProfile.linux": "zsh"
