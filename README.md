@@ -4,9 +4,9 @@
 
 # L3Rseq
 
-**L3R-seq** (Long-read 3' RACE-seq) is a targeted long-read sequencing method for deep quantitative analysis of RNA processing. L3Rseq is the bioinformatics pipeline that takes raw Oxford Nanopore reads and produces per-molecule annotations of RNA editing, 3' end cleavage, polyadenylation, and splicing.
+**L3Rseq** is the accompanying bioinformatics pipeline for **L3R-seq** (Long-read 3' RACE-seq), a targeted long-read sequencing method for deep quantitative analysis of RNA processing. It takes raw Oxford Nanopore reads and produces per-molecule annotations of RNA editing, 3' end cleavage, polyadenylation, and splicing.
 
-The method ligates a UMI-containing adapter to the 3' end of RNA, groups cDNA reads by UMI to build a consensus for each original molecule, then maps, corrects, and annotates each consensus read. Results are exported as per-molecule CSV tables and can be explored in a built-in browser-based alignment viewer.
+The pipeline groups cDNA reads by UMI to build a consensus for each original molecule, then maps, corrects, and annotates each consensus read. Results are exported as per-molecule CSV tables and can be explored in a built-in browser-based alignment viewer.
 
 ![L3R-seq library preparation and pipeline overview](docs/figures/L3Rseq_overview.png)
 
