@@ -4,15 +4,15 @@
 
 # L3Rseq
 
-**L3Rseq** is the accompanying bioinformatics pipeline for **[L3R-seq](#citation)** (Long-read 3' RACE-seq), a targeted long-read sequencing method for deep quantitative analysis of RNA processing. Starting from raw Oxford Nanopore reads, the pipeline groups them by unique molecular identifier (UMI) and builds a consensus sequence for each original RNA molecule, correcting random sequencing errors and mitigating PCR-duplicate-driven quantification biases. Each consensus read is then mapped, corrected, and annotated to produce per-molecule tables of RNA editing, 3' end cleavage, polyadenylation, and splicing. Results can be explored in a built-in browser-based alignment viewer.
+This is the accompanying bioinformatics pipeline for **[L3R-seq](#citation)** (Long-read 3' RACE-seq), a targeted long-read sequencing method for deep quantitative analysis of RNA processing. L3R-seq ligates a UMI-containing adapter ([Scheer et al. 2020](https://doi.org/10.1007/978-1-4939-9822-7_8)) to the 3' end of RNA, then uses Oxford Nanopore sequencing to read full-length cDNA amplicons. Starting from raw reads, the pipeline groups them by unique molecular identifier (UMI) and builds a consensus sequence for each original RNA molecule, correcting random sequencing errors and mitigating PCR-duplicate-driven quantification biases. Each consensus read is then mapped, corrected, and annotated to produce per-molecule tables of RNA editing, 3' end cleavage, polyadenylation, and splicing. Results can be explored in a built-in browser-based alignment viewer.
 
 ![L3R-seq library preparation and pipeline overview](docs/figures/L3Rseq_overview.png)
 
-## Quick start
+## How to start
 
 **Option A: GitHub Codespaces (no installation)**
 
-Click **Code** > **Codespaces** > **...** > **New with options**. On the options page, select:
+Runs entirely in the cloud from this repository's GitHub page — no local installation or hardware requirements. Ideal for getting started quickly or if your machine does not meet the [hardware requirements](docs/requirements.md). Click **Code** > **Codespaces** > **...** > **New with options** on this page. On the options page, select:
 
 - **Branch** — `main`
 - **Dev container configuration** — choose one (see table below)
@@ -20,11 +20,14 @@ Click **Code** > **Codespaces** > **...** > **New with options**. On the options
 
 Clicking **Create codespace** directly (without "New with options") uses the default configuration (L3Rseq Pipeline).
 
-| Configuration | Use case |
-|---|---|
-| **L3Rseq Pipeline** (default) | Run the pipeline and explore results. Uses a pre-built image — fastest to start |
-| **L3Rseq Pipeline (Claude Code Sandbox)** | AI-assisted analysis and development with [Claude Code](docs/development.md#claude-code-ai-assisted-development). Useful if you are less familiar with command-line tools — Claude can run the pipeline, explain results, and help you adapt the code. Also useful for development: Claude can edit, test, commit, and push changes. Includes a network firewall for safe autonomous use |
-| **L3Rseq Pipeline (build)** | Build the Docker image from source for development and testing local changes to the Dockerfile or conda environments |
+> **L3Rseq Pipeline** (default)
+> Run the pipeline and explore results. Uses a pre-built image — fastest to start.
+
+> **L3Rseq Pipeline (Claude Code Sandbox)**
+> AI-assisted analysis and development with [Claude Code](docs/development.md#claude-code-ai-assisted-development). Useful if you are less familiar with command-line tools — Claude can run the pipeline, explain results, and help you adapt the code. Also useful for development: Claude can edit, test, commit, and push changes. Based on Anthropic's [official Claude Code DevContainer](https://github.com/anthropics/claude-code/tree/main/.devcontainer), with a network firewall for safe autonomous use.
+
+> **L3Rseq Pipeline (build)**
+> Build the Docker image from source for development and testing local changes to the Dockerfile or conda environments.
 
 **Option B: Docker (local data)**
 ```bash
@@ -35,15 +38,15 @@ See [Docker usage details](#docker-usage) below for interactive mode, docker com
 **Option C: VS Code devcontainer (local)**
 Clone the repo, open in VS Code, and select **Reopen in Container**, then choose a configuration (see table above).
 
-## What you need
+## Running the pipeline
+
+**What you need:**
 
 | Input | Description |
 |---|---|
 | Demultiplexed FASTQs | Basecalled (SUP model) and native-barcode-demultiplexed by dorado |
 | Reference FASTA | Genomic (DNA) sequence of your target gene + downstream region |
 | Sample barcode FASTA | One entry per RPI (sample-specific index primer, 20 nt) |
-
-## Running the pipeline
 
 To verify the installation with synthetic test data:
 
