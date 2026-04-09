@@ -533,7 +533,7 @@ def tail_correct_directory(
                         active_var_file = candidate
                         _LOG.info("    Using detected variants: %s", candidate)
             known_variants = _load_variants(active_var_file)
-            if not known_variants:
+            if active_var_file is None or not active_var_file.is_file():
                 _LOG.info(
                     "    No variant file available -- correction "
                     "will not tolerate editing mismatches"
