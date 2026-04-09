@@ -34,12 +34,6 @@ if [ ! -d "$INPUT_DIR/07_map" ]; then
     exit 1
 fi
 
-if [ ! -d "$INPUT_DIR/09_correct" ]; then
-    echo "ERROR: $INPUT_DIR/09_correct not found — bash step 09 hasn't run." >&2
-    echo "Re-run 'bash tests/run_tests.sh --quick --no-viewer'." >&2
-    exit 1
-fi
-
 if [ ! -x "$PY_ENV_BIN" ]; then
     echo "ERROR: $PY_ENV_BIN not found. Is the l3rseq_py env installed?" >&2
     echo "If not, rebuild the devcontainer (see docs/PIPELINE_MODERNIZATION.md)." >&2
@@ -52,12 +46,41 @@ if [ ! -x "$SAMTOOLS" ]; then
 fi
 
 # ---------------------------------------------------------------------------
-# Run the Python step 09 into a fresh temp output dir
+# Run BOTH engines into fresh temp dirs so the comparison is meaningful
+# even after cmd_correct in L3Rseq was switched to Python. We invoke the
+# bash subscripts directly via `source` + `run_step_09`, bypassing the
+# dispatcher entirely.
 # ---------------------------------------------------------------------------
+BASH_OUT=$(mktemp -d)
 PY_OUT=$(mktemp -d)
-trap 'rm -rf "$PY_OUT"' EXIT
+trap 'rm -rf "$BASH_OUT" "$PY_OUT"' EXIT
 
-echo "[diff] Running Python step 09 ..."
+echo "[diff] Running BASH step 09 (scripts/09_tail_correct.sh directly) ..."
+(
+    # shellcheck source=/dev/null
+    source /opt/miniforge/etc/profile.d/conda.sh
+    conda activate NanoporeMap
+    # shellcheck source=/dev/null
+    source "$REPO_ROOT/scripts/09_tail_correct.sh"
+    # run_step_09 args: input_dir output_dir ref var pattern blast1 blast2 clip_thresh variants_dir threads count_pattern introns
+    run_step_09 \
+        "$INPUT_DIR/07_map" \
+        "$BASH_OUT" \
+        "$REF" \
+        "" \
+        "CT" \
+        "" \
+        "" \
+        50 \
+        "$INPUT_DIR/08_variants" \
+        1 \
+        "" \
+        ""
+    conda deactivate
+) 2>&1 | sed 's/^/  /'
+
+echo ""
+echo "[diff] Running PYTHON step 09 (python -m l3rseq.tail_correct) ..."
 PYTHONPATH="$REPO_ROOT/src" "$PY_ENV_BIN" -m l3rseq.tail_correct \
     --input "$INPUT_DIR/07_map" \
     --outdir "$PY_OUT" \
@@ -71,7 +94,7 @@ PYTHONPATH="$REPO_ROOT/src" "$PY_ENV_BIN" -m l3rseq.tail_correct \
 # Compare each sample's corrected.sort.bam via samtools view | sort | cmp
 # ---------------------------------------------------------------------------
 TMPDIR=$(mktemp -d)
-trap 'rm -rf "$PY_OUT" "$TMPDIR"' EXIT
+trap 'rm -rf "$BASH_OUT" "$PY_OUT" "$TMPDIR"' EXIT
 
 echo ""
 echo "[diff] Comparing BAMs ..."
@@ -79,7 +102,7 @@ FAIL=0
 TOTAL=0
 for bc_rpi in barcode01/barcode01_RPI_1 barcode01/barcode01_RPI_2 barcode02/barcode02_RPI_1 barcode02/barcode02_RPI_2; do
     rpi=${bc_rpi##*/}
-    bash_bam="$INPUT_DIR/09_correct/$bc_rpi/${rpi}_corrected.sort.bam"
+    bash_bam="$BASH_OUT/09_correct/$bc_rpi/${rpi}_corrected.sort.bam"
     py_bam="$PY_OUT/09_correct/$bc_rpi/${rpi}_corrected.sort.bam"
     TOTAL=$((TOTAL + 1))
 
