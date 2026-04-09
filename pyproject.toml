@@ -40,3 +40,4 @@ files = ["src/l3rseq"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests/python"]
+pythonpath = ["src"]
