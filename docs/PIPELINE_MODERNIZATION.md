@@ -1,5 +1,94 @@
 # L3Rseq Pipeline Modernization — Phase 0 + Phase 1a
 
+> ## 📍 Current status — Session 1 complete, Phase 1b ready to start
+>
+> **Last updated**: 2026-04-09 (end of Session 1)
+> **Branch**: `pipeline-modernization` @ `40410dd`
+> **Tag**: `v1.1.4` on `ab34d85`
+> **Docker image**: `ghcr.io/akihitomamiya-del/l3rseq:latest` = `v1.1.4` (published, amd64 + arm64, all CI jobs green)
+>
+> ### ✅ Done (Session 1)
+>
+> - **Phase 0 — Foundation** (`bb83eb1`): New `l3rseq_py` conda env added to `.devcontainer/build/Dockerfile` (pysam, biopython, pyranges, snakemake-minimal, pandas, scipy, pytest, ruff, mypy). `pyproject.toml`, `src/l3rseq/` skeleton, `tests/python/` skeleton, `config.sh ENV_PY`, `.devcontainer/claude-code/CLAUDE.md` docs update, `.github/workflows/test.yml` new `python-test` job (currently `continue-on-error: true`).
+> - **Phase 1a — Algorithm modules** (4 commits, 76 tests):
+>   - `src/l3rseq/cigar.py` + 18 tests (`c9d8678`) — replaces `09a_parse_cigar.sh` + `09d_rebuild_cigar.sh`
+>   - `src/l3rseq/walk.py` + 14 tests (`10eeaa9`) — replaces `09c_walk_correction.sh`
+>   - `src/l3rseq/variants.py` + 20 tests (`6adca09`) — replaces `09e_call_variants.sh`
+>   - `src/l3rseq/splice.py` + 24 tests (`ab34d85`) — replaces `09f_splice_check.sh`
+> - **Baseline benchmark** (`41e9080` + `40410dd`): `tests/benchmarks/bench_step09.sh` + `docs/step09_baseline.md`. Current bash step 09 best case: **123 reads/sec at 4 threads** on the 434-read quick-test fixtures. Scaling: 1→2 threads 1.55×, 2→4 threads 1.22×, 1→4 threads 1.89× (parallel efficiency ~47%).
+> - **Regression baseline**: `bash tests/run_tests.sh --quick --no-viewer` → 78/78 ✅, `bash tests/test_shell_functions.sh` → 67/67 ✅, `pytest tests/python/` → 76/76 ✅. Zero regressions.
+> - **Memory**: `reference_modernization_plan.md` in `~/.claude/projects/-workspace/memory/` points at this doc.
+>
+> ### ▶️ Phase 1b entry checklist (paste this into the first prompt of the next session)
+>
+> ```bash
+> # 1. Verify the new env works
+> conda activate l3rseq_py
+> python -c "import pysam, Bio, pyranges; print('pysam', pysam.__version__); print('biopython', Bio.__version__); print('pyranges', pyranges.__version__)"
+> pytest tests/python/ -v                   # expect 76 passing
+> ruff check src/ tests/python/             # expect clean
+> mypy src/l3rseq/                          # expect clean
+>
+> # 2. Confirm the existing pipeline still works in the new image
+> bash tests/run_tests.sh --quick --no-viewer  # expect 78 passing
+> ```
+>
+> **If any of that fails**, diagnose and fix before proceeding. Most likely failure mode is a package version incompatibility — fix by adjusting the `mamba create` line in `.devcontainer/build/Dockerfile` and tagging `v1.1.5`.
+>
+> ### ▶️ Phase 1b implementation plan
+>
+> Build the pysam I/O layer on top of the Phase 1a algorithm modules, wire it through the dispatcher, and prove byte-identical output + performance win vs. the bash version.
+>
+> **New files** (all under `src/l3rseq/`):
+>
+> | File | Purpose | Depends on |
+> |---|---|---|
+> | `blast.py` | `subprocess.run(["blastn", …])` wrapper. Two functions: `batch_blast_chrm()` (translocation detection) and `batch_blast_cdna()` (PCR chimera detection). Mirrors `scripts/09b_blast_rightclip.sh`. | stdlib only |
+> | `tags.py` | Construction of the 13 SAM tags emitted by step 09 (3E, RC, RS, TL, DS, EC, SC, NC, mL, VR, SJ, SI, IR). Pure functions that take algorithm-module results and return an ordered list of `(tag, type, value)` tuples for pysam. | `cigar`, `variants`, `splice` |
+> | `tail_correct.py` | Orchestrator. Opens the input BAM with `pysam.AlignmentFile`, iterates reads, calls algorithm modules per read, emits corrected BAM + chimeric BAM with all tags. Supports `--threads N` via `multiprocessing.Pool.imap_unordered`. Replaces the outer for-loop and per-read worker in `scripts/09_tail_correct.sh`. | all of the above |
+> | `__main__.py` | CLI entry: `python -m l3rseq.tail_correct --input ... --outdir ... --ref ... --pattern ... [--introns ...] [--threads N]`. Argparse + logging config. | `tail_correct` |
+>
+> **Modified files**:
+>
+> - `L3Rseq` dispatcher (`cmd_correct` at `L3Rseq:457`): swap `_conda_run "$ENV_MAP" "09_tail_correct.sh" run_step_09 ...` for `_conda_run "$ENV_PY" "" "python -m l3rseq.tail_correct ..."` (or a direct shell call — `_conda_run` may need a small tweak to support non-sourced commands).
+> - `.github/workflows/test.yml`: remove `continue-on-error: true` from `python-test` job now that the env exists.
+>
+> **Differential test** (the correctness gate):
+>
+> 1. On the same commit as a working bash step 09, run: `bash tests/run_tests.sh --quick --no-viewer` → `tests/output/pipeline_CT/09_correct/**/*_corrected.sort.bam` is the bash "gold" output.
+> 2. Run the new Python step 09 against the same `tests/output/pipeline_CT/07_map/` inputs into a separate outdir.
+> 3. Diff the two directories' BAMs: `samtools view` on each, sort lines, `diff` them. SAM tag order matters — emit in the same order as the bash version (the `tags.py` module should enforce this).
+> 4. If any tag values differ, investigate and fix (usually a subtle CIGAR-walk edge case or variant-matching deviation).
+> 5. Target: **byte-identical corrected SAM records** across all 4 samples in `pipeline_CT`. If you can't hit byte-identical, document the deviation and justify it.
+>
+> **Performance benchmark** (the value gate):
+>
+> 1. Re-run `bash tests/benchmarks/bench_step09.sh` — this now runs against the BASH version and should reproduce the committed baseline (~65/101/123 reads/sec at 1/2/4 threads on 434 reads).
+> 2. Create `tests/benchmarks/bench_step09_py.sh` that invokes the new Python path and measures the same way. Or extend `bench_step09.sh` with `--engine={bash,python}` flag.
+> 3. Write results to `docs/step09_phase1b_comparison.md` with side-by-side reads/sec for each thread count.
+> 4. **Target**: ≥ 200 reads/sec at 4 threads (1.6× over bash best case). **Stretch**: ≥ 400 reads/sec (3.3× over bash).
+> 5. If Python is slower than expected, profile with `cProfile` — the hot path is almost certainly either (a) unnecessary tag-tuple allocation per read, (b) a non-C pysam call pattern, or (c) `multiprocessing` serialization overhead swamping the small fixture. Fix before committing.
+>
+> **When Phase 1b is complete** (all tests pass, differential test byte-identical, benchmark hits target):
+>
+> 1. Small cleanup commit: remove `continue-on-error: true` from the `python-test` CI job.
+> 2. Open a PR from `pipeline-modernization` → `main` with the full history (or squash — your call). CI should be fully green on the new image.
+> 3. Merge. Tag `v1.2.0` to mark the Python-backed step 09 release.
+> 4. Start Phase 1c in a new session: decide bash 09 fate (delete vs. `scripts/legacy/`) based on Phase 1b confidence. See [Out of scope] table below.
+>
+> ### Pitfalls to watch for in Phase 1b
+>
+> - **CIGAR tag order**: The bash version emits tags in a specific order (`3E`, `RC`, `RS`, `TL`, `DS`, `EC`, [`SC` if count_pattern], `NC`, `mL`, `VR`, [`SJ`, `SI`, `IR` if introns]). `samtools view` diff will flag order changes — match bash exactly.
+> - **SC tag conditional**: Only present when `--count-pattern` is given. Mirror the bash `[ -n "$count_pattern" ] && sc_tag="SC:i:..."` logic.
+> - **SJ/SI/IR conditional**: Only present when `--introns` is provided.
+> - **`rightclip_n == 0` branch**: The bash version has a dedicated fast path for reads with no right-clip (calls `run_call_variants` directly, skips walk). Mirror this — don't accidentally walk a zero-length clip.
+> - **BLAST chimera path**: Chimeric reads go to a separate `_chimeric_rightclip.sort.bam` file, NOT the main corrected BAM. The walk correction is skipped for chimeras.
+> - **Variant file loading**: The bash version auto-detects `08_variants/{barcode}/{rpi}/observed_variants.txt`. Load it once per sample into a `frozenset[str]` before iterating reads, not per-read.
+> - **multiprocessing + pysam**: `pysam.AlignmentFile` objects don't pickle cleanly. Pass file paths + byte-range offsets to workers instead of opened file handles. Or use `threading` if the GIL isn't a bottleneck (htslib releases it for I/O).
+> - **Reference preload**: Load the reference once as a `str` or `bytes` object (like the bash version does) and pass to workers by reference, not per-read.
+>
+> ---
+
 ## Persistence and continuity (read this first)
 
 This plan spans **multiple sessions across a devcontainer rebuild**. Phase 1b cannot start until a new Docker image with the `l3rseq_py` env is published and the devcontainer is rebuilt. So everything in this plan must survive that rebuild.
