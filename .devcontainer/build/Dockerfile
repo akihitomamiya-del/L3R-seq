@@ -163,6 +163,32 @@ RUN mamba create -y -n Entrez -c conda-forge -c bioconda \
     && mamba clean -afy
 
 # ============================================================
+# l3rseq_py — Python development env (pipeline modernization)
+# Houses the algorithmic core (cigar/walk/variants/splice modules under
+# src/l3rseq/) and dev tooling. pysam/pyranges/snakemake support the
+# Phase 1b BAM I/O layer and the Phase 2 Snakefile wrapping the existing
+# bash steps. Kept separate from pipeline-tool envs to avoid conflicts
+# with longread_umi / NanoporeMap / etc.
+#
+# Loose version pins (>=) so conda picks the latest patch available at
+# build time, since this image is rebuilt over months and the floor
+# versions are what we tested against.
+# ============================================================
+RUN mamba create -y -n l3rseq_py -c conda-forge -c bioconda \
+    python=3.12 \
+    'pysam>=0.22' \
+    'biopython>=1.84' \
+    'pyranges>=0.1' \
+    'snakemake-minimal>=8' \
+    'pandas>=2' \
+    'scipy>=1.13' \
+    'pytest>=8' \
+    'pytest-cov>=5' \
+    'ruff>=0.6' \
+    'mypy>=1.11' \
+    && mamba clean -afy
+
+# ============================================================
 # Node.js (for IGV.js alignment viewer)
 # ============================================================
 RUN curl -fsSL https://deb.nodesource.com/setup_20.x | bash - \

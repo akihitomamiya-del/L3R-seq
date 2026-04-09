@@ -50,6 +50,7 @@ This is a **sandboxed devcontainer** with a network firewall. Key constraints:
   - `UMIC-seq` — python3, biopython, scikit-bio (alternative UMI method)
   - `Entrez` — efetch, esearch (fetching NCBI references)
   - `analysis` — matplotlib, numpy (plotting scripts)
+  - `l3rseq_py` — python3, pysam, biopython, pyranges, snakemake, pandas, scipy, pytest, ruff, mypy (Python algorithmic core for step 09 + dev tooling)
   Example: `conda activate NanoporeMap && samtools view ...`
   The `L3Rseq` dispatcher handles env activation automatically for pipeline runs.
 - **The IGV viewer auto-starts** on port 8080 via `postStartCommand`. Use
@@ -171,6 +172,75 @@ Quick sync: `cp .devcontainer/claude-code/CLAUDE.md ~/.claude/CLAUDE.md`
 - **Real data test**: Always `rm -rf runs/LibCheck` before re-running
   `runs/LibCheck_sample.sh` — leftover `03_demux_all/` breaks RPI filtering.
 
+## Pipeline modernization habits (active during the bash → Python rewrite)
+
+These habits apply while the `pipeline-modernization` branch is alive — i.e.,
+while step 09 (and eventually others) is being ported from bash to pysam-backed
+Python under `src/l3rseq/`. See `docs/PIPELINE_MODERNIZATION.md` for the full
+plan and current phase status.
+
+- **Pre-commit check trio for Python changes.** Before committing anything
+  under `src/l3rseq/` or `tests/python/`, run all three:
+  ```bash
+  /opt/miniforge/envs/l3rseq_py/bin/ruff check src/ tests/python/
+  /opt/miniforge/envs/l3rseq_py/bin/mypy src/l3rseq/
+  /opt/miniforge/envs/l3rseq_py/bin/pytest tests/python/ -v
+  ```
+  (or `conda activate l3rseq_py` once and drop the prefix). CI runs the same
+  three commands in the `python-test` job — running them locally first
+  prevents push-then-fix loops. Mypy is configured `strict = true`, so
+  missing type hints and `Any` leaks will fail.
+
+- **Algorithm modules stay pure.** `src/l3rseq/cigar.py`, `walk.py`,
+  `variants.py`, and `splice.py` must **never** `import pysam`, never touch
+  the filesystem, and never spawn subprocesses. They are pure-Python + stdlib
+  only. The orchestrator (`tail_correct.py`) and BLAST wrapper (`blast.py`)
+  are the ONLY places that touch pysam, I/O, or `subprocess`. This keeps the
+  algorithm tests runnable in isolation (they still ran in the UMIC-seq env
+  before `l3rseq_py` existed) and makes future refactors cheaper.
+
+- **Dockerfile changes require a tagged release — no runtime installs.**
+  The devcontainer firewall blocks PyPI, conda-forge, and bioconda at
+  runtime (`curl https://pypi.org → exit 7`). To add a Python package, edit
+  `.devcontainer/build/Dockerfile`, commit, then:
+  ```bash
+  git tag v1.X.Y && git push origin v1.X.Y
+  # wait ~20 min for docker-publish.yml to finish (gh run watch)
+  # then: Dev Containers: Rebuild Container
+  ```
+  There is no `pip install -e .` shortcut; `src/l3rseq/` is discovered via
+  the `pythonpath = ["src"]` setting in `pyproject.toml`'s
+  `[tool.pytest.ini_options]` and via `PYTHONPATH=src` for the module
+  entry point.
+
+- **Port shell test cases verbatim when rewriting a bash script.** When
+  replacing a `scripts/09X_*.sh` subscript with `src/l3rseq/X.py`, every
+  corresponding case in `tests/test_shell_functions.sh` MUST be ported to
+  pytest with the exact same inputs, expected outputs, and edge cases — see
+  `tests/python/test_cigar.py` (mirrors `test_shell_functions.sh:44-80`) and
+  `tests/python/test_splice.py` (mirrors `:88-216`) for the pattern. The
+  ported tests are the regression contract against the frozen bash version.
+
+- **Differential test before switching the dispatcher to Python.** Before
+  changing `cmd_correct` (or any other `cmd_*`) in the `L3Rseq` dispatcher
+  to call Python instead of bash, prove byte-identical SAM/BAM output on
+  the full quick-test fixtures. "Byte-identical" = `samtools view` | sort |
+  `diff` on the output BAMs. Any deviation must be documented in the
+  commit message with a justification. The bash version is the source of
+  truth until the Python version passes this gate.
+
+- **Benchmark with `date +%s.%N`, not bash `SECONDS`.** The integer
+  `SECONDS` builtin rounds to whole seconds, which rounds away real signal
+  on sub-10-second runs (a 3.5s run and a 4.3s run both show as "4s"). See
+  `tests/benchmarks/bench_step09.sh` for the correct sub-second timing
+  pattern and the multi-iteration min/median/mean reporting.
+
+- **Bash step 09 is frozen during the rewrite window.** Until Phase 1c
+  deletes or archives `scripts/09_tail_correct.sh` + `09a-09f_*.sh`, those
+  files receive only critical security/correctness hotfixes. All functional
+  improvements (e.g., the planned 5′ UMI extension) go into the Python
+  modules. Dual-maintenance of both implementations is a trap — don't.
+
 ## Project overview
 
 L3Rseq is a long-read UMI sequencing pipeline for Oxford Nanopore data. The main
@@ -215,6 +285,24 @@ the test suite inside a fresh container. Not applicable in devcontainer sessions
 ```bash
 bash tests/test_shell_functions.sh          # CIGAR, splice, BLAST helpers
 ```
+
+### Python algorithm tests (l3rseq_py env)
+
+```bash
+conda activate l3rseq_py
+pytest tests/python/ -v --cov=src/l3rseq --cov-report=term-missing
+ruff check src/ tests/python/
+mypy src/l3rseq/
+```
+
+The Python modules under `src/l3rseq/` (cigar, walk, variants, splice) are
+the algorithmic core of step 09's tail correction. They mirror the bash
+subscripts in `scripts/09a-09f_*.sh` and have unit tests under `tests/python/`.
+
+All three checks (`ruff`, `mypy`, `pytest`) must pass before committing
+anything under `src/l3rseq/` or `tests/python/`. CI runs the same three
+commands in the `python-test` job; running them locally first is the
+difference between a clean PR and a push-then-fix loop.
 
 ### Viewer tests
 

@@ -487,8 +487,29 @@ cmd_correct() {
     [ -z "$ref_file" ] && { echo "ERROR: --ref is required" >&2; return 1; }
     validate_introns "$introns" || return 1
 
-    _conda_run "$ENV_MAP" "09_tail_correct.sh" run_step_09 "$input_dir" "$output_dir" "$ref_file" "$var_file" "$pattern" \
-        "$blast_db_path" "$blast_db2_path" "$clip_thresh" "$output_dir/08_variants" "$threads" "$count_pattern" "$introns"
+    # Phase 1b: route step 09 through the pysam-backed Python orchestrator.
+    # Byte-identical to the bash version per tests/benchmarks/diff_step09.sh
+    # and ~25× faster at 4 threads per docs/step09_phase1b_comparison.md.
+    # The legacy bash implementation at scripts/09_tail_correct.sh is retained
+    # until Phase 1c as a fallback and for `bash tests/benchmarks/diff_step09.sh`.
+    local _py_args=(
+        --input "$input_dir"
+        --outdir "$output_dir"
+        --ref "$ref_file"
+        --pattern "$pattern"
+        --clip-thresh "$clip_thresh"
+        --variants-dir "$output_dir/08_variants"
+        --threads "$threads"
+    )
+    [ -n "$var_file" ] && _py_args+=(--var "$var_file")
+    [ -n "$count_pattern" ] && _py_args+=(--count-pattern "$count_pattern")
+    [ -n "$blast_db_path" ] && _py_args+=(--blast-db "$blast_db_path")
+    [ -n "$blast_db2_path" ] && _py_args+=(--blast-db2 "$blast_db2_path")
+    [ -n "$introns" ] && _py_args+=(--introns "$introns")
+
+    conda activate "$ENV_PY"
+    PYTHONPATH="$SCRIPT_DIR/src" python -m l3rseq.tail_correct "${_py_args[@]}"
+    conda deactivate
 }
 
 # ---------------------------------------------------------------------------

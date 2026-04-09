@@ -81,3 +81,35 @@ jobs:
         run: |
           export PATH="/opt/miniforge/bin:/opt/miniforge/condabin:$PATH"
           bash tests/run_tests.sh --no-viewer
+
+  python-test:
+    runs-on: ubuntu-latest
+    container:
+      image: ghcr.io/akihitomamiya-del/l3rseq:latest
+      credentials:
+        username: ${{ github.actor }}
+        password: ${{ secrets.GITHUB_TOKEN }}
+      options: --user 0:0
+    permissions:
+      contents: read
+      packages: read
+    steps:
+      - uses: actions/checkout@v4
+      - name: Lint with ruff
+        shell: bash
+        run: |
+          export PATH="/opt/miniforge/bin:/opt/miniforge/condabin:$PATH"
+          source activate l3rseq_py
+          ruff check src/ tests/python/
+      - name: Type-check with mypy
+        shell: bash
+        run: |
+          export PATH="/opt/miniforge/bin:/opt/miniforge/condabin:$PATH"
+          source activate l3rseq_py
+          mypy src/l3rseq/
+      - name: Run pytest with coverage
+        shell: bash
+        run: |
+          export PATH="/opt/miniforge/bin:/opt/miniforge/condabin:$PATH"
+          source activate l3rseq_py
+          pytest tests/python/ -v --cov=src/l3rseq --cov-report=term-missing
