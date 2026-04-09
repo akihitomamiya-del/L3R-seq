@@ -9,7 +9,6 @@ from __future__ import annotations
 
 from l3rseq.cigar import ParsedCigar, parse_cigar, rebuild_cigar
 
-
 # ============================================================================
 # parse_cigar
 # ============================================================================
