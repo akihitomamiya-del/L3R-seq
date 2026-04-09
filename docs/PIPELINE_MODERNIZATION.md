@@ -1,8 +1,73 @@
 # L3Rseq Pipeline Modernization — Phase 0 + Phase 1a
 
-> ## 📍 Current status — Session 1 complete, Phase 1b ready to start
+> ## 📍 Current status — Phase 1b complete, Phase 1c / 2 ready to start
 >
-> **Last updated**: 2026-04-09 (end of Session 1)
+> **Last updated**: 2026-04-09 (end of Session 2 — Phase 1b landed)
+> **Branch**: `pipeline-modernization` @ `e9ebfaf` (+9 commits since session 1)
+> **Tag**: `v1.1.4` on `ab34d85` (still valid — image has the `l3rseq_py` env)
+> **Docker image**: `ghcr.io/akihitomamiya-del/l3rseq:latest` = `v1.1.4` (published, amd64 + arm64)
+>
+> ### ✅ Done (Session 2 — Phase 1b)
+>
+> Everything necessary to ship Python step 09 is now on the branch:
+>
+> - **`src/l3rseq/tags.py`** + 12 tests (`70e7c5f`) — step-09 SAM tag construction in bash-compatible order
+> - **`src/l3rseq/blast.py`** + 11 tests (`2bea97f`) — batch blastn subprocess wrapper with mocked tests
+> - **`src/l3rseq/tail_correct.py`** + `__main__.py` + 24 tests (`e69e048`) — pysam I/O orchestrator + CLI entry (`python -m l3rseq.tail_correct`)
+> - **`tests/benchmarks/diff_step09.sh`** (`5aacacc` → `ad12f7c`) — byte-identical differential test: runs both bash (via `source scripts/09_tail_correct.sh && run_step_09`) and Python (via `python -m l3rseq.tail_correct`) into fresh temp dirs and compares with `samtools view | sort | cmp`. **ALL 4 SAMPLES IDENTICAL on every run.**
+> - **`tests/benchmarks/bench_step09_compare.sh`** + `docs/step09_phase1b_comparison.md` (`dd3fa9c`) — head-to-head timing: Python is **25.09× faster at 4 threads (3122 reads/sec vs 124)**, 45.72× at 1 thread. Blows past the 1.6×/3.3× target.
+> - **`L3Rseq` dispatcher** — `cmd_correct` now calls `PYTHONPATH=src python -m l3rseq.tail_correct` in the `l3rseq_py` env (`ad12f7c`). `bash tests/run_tests.sh --quick --no-viewer` → **78/78** with the Python path wired in, exercising Test 2 (CT), Test 2b (CT,AG), Test 3 (SLAM TC), Test 4 (splice BED), Test 5 (BLAST) all green.
+> - **`.github/workflows/test.yml`** — `continue-on-error` removed from `python-test` job (`e9ebfaf`). CI now hard-fails on ruff/mypy/pytest regressions.
+>
+> ### 📊 Final test / benchmark results (as of `e9ebfaf`)
+>
+> | Check | Result |
+> |---|---|
+> | `pytest tests/python/` | **123 passing** (algorithm 76 + tags 12 + blast 11 + tail_correct 24) |
+> | `ruff check src/ tests/python/` | clean |
+> | `mypy src/l3rseq/` (strict) | clean, 9 source files |
+> | `bash tests/test_shell_functions.sh` | 67 passing (unchanged, bash tests still green) |
+> | `bash tests/run_tests.sh --quick --no-viewer` | **78 passing** with Python dispatcher wired |
+> | `bash tests/benchmarks/diff_step09.sh` | ALL 4 SAMPLES IDENTICAL |
+> | `bench_step09_compare.sh` @ 4 threads | **25.09× speedup** (124 → 3122 reads/sec) |
+>
+> ### ▶️ Phase 1c ready to start (bash 09 fate decision)
+>
+> The modernization plan deferred this to "after Phase 1b results are in". Results are in, and the answer is clearly **delete** given byte-identity + 25× speedup. To execute:
+>
+> ```bash
+> git rm scripts/09_tail_correct.sh \
+>        scripts/09a_parse_cigar.sh \
+>        scripts/09b_blast_rightclip.sh \
+>        scripts/09c_walk_correction.sh \
+>        scripts/09d_rebuild_cigar.sh \
+>        scripts/09e_call_variants.sh \
+>        scripts/09f_splice_check.sh
+> # Trim the 09-related blocks from tests/test_shell_functions.sh:
+> #   - run_rebuild_cigar cases (lines 44-80)
+> #   - parse_introns cases (lines 88-122)
+> #   - check_splice cases (lines 130-184)
+> #   - convert_intron_d_to_n cases (lines 189-216)
+> #   - BLAST collect/lookup cases (lines 224-284)
+> # Keep the _require_int/_require_str guard tests — those are bash-specific
+> # safety mechanisms that don't apply to Python but are still useful as
+> # defensive-programming documentation. Or delete them too if you prefer.
+> #
+> # Update tests/benchmarks/diff_step09.sh to point at the archived bash
+> # source if you want the comparison to stay runnable long-term, or
+> # delete the diff script entirely (its job is done).
+> ```
+>
+> Alternative: move the bash files to `scripts/legacy/` with a README pointing at `src/l3rseq/tail_correct.py`. Preserves git blame and history browsing at the cost of one extra directory.
+>
+> ### ▶️ Phase 2+ also ready (Snakefile, step 11, config.yaml)
+>
+> With the Python env and package skeleton established, Phase 2 (Snakefile wrapping existing scripts as `shell:` rules) and Phase 3 (Pythonize step 11 gene counting with pyranges) can start whenever. Phase 4 (config.yaml centralization) is the final cleanup.
+>
+> ---
+>
+> ## 📍 Previous state — Session 1 complete (archival)
+>
 > **Branch**: `pipeline-modernization` @ `40410dd`
 > **Tag**: `v1.1.4` on `ab34d85`
 > **Docker image**: `ghcr.io/akihitomamiya-del/l3rseq:latest` = `v1.1.4` (published, amd64 + arm64, all CI jobs green)
