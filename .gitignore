@@ -12,6 +12,10 @@
 !CHANGELOG.md
 !docker-compose.yml
 !pyproject.toml
+!Snakefile
+!config.yaml
+!workflow/
+!workflow/**
 !.env.example
 !l3rseq-docker
 !.github/
