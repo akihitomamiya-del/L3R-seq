@@ -50,6 +50,7 @@ This is a **sandboxed devcontainer** with a network firewall. Key constraints:
   - `UMIC-seq` — python3, biopython, scikit-bio (alternative UMI method)
   - `Entrez` — efetch, esearch (fetching NCBI references)
   - `analysis` — matplotlib, numpy (plotting scripts)
+  - `l3rseq_py` — python3, pysam, biopython, pyranges, snakemake, pandas, scipy, pytest, ruff, mypy (Python algorithmic core for step 09 + dev tooling)
   Example: `conda activate NanoporeMap && samtools view ...`
   The `L3Rseq` dispatcher handles env activation automatically for pipeline runs.
 - **The IGV viewer auto-starts** on port 8080 via `postStartCommand`. Use
@@ -215,6 +216,28 @@ the test suite inside a fresh container. Not applicable in devcontainer sessions
 ```bash
 bash tests/test_shell_functions.sh          # CIGAR, splice, BLAST helpers
 ```
+
+### Python algorithm tests (l3rseq_py env)
+
+```bash
+conda activate l3rseq_py
+pytest tests/python/ -v --cov=src/l3rseq --cov-report=term-missing
+ruff check src/ tests/python/
+mypy src/l3rseq/
+```
+
+The Python modules under `src/l3rseq/` (cigar, walk, variants, splice) are
+the algorithmic core of step 09's tail correction. They mirror the bash
+subscripts in `scripts/09a-09f_*.sh` and have unit tests under `tests/python/`.
+
+**Before the image rebuild lands**, the `l3rseq_py` env doesn't exist. As a
+fallback, run pytest directly from the existing UMIC-seq env (which has
+pytest 9.0.2 + biopython 1.83):
+```bash
+/opt/miniforge/envs/UMIC-seq/bin/pytest tests/python/ -v
+```
+This works for the pure-Python algorithm modules (no pysam needed). The
+`tail_correct.py` orchestrator + I/O layer (Phase 1b) requires the full env.
 
 ### Viewer tests
 

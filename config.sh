@@ -93,3 +93,4 @@ ENV_UMIC="UMIC-seq"              # step 04 (--method umic-seq)
 ENV_LONGREAD_UMI="longread_umi"  # steps 04, 05 (--method longread-umi)
 ENV_MAP="NanoporeMap"            # steps 07, 09, filter
 ENV_LOFREQ="LoFreq"             # step 08
+ENV_PY="l3rseq_py"               # Python algorithmic core (Phase 1b: step 09 pysam rewrite)
