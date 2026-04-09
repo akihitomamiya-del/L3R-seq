@@ -84,11 +84,6 @@ jobs:
 
   python-test:
     runs-on: ubuntu-latest
-    # continue-on-error during initial rollout: the published :latest image
-    # won't have the l3rseq_py env until *after* this commit's tag triggers
-    # a docker-publish rebuild. Once the new image is published and verified,
-    # remove continue-on-error in a follow-up commit.
-    continue-on-error: true
     container:
       image: ghcr.io/akihitomamiya-del/l3rseq:latest
       credentials:
