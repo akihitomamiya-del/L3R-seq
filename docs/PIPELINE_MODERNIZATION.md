@@ -27,13 +27,11 @@
 > - `bash tests/benchmarks/diff_step11.sh` → ALL MATCH
 > - `snakemake --configfile config.yaml --cores 4` → 32-33 jobs end-to-end
 >
-> ### ▶️ Phase 4 remaining work
+> ### ▶️ Phase 4 notes
 >
 > Phase 4b (this PR) picked **option (b)**: the bash dispatcher reads `config.yaml` via `python -m l3rseq.config` in the `l3rseq_py` env, loaded through `scripts/load_config.sh`. `config.sh` was slimmed to ENV names + `$(nproc)` thread defaults. A `_fallback_defaults()` bash block in `load_config.sh` is the pure-bash safety net; `scripts/check_config_sync.py` now compares that block (not `config.sh`) against `config.yaml`. See `docs/development.md` § "Single source of truth" for the precedence model.
 >
-> Still outstanding:
->
-> - **`echo` → `logging` migration** in any Python modules that still use plain `echo`-style output. Phase 1b's `tail_correct.py` and Phase 3's `count.py` already use the `logging.getLogger("l3rseq.X")` pattern; verify nothing was missed.
+> Logging audit (run 2026-04-10): zero `print()` or `sys.stderr` calls in `src/l3rseq/*.py`. `count.py` and `tail_correct.py` already use `logging.getLogger("l3rseq.X")` with `--verbose` wiring; the pure-algorithm modules (`cigar.py`, `walk.py`, `variants.py`, `splice.py`, `tags.py`, `blast.py`) emit no output at all. Phase 4 is complete — no further work outstanding.
 >
 > ### ▶️ Other deferred items
 >
