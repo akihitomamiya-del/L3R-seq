@@ -8,7 +8,12 @@
 #
 # Example invocation:
 #   conda activate l3rseq_py
-#   snakemake --cores 4 --use-conda --configfile config.yaml
+#   snakemake --cores 4 --configfile config.yaml
+#
+# Note: do NOT pass --use-conda. The Snakefile activates conda envs manually
+# inside each rule's shell: preamble (see _shell_preamble() in the Snakefile),
+# rather than using snakemake's native conda: directive, so --use-conda is a
+# no-op.
 #
 # Override any key on the command line with --config key=value, e.g.:
 #   snakemake --cores 4 --config pattern=CT,AG output_dir=runs/my_run

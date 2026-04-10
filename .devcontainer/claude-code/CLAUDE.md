@@ -172,12 +172,14 @@ Quick sync: `cp .devcontainer/claude-code/CLAUDE.md ~/.claude/CLAUDE.md`
 - **Real data test**: Always `rm -rf runs/LibCheck` before re-running
   `runs/LibCheck_sample.sh` — leftover `03_demux_all/` breaks RPI filtering.
 
-## Pipeline modernization habits (active during the bash → Python rewrite)
+## Pipeline modernization habits
 
-These habits apply while the `pipeline-modernization` branch is alive — i.e.,
-while step 09 (and eventually others) is being ported from bash to pysam-backed
-Python under `src/l3rseq/`. See `docs/PIPELINE_MODERNIZATION.md` for the full
-plan and current phase status.
+The bash → Python modernization arc (Phases 0–4) is complete. Step 09 and
+step 11 run from `src/l3rseq/` under the `l3rseq_py` env, the Snakefile wraps
+all 11 steps, and `config.yaml` is the single source of truth for pipeline
+defaults. See `docs/PIPELINE_MODERNIZATION.md` for history and the current
+phase status. The habits below are permanent — they apply to any new work
+touching the Python modules, config, or the dispatcher.
 
 - **Pre-commit check trio for Python changes.** Before committing anything
   under `src/l3rseq/` or `tests/python/`, run all three:
@@ -192,12 +194,25 @@ plan and current phase status.
   missing type hints and `Any` leaks will fail.
 
 - **Algorithm modules stay pure.** `src/l3rseq/cigar.py`, `walk.py`,
-  `variants.py`, and `splice.py` must **never** `import pysam`, never touch
-  the filesystem, and never spawn subprocesses. They are pure-Python + stdlib
-  only. The orchestrator (`tail_correct.py`) and BLAST wrapper (`blast.py`)
-  are the ONLY places that touch pysam, I/O, or `subprocess`. This keeps the
-  algorithm tests runnable in isolation (they still ran in the UMIC-seq env
-  before `l3rseq_py` existed) and makes future refactors cheaper.
+  `variants.py`, `splice.py`, and `tags.py` must **never** `import pysam`,
+  never touch the filesystem, and never spawn subprocesses. They are
+  pure-Python + stdlib only. The orchestrators (`tail_correct.py`,
+  `count.py`), the BLAST wrapper (`blast.py`), and the config loader
+  (`config.py`) are the ONLY places that touch pysam, I/O, or `subprocess`.
+  This keeps the algorithm tests runnable in isolation and makes future
+  refactors cheaper.
+
+- **Config is centralized in `config.yaml`.** `config.sh` holds only conda
+  env names and `$(nproc)`-derived thread defaults. All step parameters
+  (adapters, thresholds, patterns, ...) live in `config.yaml`. Dispatcher
+  precedence is CLI flag > YAML (via `--config-file`) > `_fallback_defaults()`
+  bash block in `scripts/load_config.sh`. When adding or changing a
+  parameter:
+  1. Edit `config.yaml`.
+  2. Edit the matching bash line in `scripts/load_config.sh::_fallback_defaults`.
+  3. If it's a new key, extend `YAML_TO_BASH` in `src/l3rseq/config.py`.
+  4. Run `PYTHONPATH=src python3 scripts/check_config_sync.py` locally.
+  CI fails the PR if any of those steps is missed.
 
 - **Dockerfile changes require a tagged release — no runtime installs.**
   The devcontainer firewall blocks PyPI, conda-forge, and bioconda at
@@ -213,33 +228,26 @@ plan and current phase status.
   `[tool.pytest.ini_options]` and via `PYTHONPATH=src` for the module
   entry point.
 
-- **Port shell test cases verbatim when rewriting a bash script.** When
-  replacing a `scripts/09X_*.sh` subscript with `src/l3rseq/X.py`, every
-  corresponding case in `tests/test_shell_functions.sh` MUST be ported to
-  pytest with the exact same inputs, expected outputs, and edge cases — see
-  `tests/python/test_cigar.py` (mirrors `test_shell_functions.sh:44-80`) and
-  `tests/python/test_splice.py` (mirrors `:88-216`) for the pattern. The
-  ported tests are the regression contract against the frozen bash version.
+- **Port shell test cases verbatim when rewriting a bash script.** If any
+  future port replaces a bash step with Python, every corresponding case in
+  `tests/test_shell_functions.sh` MUST be ported to pytest with the same
+  inputs, expected outputs, and edge cases — see `tests/python/test_cigar.py`
+  (mirrors `test_shell_functions.sh:44-80`) and `tests/python/test_splice.py`
+  (mirrors `:88-216`) for the pattern.
 
 - **Differential test before switching the dispatcher to Python.** Before
-  changing `cmd_correct` (or any other `cmd_*`) in the `L3Rseq` dispatcher
-  to call Python instead of bash, prove byte-identical SAM/BAM output on
-  the full quick-test fixtures. "Byte-identical" = `samtools view` | sort |
-  `diff` on the output BAMs. Any deviation must be documented in the
-  commit message with a justification. The bash version is the source of
-  truth until the Python version passes this gate.
+  changing any `cmd_*` in the `L3Rseq` dispatcher to call Python instead of
+  bash, prove byte-identical SAM/BAM output on the full quick-test fixtures.
+  "Byte-identical" = `samtools view` | sort | `diff` on the output BAMs.
+  Any deviation must be documented in the commit message with a
+  justification. See `tests/benchmarks/diff_step09.sh` and `diff_step11.sh`
+  for the pattern.
 
 - **Benchmark with `date +%s.%N`, not bash `SECONDS`.** The integer
   `SECONDS` builtin rounds to whole seconds, which rounds away real signal
   on sub-10-second runs (a 3.5s run and a 4.3s run both show as "4s"). See
   `tests/benchmarks/bench_step09.sh` for the correct sub-second timing
   pattern and the multi-iteration min/median/mean reporting.
-
-- **Bash step 09 is frozen during the rewrite window.** Until Phase 1c
-  deletes or archives `scripts/09_tail_correct.sh` + `09a-09f_*.sh`, those
-  files receive only critical security/correctness hotfixes. All functional
-  improvements (e.g., the planned 5′ UMI extension) go into the Python
-  modules. Dual-maintenance of both implementations is a trap — don't.
 
 ## Project overview
 

@@ -131,7 +131,13 @@ jobs:
           snakemake --configfile config.yaml \
                     --config regions=tests/data/test_regions.tsv min_frac=0.3 \
                     --cores 4 --forcerun count
-          test -s tests/output/snake_quick/11_count/gene_counts_all.tsv
+          # Stronger than `test -s`: require at least one data row with a
+          # non-zero count. `test -s` would pass on a header-only file, which
+          # could hide an RNAME mismatch between test_regions.tsv and the
+          # minimap2 output (step 11 would silently count zero reads).
+          awk 'NR>1 && $NF+0 > 0' \
+              tests/output/snake_quick/11_count/gene_counts_all.tsv \
+              | grep -q .
       - name: Verify resume behavior (partial re-run)
         shell: bash
         run: |
@@ -141,7 +147,12 @@ jobs:
           rm -rf tests/output/snake_quick/08_variants/barcode01/barcode01_RPI_1
           rm -f  tests/output/snake_quick/09_correct/.done
           rm -f  tests/output/snake_quick/10_csv/barcode01_barcode01_RPI_1.csv
-          # Dry-run should plan ≪32 jobs (resume), not the full pipeline
+          # Dry-run should plan ≪32 jobs (resume), not the full pipeline.
+          # Threshold 15: we deleted 1 sample's variants + step 09 sentinel +
+          # 1 CSV, which re-triggers variants (1) + step 09 aggregate (1) +
+          # affected step 10 CSVs (≤4) + rule `all` (1) = ~7 jobs, with
+          # headroom for DAG expansion. A full re-run would be 32 jobs. If
+          # this fires, snakemake is re-running work it shouldn't touch.
           planned=$(snakemake --configfile config.yaml --cores 4 --dry-run 2>&1 \
                     | awk '/^total[[:space:]]/ {print $2}' | tail -1)
           echo "Resume plan: $planned jobs"
