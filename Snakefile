@@ -28,6 +28,19 @@ from pathlib import Path
 configfile: "config.yaml"
 
 # ---------------------------------------------------------------------------
+# Wildcard constraints — keep `{barcode}` and `{rpi}` from matching slashes,
+# dots, or each other's underscores. Without these, `{barcode}_{rpi}` would
+# greedy-match `barcode02_RPI_14.fastq` as `bc=barcode02_RPI, rpi=14` and
+# break every downstream path.
+# ---------------------------------------------------------------------------
+wildcard_constraints:
+    barcode=r"barcode[0-9]+",
+    # `{rpi}` in this Snakefile is the full bash `rpi_name`
+    # (e.g., "barcode01_RPI_1"), matching what the step scripts use as
+    # the per-sample directory and file prefix.
+    rpi=r"barcode[0-9]+_RPI_[0-9]+",
+
+# ---------------------------------------------------------------------------
 # Paths + derived constants
 # ---------------------------------------------------------------------------
 REPO_DIR    = Path(workflow.basedir).resolve()
@@ -52,6 +65,26 @@ ENVS = {
     "python":       "l3rseq_py",
 }
 
+def _variant_regex_and_label(pattern):
+    """Reproduce the regex + label build logic from scripts/08_variants.sh
+    `run_step_08`, so rule variants can call `_process_sample_08` directly
+    without going through `run_step_08`'s summary loop."""
+    patterns = [p.strip() for p in pattern.split(",") if p.strip()]
+    var_regex = "|".join(f"[0-9]+{p[0]}{p[1]}" for p in patterns)
+    pattern_label = ", ".join(f"{p[0]}>{p[1]}" for p in patterns)
+    return var_regex, pattern_label
+
+# Hard-coded CSV headers mirrored from scripts/10_export_csv.sh run_step_10.
+# Kept as a module constant so rule export_csv can call _process_sample_10
+# directly (the dispatcher builds these inline inside run_step_10).
+CSV_HEADER_BASE = (
+    "QNAME,FLAG,RNAME,POS,MAPQ,CIGAR,RNEXT,PNEXT,TLEN,SEQ,QUAL,"
+    "ThreePrime_end,ThreePrime_tail_length,ThreePrime_tail_seq,"
+    "translocation,double_sorter,editing_count"
+)
+CSV_HEADER_TAIL = "noise_count,matched_length,All_mismatches"
+CSV_HEADER_SJ   = "splice_pattern,introns_spliced,introns_retained"
+
 def umi_env(wildcards=None):
     """Pick the step-04 env based on config['umi_method']."""
     return ENVS["longread_umi"] if config["umi_method"] == "longread-umi" else ENVS["umic_seq"]
@@ -72,10 +105,29 @@ BARCODES = sorted(
 
 def rpis_for(barcode):
     """Return list of RPI names for a given barcode, triggering the demux
-    checkpoint if needed."""
+    checkpoint if needed. Filters out the special 'unclassified' bin which
+    cutadapt produces alongside the real RPI bins (step 04 has the same
+    skip-on-unclassified guard inline)."""
     ck = checkpoints.demux.get(barcode=barcode).output[0]
-    _, rpis = glob_wildcards(f"{ck}/{{bc}}_{{rpi}}.fastq")
-    return sorted(set(rpis))
+    # Match files like `barcode01_RPI_1.fastq`. The full basename (sans
+    # `.fastq`) becomes the `{rpi}` wildcard — same convention the step
+    # scripts use internally as `rpi_name`. The constraint excludes
+    # cutadapt's `barcode01_unclassified.fastq` sentinel.
+    rpis = glob_wildcards(f"{ck}/{{rpi,barcode[0-9]+_RPI_[0-9]+}}.fastq").rpi
+    # Cutadapt writes a sentinel fastq for every header in the RPI fasta,
+    # even for RPIs with only 1–2 spurious matches. Step 04 (UMI binning)
+    # needs at least ~10 reads to produce any clusters, so filter to samples
+    # that have a realistic number of reads. The test fixture
+    # (`tests/data/demux/`) is pre-filtered to exactly RPI_1 + RPI_2, which
+    # is what the bash --quick run sees.
+    _min_reads_for_umi = 10  # 40 fastq lines
+    def _nreads(path):
+        with open(path) as _fh:
+            return sum(1 for _ in _fh) // 4
+    return sorted({
+        r for r in set(rpis)
+        if _nreads(f"{ck}/{r}.fastq") >= _min_reads_for_umi
+    })
 
 def all_sample_pairs(wildcards=None):
     """Return dict of parallel lists {'barcode': [...], 'rpi': [...]} covering
@@ -83,19 +135,28 @@ def all_sample_pairs(wildcards=None):
     pairs = [(b, r) for b in BARCODES for r in rpis_for(b)]
     return {"barcode": [p[0] for p in pairs], "rpi": [p[1] for p in pairs]}
 
-def corrected_bams(wildcards=None):
+def _per_sample_targets(template):
+    """Expand a path template over every (barcode, rpi) pair in the run."""
     p = all_sample_pairs()
-    return expand(
-        f"{OUTPUT_DIR}/09_correct/{{barcode}}/{{rpi}}/{{rpi}}_corrected.sort.bam",
-        zip, barcode=p["barcode"], rpi=p["rpi"],
+    return expand(template, zip, barcode=p["barcode"], rpi=p["rpi"])
+
+def mapped_bams(wildcards=None):
+    return _per_sample_targets(
+        f"{OUTPUT_DIR}/07_map/{{barcode}}/{{rpi}}/{{rpi}}_primary.sort.bam"
+    )
+
+def variant_files(wildcards=None):
+    return _per_sample_targets(
+        f"{OUTPUT_DIR}/08_variants/{{barcode}}/{{rpi}}/observed_variants.txt"
+    )
+
+def corrected_bams(wildcards=None):
+    return _per_sample_targets(
+        f"{OUTPUT_DIR}/09_correct/{{barcode}}/{{rpi}}/{{rpi}}_corrected.sort.bam"
     )
 
 def csv_outputs(wildcards=None):
-    p = all_sample_pairs()
-    return expand(
-        f"{OUTPUT_DIR}/10_csv/{{barcode}}_{{rpi}}.csv",
-        zip, barcode=p["barcode"], rpi=p["rpi"],
-    )
+    return _per_sample_targets(f"{OUTPUT_DIR}/10_csv/{{barcode}}_{{rpi}}.csv")
 
 # ---------------------------------------------------------------------------
 # Top-level targets
@@ -153,12 +214,15 @@ rule concat:
         r"""
         set -euo pipefail
         _summary_append() {{ :; }}; export -f _summary_append
-        tmp=$(mktemp -d)
-        trap "rm -rf $tmp" EXIT
-        mkdir -p "$tmp/{wildcards.barcode}"
-        for f in {input}; do ln -sf "$(readlink -f "$f")" "$tmp/{wildcards.barcode}/"; done
+        tmp_in=$(mktemp -d)
+        tmp_out=$(mktemp -d)
+        trap "rm -rf $tmp_in $tmp_out" EXIT
+        mkdir -p "$tmp_in/{wildcards.barcode}"
+        for f in {input}; do ln -sf "$(readlink -f "$f")" "$tmp_in/{wildcards.barcode}/"; done
         source {SCRIPTS_DIR}/01_concat.sh
-        run_step_01 "$tmp" "{OUTPUT_DIR}" "{params.prefix}"
+        run_step_01 "$tmp_in" "$tmp_out" "{params.prefix}"
+        mkdir -p "{OUTPUT_DIR}/01_concat"
+        mv "$tmp_out/01_concat/{wildcards.barcode}.fastq.gz" "{output}"
         """
 
 # ---------------------------------------------------------------------------
@@ -176,11 +240,15 @@ rule trim:
         er=config["error_rate"],
     shell:
         _shell_preamble(ENVS["cutadapt"]) + r"""
-        tmp=$(mktemp -d)
-        trap "rm -rf $tmp" EXIT
-        ln -sf "$(readlink -f {input})" "$tmp/{wildcards.barcode}.fastq.gz"
+        tmp_in=$(mktemp -d)
+        tmp_out=$(mktemp -d)
+        trap "rm -rf $tmp_in $tmp_out" EXIT
+        ln -sf "$(readlink -f {input})" "$tmp_in/{wildcards.barcode}.fastq.gz"
         source {SCRIPTS_DIR}/02_trim.sh
-        run_step_02 "$tmp" "{OUTPUT_DIR}" '{params.fwd}' '{params.rev}' '{params.trim3}' '{params.er}'
+        run_step_02 "$tmp_in" "$tmp_out" '{params.fwd}' '{params.rev}' '{params.trim3}' '{params.er}'
+        mkdir -p "{OUTPUT_DIR}/02_trim"
+        rm -rf "{OUTPUT_DIR}/02_trim/{wildcards.barcode}"
+        mv "$tmp_out/02_trim/{wildcards.barcode}" "{OUTPUT_DIR}/02_trim/{wildcards.barcode}"
         """
 
 # ---------------------------------------------------------------------------
@@ -197,12 +265,16 @@ checkpoint demux:
         mo=config["demux_min_overlap"],
     shell:
         _shell_preamble(ENVS["cutadapt"]) + r"""
-        tmp=$(mktemp -d)
-        trap "rm -rf $tmp" EXIT
-        mkdir -p "$tmp/{wildcards.barcode}"
-        ln -sf "$(readlink -f {input})" "$tmp/{wildcards.barcode}/{wildcards.barcode}_trim3.fastq.gz"
+        tmp_in=$(mktemp -d)
+        tmp_out=$(mktemp -d)
+        trap "rm -rf $tmp_in $tmp_out" EXIT
+        mkdir -p "$tmp_in/{wildcards.barcode}"
+        ln -sf "$(readlink -f {input})" "$tmp_in/{wildcards.barcode}/{wildcards.barcode}_trim3.fastq.gz"
         source {SCRIPTS_DIR}/03_demultiplex.sh
-        run_step_03 "$tmp" "{OUTPUT_DIR}" "{params.rpi_fasta}" "{params.er}" "{params.mo}"
+        run_step_03 "$tmp_in" "$tmp_out" "{params.rpi_fasta}" "{params.er}" "{params.mo}"
+        mkdir -p "{OUTPUT_DIR}/03_demux"
+        rm -rf "{output}"
+        mv "$tmp_out/03_demux/{wildcards.barcode}" "{output}"
         """
 
 # ---------------------------------------------------------------------------
@@ -210,7 +282,7 @@ checkpoint demux:
 # ---------------------------------------------------------------------------
 rule umi:
     input:
-        f"{OUTPUT_DIR}/03_demux/{{barcode}}/{{barcode}}_{{rpi}}.fastq",
+        f"{OUTPUT_DIR}/03_demux/{{barcode}}/{{rpi}}.fastq",
     output:
         directory(f"{OUTPUT_DIR}/04_umi/{{barcode}}/{{rpi}}/UMIclusterfull"),
     params:
@@ -237,16 +309,20 @@ rule umi:
         else
             conda activate UMIC-seq
         fi
-        tmp=$(mktemp -d)
-        trap "rm -rf $tmp" EXIT
-        mkdir -p "$tmp/{wildcards.barcode}"
-        ln -sf "$(readlink -f {input})" "$tmp/{wildcards.barcode}/{wildcards.barcode}_{wildcards.rpi}.fastq"
+        tmp_in=$(mktemp -d)
+        tmp_out=$(mktemp -d)
+        trap "rm -rf $tmp_in $tmp_out" EXIT
+        mkdir -p "$tmp_in/{wildcards.barcode}"
+        ln -sf "$(readlink -f {input})" "$tmp_in/{wildcards.barcode}/{wildcards.rpi}.fastq"
         source {SCRIPTS_DIR}/04_umi.sh
-        run_step_04 "$tmp" "{OUTPUT_DIR}" \
+        run_step_04 "$tmp_in" "$tmp_out" \
             "{params.probe}" "{params.umi_len}" "{params.umi_loc}" \
             "{params.min_probe}" "{params.aln_thresh}" "{params.size_thresh}" \
             "{params.cluster_steps}" "{params.sample_size}" "{params.method}" \
             "{params.flank5}" "{params.flank3}"
+        mkdir -p "{OUTPUT_DIR}/04_umi/{wildcards.barcode}"
+        rm -rf "{OUTPUT_DIR}/04_umi/{wildcards.barcode}/{wildcards.rpi}"
+        mv "$tmp_out/04_umi/{wildcards.barcode}/{wildcards.rpi}" "{OUTPUT_DIR}/04_umi/{wildcards.barcode}/{wildcards.rpi}"
         """
 
 # ---------------------------------------------------------------------------
@@ -263,12 +339,16 @@ rule consensus:
     threads: config["threads"]["consensus"]
     shell:
         _shell_preamble(ENVS["longread_umi"]) + r"""
-        tmp=$(mktemp -d)
-        trap "rm -rf $tmp" EXIT
-        mkdir -p "$tmp/{wildcards.barcode}/{wildcards.rpi}"
-        ln -sfn "$(readlink -f {input})" "$tmp/{wildcards.barcode}/{wildcards.rpi}/UMIclusterfull"
+        tmp_in=$(mktemp -d)
+        tmp_out=$(mktemp -d)
+        trap "rm -rf $tmp_in $tmp_out" EXIT
+        mkdir -p "$tmp_in/{wildcards.barcode}/{wildcards.rpi}"
+        ln -sfn "$(readlink -f {input})" "$tmp_in/{wildcards.barcode}/{wildcards.rpi}/UMIclusterfull"
         source {SCRIPTS_DIR}/05_consensus.sh
-        run_step_05 "$tmp" "{OUTPUT_DIR}" "{threads}" "{params.rounds}" "{params.preset}"
+        run_step_05 "$tmp_in" "$tmp_out" "{threads}" "{params.rounds}" "{params.preset}"
+        mkdir -p "{OUTPUT_DIR}/05_consensus/{wildcards.barcode}"
+        rm -rf "{OUTPUT_DIR}/05_consensus/{wildcards.barcode}/{wildcards.rpi}"
+        mv "$tmp_out/05_consensus/{wildcards.barcode}/{wildcards.rpi}" "{OUTPUT_DIR}/05_consensus/{wildcards.barcode}/{wildcards.rpi}"
         """
 
 # ---------------------------------------------------------------------------
@@ -323,25 +403,32 @@ rule variants:
         f"{OUTPUT_DIR}/08_variants/{{barcode}}/{{rpi}}/observed_variants.txt",
     params:
         min_af=config["min_af"],
-        pattern=config["pattern"],
+        var_regex=lambda wc: _variant_regex_and_label(config["pattern"])[0],
+        pattern_label=lambda wc: _variant_regex_and_label(config["pattern"])[1],
         map_dir=lambda wc: f"{OUTPUT_DIR}/07_map/{wc.barcode}/{wc.rpi}",
     shell:
         _shell_preamble(ENVS["lofreq"]) + r"""
         source {SCRIPTS_DIR}/08_variants.sh
         _process_sample_08 "{wildcards.barcode}" "{wildcards.rpi}" "{params.map_dir}" \
-            "{OUTPUT_DIR}" "{input.ref}" "{params.min_af}" "{params.pattern}"
+            "{OUTPUT_DIR}" "{input.ref}" "{params.min_af}" '{params.var_regex}' '{params.pattern_label}'
         """
 
 # ---------------------------------------------------------------------------
 # Step 09 — Python-backed tail correction (no shell wrapper; direct module call)
 # ---------------------------------------------------------------------------
 rule correct:
+    # Whole-run aggregation rule. Step 09's tail_correct.py is already
+    # internally parallel and designed to process every sample in one
+    # invocation (it walks 07_map/ and auto-detects per-sample variants
+    # from 08_variants/), so there is no benefit to per-sample Snakemake
+    # parallelism here — we'd just be paying process-startup tax. Upstream
+    # rules (map, variants) are still per-sample and will parallelize.
     input:
-        bam=rules.map.output,
-        var=rules.variants.output,
+        bams=mapped_bams,
+        vars=variant_files,
         ref=REF,
     output:
-        f"{OUTPUT_DIR}/09_correct/{{barcode}}/{{rpi}}/{{rpi}}_corrected.sort.bam",
+        touch(f"{OUTPUT_DIR}/09_correct/.done"),
     params:
         pattern=config["pattern"],
         count_pattern=config.get("count_pattern", ""),
@@ -349,7 +436,6 @@ rule correct:
         clip_thresh=config["clip_thresh"],
         blast_db=config.get("blast_db", ""),
         blast_db2=config.get("blast_db2", ""),
-        map_dir=lambda wc: f"{OUTPUT_DIR}/07_map/{wc.barcode}/{wc.rpi}",
     threads: config["threads"]["correct"]
     shell:
         _shell_preamble(ENVS["python"]) + r"""
@@ -359,8 +445,9 @@ rule correct:
         [ -n "{params.blast_db}"      ] && extra="$extra --blast-db {params.blast_db}"
         [ -n "{params.blast_db2}"     ] && extra="$extra --blast-db2 {params.blast_db2}"
         PYTHONPATH={SRC_DIR} python -m l3rseq.tail_correct \
-            --input "{params.map_dir}" \
-            --outdir "{OUTPUT_DIR}/09_correct/{wildcards.barcode}/{wildcards.rpi}" \
+            --input "{OUTPUT_DIR}/07_map" \
+            --outdir "{OUTPUT_DIR}" \
+            --variants-dir "{OUTPUT_DIR}/08_variants" \
             --ref "{input.ref}" \
             --pattern "{params.pattern}" \
             --clip-thresh "{params.clip_thresh}" \
@@ -373,18 +460,25 @@ rule correct:
 # ---------------------------------------------------------------------------
 rule export_csv:
     input:
-        rules.correct.output,
+        # Depend on the whole-run correct sentinel so Snakemake schedules
+        # step 09 exactly once for the entire run; the per-sample corrected
+        # BAM is read directly from {params.corr_dir}.
+        done=f"{OUTPUT_DIR}/09_correct/.done",
     output:
         f"{OUTPUT_DIR}/10_csv/{{barcode}}_{{rpi}}.csv",
     params:
         corr_dir=lambda wc: f"{OUTPUT_DIR}/09_correct/{wc.barcode}/{wc.rpi}",
+        header_base=CSV_HEADER_BASE,
+        header_tail=CSV_HEADER_TAIL,
+        header_sj=CSV_HEADER_SJ,
     shell:
         r"""
         set -euo pipefail
         _summary_append() {{ :; }}; export -f _summary_append
+        mkdir -p "{OUTPUT_DIR}/10_csv"
         source {SCRIPTS_DIR}/10_export_csv.sh
         _process_sample_10 "{wildcards.barcode}" "{wildcards.rpi}" "{params.corr_dir}" \
-            "{OUTPUT_DIR}"
+            "{OUTPUT_DIR}" '{params.header_base}' '{params.header_tail}' '{params.header_sj}'
         """
 
 # ---------------------------------------------------------------------------
