@@ -661,7 +661,23 @@ HELP
     [ -z "$output_dir" ] && { echo "ERROR: --outdir is required" >&2; return 1; }
     [ -z "$regions_file" ] && { echo "ERROR: --regions is required" >&2; return 1; }
 
-    _conda_run "$ENV_MAP" "11_count.sh" run_step_11 "$input_dir" "$output_dir" "$regions_file" "$housekeeping" "$min_frac" "$min_mapq"
+    # Phase 3: route step 11 through the pysam-backed Python orchestrator.
+    # Byte-identical to the bash version per tests/benchmarks/diff_step11.sh.
+    # Aggregation helpers (_generate_isoform_discovery, _normalize_counts)
+    # still shell out to awk functions in scripts/11_count.sh.
+    local _py_args=(
+        --input "$input_dir"
+        --outdir "$output_dir"
+        --regions "$regions_file"
+        --min-frac "$min_frac"
+        --min-mapq "$min_mapq"
+        --scripts-dir "$SCRIPT_DIR/scripts"
+    )
+    [ -n "$housekeeping" ] && _py_args+=(--housekeeping "$housekeeping")
+
+    conda activate "$ENV_PY"
+    PYTHONPATH="$SCRIPT_DIR/src" python -m l3rseq.count "${_py_args[@]}"
+    conda deactivate
 }
 
 # ---------------------------------------------------------------------------
