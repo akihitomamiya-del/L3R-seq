@@ -989,9 +989,24 @@ RUNHELP
         [ ! -f "$ref_file" ] && { echo "ERROR: --ref file not found: $ref_file" >&2; return 1; }
         # Auto-detect variant files from step 08 if --var not specified
         local run_var_file="$var_file"
-        _conda_run "$ENV_MAP" "09_tail_correct.sh" run_step_09 "$output_dir/07_map" "$output_dir" "$ref_file" "$run_var_file" "$pattern" \
-            "$blast_db_path" "$blast_db2_path" "$DEFAULT_CLIP_THRESH" \
-            "$output_dir/08_variants" "$threads" "$count_pattern" "$introns"
+        # Route through the Python orchestrator (same as cmd_correct).
+        local _py_args=(
+            --input "$output_dir/07_map"
+            --outdir "$output_dir"
+            --ref "$ref_file"
+            --pattern "$pattern"
+            --clip-thresh "$DEFAULT_CLIP_THRESH"
+            --variants-dir "$output_dir/08_variants"
+            --threads "$threads"
+        )
+        [ -n "$run_var_file" ] && _py_args+=(--var "$run_var_file")
+        [ -n "$count_pattern" ] && _py_args+=(--count-pattern "$count_pattern")
+        [ -n "$blast_db_path" ] && _py_args+=(--blast-db "$blast_db_path")
+        [ -n "$blast_db2_path" ] && _py_args+=(--blast-db2 "$blast_db2_path")
+        [ -n "$introns" ] && _py_args+=(--introns "$introns")
+        conda activate "$ENV_PY"
+        PYTHONPATH="$SCRIPT_DIR/src" python -m l3rseq.tail_correct "${_py_args[@]}"
+        conda deactivate
     fi
 
     # Step 10: Export (input: 09_correct/)
