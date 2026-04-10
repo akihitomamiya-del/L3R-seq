@@ -41,6 +41,61 @@ Several tools are available for inspecting and verifying the viewer during devel
 
 In the L3Rseq Pipeline (Claude Code Sandbox), Claude can use these tools directly — taking screenshots, running tests, and inspecting DOM state to verify its own changes without manual checking.
 
+## Running the pipeline with Snakemake
+
+L3Rseq has two equivalent execution paths:
+
+- **Bash dispatcher** — `L3Rseq run --input ... --outdir ... [flags]` (the original)
+- **Snakefile** — `snakemake --cores N --configfile config.yaml` (Phase 2 addition)
+
+Both produce the same outputs (verified by `tests/benchmarks/diff_step09.sh` and `diff_step11.sh` for the steps that have Python reimplementations). Use whichever fits your workflow — the dispatcher is simpler for one-off CLI runs, while Snakemake gives you resume-from-failure, DAG parallelism across `{barcode, RPI}` samples, and a declarative configuration surface.
+
+### Quick start
+
+```bash
+# 1. Edit config.yaml to point at your input/output dirs and reference
+$EDITOR config.yaml
+
+# 2. Activate the Python env (Snakemake itself lives here, alongside pysam)
+conda activate l3rseq_py
+
+# 3. Dry-run to verify the DAG looks right
+snakemake --cores 4 --configfile config.yaml --dry-run
+
+# 4. Execute
+snakemake --cores 4 --configfile config.yaml
+```
+
+### Useful flags
+
+| Flag | What it does |
+|---|---|
+| `--cores N` | Max parallel jobs (set to your CPU count) |
+| `--dry-run` | Show what would run without executing |
+| `--forcerun <rule>` | Re-run a specific rule even if outputs exist |
+| `--until <rule>` | Stop after a specific rule (e.g. `--until map`) |
+| `--config key=value` | Override any config.yaml value (e.g. `--config pattern=CT,AG`) |
+| `--rerun-incomplete` | Restart only the jobs that didn't finish cleanly |
+
+### Resume-from-failure
+
+Snakemake automatically tracks which outputs exist and re-runs only the missing jobs. Killing a run with Ctrl-C and re-launching the same command will pick up where it left off. To force a clean restart, delete the output directory.
+
+### Step 11 (gene counting) requires explicit opt-in
+
+The gene-counting rule is gated on `regions: ""` in `config.yaml` being non-empty. To run the full pipeline including step 11:
+
+```bash
+snakemake --cores 4 --configfile config.yaml \
+          --config regions=tests/data/test_regions.tsv min_frac=0.3
+```
+
+The `min_frac=0.3` override is needed for the synthetic test fixture (whose consensus reads are ~500bp fragments of a 1300bp region); production data should keep the default `min_frac=0.95`.
+
+### config.yaml vs. config.sh
+
+`config.yaml` (Snakefile) and `config.sh` (bash dispatcher) must contain the same default values for the parameters they share. A CI check (`scripts/check_config_sync.py`) enforces this — edit both files in lockstep when changing a default.
+
 ---
 
 [README](../README.md) | [Adaptation](adaptation.md) | [Requirements](requirements.md) | [Code Overview](code-overview.md) | **Development**
