@@ -490,7 +490,9 @@ rule export_csv:
 # ---------------------------------------------------------------------------
 rule count:
     input:
-        corrected_bams,
+        # Depend on step 09's whole-run sentinel; run_step_11 walks the
+        # 09_correct tree itself to find per-sample BAMs.
+        done=f"{OUTPUT_DIR}/09_correct/.done",
     output:
         f"{OUTPUT_DIR}/11_count/gene_counts_all.tsv",
     params:
