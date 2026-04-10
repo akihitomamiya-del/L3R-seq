@@ -1,9 +1,47 @@
 # L3Rseq Pipeline Modernization — Phase 0 + Phase 1a
 
-> ## 📍 Current status — Phase 2 end-to-end working (Snakefile wraps full pipeline)
+> ## 📍 Current status — Phases 1c, 2, 3 all merged; Phase 4 partially landed
 >
-> **Last updated**: 2026-04-10 (Session 3 — Snakefile lands on `snakefile-wrap` branch)
-> **Branch**: `snakefile-wrap` (off `main` post Phase 1b merge)
+> **Last updated**: 2026-04-10 (Session 3 — Snakefile + Python step 11 + bash legacy archive all on main)
+> **Branch**: `main`
+>
+> ### ✅ Done across all phases
+>
+> | Phase | What | Merged |
+> |---|---|---|
+> | 0 + 1a + 1b | Python algorithm modules + step 09 pysam port (25× speedup, byte-identical) | #3 |
+> | 2 | Snakefile wrapping all 11 pipeline steps (resume + DAG parallelism) | #4 |
+> | 3 | Python step 11 gene counting (pysam, byte-identical to bash) | #5 |
+> | 1c | Bash step 09 archived to `scripts/legacy/`, fixed `cmd_run` step-9 latent bug | #6 |
+> | 4 (partial) | Config drift detection (`scripts/check_config_sync.py` in CI) + Snakemake docs | #7 |
+>
+> **Test surface as of main**:
+> - `bash tests/run_tests.sh --quick --no-viewer` → **78/78** (dispatcher path)
+> - `bash tests/run_tests.sh --no-viewer` → all step-1..11 tests pass (full)
+> - `bash tests/test_shell_functions.sh` → **67/67** (legacy CIGAR/splice/BLAST helpers)
+> - `pytest tests/python/` → **140 passing** (cigar 18 + walk 14 + variants 20 + splice 24 + tags 12 + blast 11 + tail_correct 24 + count 17)
+> - `ruff check src/ tests/python/` → clean
+> - `mypy src/l3rseq/` (strict) → clean
+> - `bash tests/benchmarks/diff_step09.sh` → ALL SAMPLES IDENTICAL
+> - `bash tests/benchmarks/diff_step11.sh` → ALL MATCH
+> - `snakemake --configfile config.yaml --cores 4` → 32-33 jobs end-to-end
+>
+> ### ▶️ Phase 4 remaining work (real centralization)
+>
+> The drift detector is a guardrail, not architecture. The full Phase 4 still needs:
+>
+> - **Single source of truth**: pick one of (a) `config.yaml` is canonical, `config.sh` is generated; (b) bash dispatcher reads YAML at startup via a Python helper; (c) keep both, ratify the drift check as the contract.
+> - **CLI > YAML > defaults precedence** in the dispatcher (currently CLI > defaults only).
+> - **`echo` → `logging` migration** in any Python modules that still use plain `echo`-style output. Phase 1b's `tail_correct.py` and Phase 3's `count.py` already use the `logging.getLogger("l3rseq.X")` pattern; verify nothing was missed.
+>
+> ### ▶️ Other deferred items
+>
+> - **Phase 3b**: port `_generate_isoform_discovery` + `_normalize_counts` from awk to pandas (currently shelled out via subprocess from `count.py`). Low priority — the awk works fine.
+> - **Phase 3c**: delete `scripts/11_count.sh` once 3b lands. Until then it hosts the awk aggregation helpers.
+> - **Phase 5+**: port step 04 (UMI extraction) — much more invasive due to `longread_umi`'s starcode integration, may not be worth it.
+> - **HPC profile** (`profiles/`): SLURM/PBS support for the Snakefile. Phase 2 explicitly deferred.
+>
+> ---
 >
 > ### ✅ Done (Session 3 — Phase 2)
 >
