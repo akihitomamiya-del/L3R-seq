@@ -1,0 +1,113 @@
+# L3Rseq pipeline — Snakemake configuration
+#
+# This file drives the Snakefile at the repo root. Every key here mirrors a
+# CLI flag that the bash dispatcher (`L3Rseq run ...`) accepts, so migrating
+# from dispatcher → Snakemake is a matter of copying your CLI invocation into
+# this file. Defaults (where not set below) come from config.sh and match the
+# dispatcher's behavior.
+#
+# Example invocation:
+#   conda activate l3rseq_py
+#   snakemake --cores 4 --use-conda --configfile config.yaml
+#
+# Override any key on the command line with --config key=value, e.g.:
+#   snakemake --cores 4 --config pattern=CT,AG output_dir=runs/my_run
+
+# ---------------------------------------------------------------------------
+# Paths (required)
+# ---------------------------------------------------------------------------
+# input_dir:  directory containing one subdirectory per barcode, each holding
+#             *.fastq.gz files. Matches the layout `--input` expects.
+# output_dir: where all pipeline artifacts land (01_concat/, 02_trim/, ...).
+# ref:        reference FASTA used by step 07 (minimap2) and step 09 (walk).
+# rpi_fasta:  RPI barcode FASTA used by step 03 (demultiplex). Header names
+#             become the `{rpi}` wildcard downstream.
+input_dir:  tests/data/raw_fastq
+output_dir: tests/output/snake_quick
+ref:        resources/references/test_gene.fasta
+rpi_fasta:  resources/rpi_barcodes/RPI_Barcode_20nt.fasta
+
+# ---------------------------------------------------------------------------
+# Run parameters
+# ---------------------------------------------------------------------------
+pattern:       CT       # RNA editing pattern (step 08 + 09)
+count_pattern: ""       # Optional SC tag pattern (e.g. TC for SLAM). "" = disabled
+introns:       ""       # Optional introns spec (BED path or "start-end,...") for step 09. "" = disabled
+umi_method:    longread-umi   # longread-umi | umic-seq
+
+# ---------------------------------------------------------------------------
+# Step 02 — cutadapt adapter trimming (defaults from config.sh)
+# ---------------------------------------------------------------------------
+adapter_fwd:   'CAAGCAGAAGACGGCATACGAGATNNNNNNGTGACTGGAGTTCCTTGGCACCCGAGAATTCCA;min_overlap=63'
+adapter_rev:   'TGGAATTCTCGGGTGCCAAGGAACTCCAGTCACNNNNNNATCTCGTATGCCGTCTTCTGCTTG;min_overlap=63'
+adapter_trim3: 'TGGAATTCTCGGGTGCCAAGGAACTCCAGTCACNNNNNNATCTCGTATGCCGTCTTCTGCTTG$'
+error_rate:    0.2
+
+# ---------------------------------------------------------------------------
+# Step 03 — demultiplex
+# ---------------------------------------------------------------------------
+demux_error_rate: 1
+demux_min_overlap: 20
+
+# ---------------------------------------------------------------------------
+# Step 04 — UMI extraction
+# ---------------------------------------------------------------------------
+umi_len:             15
+umi_flank5:          CTGAC
+umi_flank3:          TGGAATTCTCGGGTGCCAAGGC
+umi_size_thresh:     3
+umi_cluster_steps:   "15 29 1"
+umi_sample_size:     50
+# UMIC-seq-only params (used when umi_method == umic-seq)
+umi_loc:             down
+umi_min_probe_score: 33
+umi_aln_thresh:      24
+umi_probe:           ""    # probe FASTA (required iff umi_method == umic-seq)
+
+# ---------------------------------------------------------------------------
+# Step 05 — consensus calling
+# ---------------------------------------------------------------------------
+consensus_rounds: 4
+consensus_preset: "lr:hq"
+
+# ---------------------------------------------------------------------------
+# Step 06 — target sequence extraction
+# ---------------------------------------------------------------------------
+target_fwd:         'CTACGCGCAAATTCTCATTGG'
+target_rev:         'CTGACNNNNNNNNNNNNNNNTGGAATTCTCGGGTGCCAAGGAACTCCAGTCA'
+target_min_overlap: 52
+
+# ---------------------------------------------------------------------------
+# Step 07 — mapping
+# ---------------------------------------------------------------------------
+map_preset: "lr:hq"
+
+# ---------------------------------------------------------------------------
+# Step 08 — variant calling
+# ---------------------------------------------------------------------------
+min_af: 0.01
+
+# ---------------------------------------------------------------------------
+# Step 09 — tail correction (Python, pysam-backed)
+# ---------------------------------------------------------------------------
+clip_thresh: 50
+# Optional BLAST DBs for chimera detection. Empty strings disable BLAST.
+blast_db:    ""   # chromosome DB (translocation detection)
+blast_db2:   ""   # cDNA DB (PCR chimera detection)
+
+# ---------------------------------------------------------------------------
+# Step 11 — gene counting
+# ---------------------------------------------------------------------------
+regions:      ""       # path to regions TSV (required to run step 11). "" = skip step 11
+housekeeping: ""       # housekeeping gene name (optional, enables normalization)
+min_frac:     0.95
+min_mapq:     0
+
+# ---------------------------------------------------------------------------
+# Per-step thread allocation (Snakemake will not run more jobs than --cores)
+# ---------------------------------------------------------------------------
+threads:
+  umi:       4    # step 04 — internally parallel (starcode)
+  consensus: 4    # step 05 — racon polishing rounds
+  map:       4    # step 07 — minimap2
+  correct:   4    # step 09 — Python multiprocessing

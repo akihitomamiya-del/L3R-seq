@@ -82,6 +82,74 @@ jobs:
           export PATH="/opt/miniforge/bin:/opt/miniforge/condabin:$PATH"
           bash tests/run_tests.sh --no-viewer
 
+  snakemake-test:
+    runs-on: ubuntu-latest
+    container:
+      image: ghcr.io/akihitomamiya-del/l3rseq:latest
+      credentials:
+        username: ${{ github.actor }}
+        password: ${{ secrets.GITHUB_TOKEN }}
+      options: --user 0:0
+    permissions:
+      contents: read
+      packages: read
+    steps:
+      - uses: actions/checkout@v4
+      - name: Run pipeline through Snakefile (quick fixture, steps 01→10)
+        shell: bash
+        run: |
+          export PATH="/opt/miniforge/bin:/opt/miniforge/condabin:$PATH"
+          source activate l3rseq_py
+          snakemake --version
+          snakemake --configfile config.yaml --cores 4
+      - name: Verify per-sample CSVs + read counts
+        shell: bash
+        run: |
+          export PATH="/opt/miniforge/bin:/opt/miniforge/condabin:$PATH"
+          source activate NanoporeMap
+          fail=0
+          for s in barcode01_barcode01_RPI_1 barcode01_barcode01_RPI_2 \
+                   barcode02_barcode02_RPI_1 barcode02_barcode02_RPI_2; do
+            csv="tests/output/snake_quick/10_csv/${s}.csv"
+            if [ ! -f "$csv" ]; then
+              echo "FAIL: missing $csv"; fail=1; continue
+            fi
+            # CSV = 1 header + N data rows; expect ~50–200 reads per sample
+            n=$(( $(wc -l < "$csv") - 1 ))
+            if [ "$n" -lt 20 ]; then
+              echo "FAIL: $s only $n reads (expected ≥20)"; fail=1
+            else
+              echo "OK: $s = $n reads"
+            fi
+          done
+          exit $fail
+      - name: Run step 11 gene counting (requires --config regions=...)
+        shell: bash
+        run: |
+          export PATH="/opt/miniforge/bin:/opt/miniforge/condabin:$PATH"
+          source activate l3rseq_py
+          snakemake --configfile config.yaml \
+                    --config regions=tests/data/test_regions.tsv min_frac=0.3 \
+                    --cores 4 --forcerun count
+          test -s tests/output/snake_quick/11_count/gene_counts_all.tsv
+      - name: Verify resume behavior (partial re-run)
+        shell: bash
+        run: |
+          export PATH="/opt/miniforge/bin:/opt/miniforge/condabin:$PATH"
+          source activate l3rseq_py
+          # Delete one sample's variants + the step 09 sentinel + one CSV
+          rm -rf tests/output/snake_quick/08_variants/barcode01/barcode01_RPI_1
+          rm -f  tests/output/snake_quick/09_correct/.done
+          rm -f  tests/output/snake_quick/10_csv/barcode01_barcode01_RPI_1.csv
+          # Dry-run should plan ≪32 jobs (resume), not the full pipeline
+          planned=$(snakemake --configfile config.yaml --cores 4 --dry-run 2>&1 \
+                    | awk '/^total[[:space:]]/ {print $2}' | tail -1)
+          echo "Resume plan: $planned jobs"
+          if [ "$planned" -gt 15 ]; then
+            echo "FAIL: resume planned $planned jobs (expected ≤15)"; exit 1
+          fi
+          snakemake --configfile config.yaml --cores 4
+
   python-test:
     runs-on: ubuntu-latest
     container:

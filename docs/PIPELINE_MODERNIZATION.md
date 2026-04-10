@@ -1,6 +1,99 @@
 # L3Rseq Pipeline Modernization — Phase 0 + Phase 1a
 
-> ## 📍 Current status — Phase 1b complete, Phase 1c / 2 ready to start
+> ## 📍 Current status — Phase 2 end-to-end working (Snakefile wraps full pipeline)
+>
+> **Last updated**: 2026-04-10 (Session 3 — Snakefile lands on `snakefile-wrap` branch)
+> **Branch**: `snakefile-wrap` (off `main` post Phase 1b merge)
+>
+> ### ✅ Done (Session 3 — Phase 2)
+>
+> `Snakefile` + `config.yaml` at repo root wrap the 11-step L3Rseq pipeline
+> as per-sample Snakemake rules with **zero edits to the step scripts**.
+> `snakemake --cores 4 --configfile config.yaml` runs the quick-test
+> fixture end-to-end (32 jobs, all green) and produces step-10 CSVs whose
+> read counts match the bash dispatcher within normal UMI non-determinism
+> (bash 99/106/111/118 vs snake 98/106/110/117 on the 4 samples).
+>
+> **Design choices**:
+>
+> - **Wrapper approach, not hook-extraction refactor.** The plan offered
+>   two options for the scripts that embed per-sample loops in `run_step_NN`
+>   (01, 02, 03, 04, 05). Wrapper won because it keeps `scripts/*.sh`
+>   untouched (zero regression surface), at the cost of a ~5-line shell
+>   preamble per rule that builds a private `$tmp_in` + `$tmp_out` tree
+>   and `mv`s results into `$OUTPUT_DIR` after the script returns. Steps
+>   06, 07, 08, 10 already had `_process_sample_NN` hooks and are called
+>   directly. Step 09 is Python and invoked as `python -m l3rseq.tail_correct`.
+>   Step 11 is a single whole-run aggregation rule (`rule count`) because
+>   gene counting is inherently cross-sample.
+>
+> - **Sample discovery: `config.yaml` for run parameters, filesystem
+>   glob for topology.** Barcodes come from `os.listdir(input_dir)` at
+>   Snakefile load time. RPIs come from a `checkpoint demux` rule that
+>   `glob_wildcards`s `03_demux/{barcode}/` after demultiplex finishes.
+>   `rpis_for()` filters out (a) cutadapt's `unclassified.fastq` sentinel
+>   and (b) RPIs with <10 reads (cutadapt writes a stub fastq for every
+>   header in the RPI fasta, including ones with only 1–2 spurious matches).
+>   This matches what the pre-prepared `tests/data/demux/` fixture contains.
+>
+> - **Wildcard constraints are mandatory.** Without them, `{barcode}_{rpi}`
+>   greedy-matches `barcode02_RPI_14.fastq` as `bc=barcode02_RPI, rpi=14`
+>   and builds nonsense paths. The Snakefile pins
+>   `{barcode}=barcode[0-9]+` and `{rpi}=barcode[0-9]+_RPI_[0-9]+` (the
+>   full `rpi_name` form the step scripts use as directory name + file
+>   prefix).
+>
+> - **Summary-loop race fix.** `run_step_0{1..5}`'s final summary sections
+>   iterate `$output_dir/NN_xxx/*` (the shared final output tree), which
+>   crashes under parallel execution when a sibling job's report log is
+>   still being written. The wrapper rules point `run_step_NN` at a
+>   private `$tmp_out` so each instance only sees its own sample.
+>
+> - **Consensus rule uses `cp -r`, not symlink.** `consensus_racon.sh`'s
+>   `find $IN -name 'umi*bins.fastq'` doesn't follow symlinked directories
+>   (noted in CLAUDE.md). The rule copies `UMIclusterfull/` into its tmp
+>   tree instead.
+>
+> - **Step 09 as aggregation, not per-sample.** `tail_correct.py` is
+>   internally parallel and its CLI expects the full `07_map/` dir with
+>   auto-detected per-sample variants from `08_variants/`. The Snakemake
+>   rule depends on `mapped_bams + variant_files` (all samples) and
+>   produces a `09_correct/.done` touch sentinel; downstream rules depend
+>   on the individual corrected BAM paths directly.
+>
+> **Commits on `snakefile-wrap`**:
+>
+> | SHA | What |
+> |---|---|
+> | 30f5974 | Scaffolding: `Snakefile` loader, `config.yaml`, `.gitignore` allowlist |
+> | 70bdbe4 | All 11 rules (initial wrapper pattern, no script edits) |
+> | 0ad353f | Wildcard constraints, tmp_out isolation, step 08/10 args, step 09 aggregation |
+> | 0a032db | `cp -r` instead of symlink for UMIclusterfull (consensus rule) |
+>
+> ### ▶️ Phase 2 remaining work
+>
+> - **Step 11 (gene counting) not tested end-to-end**: `config.yaml` ships
+>   with `regions: ""` (disabled), so `rule count` is never pulled into
+>   the DAG by `rule all`. When a regions TSV is supplied, the rule will
+>   call `run_step_11 "$OUTPUT_DIR" "$OUTPUT_DIR" ...` which should work
+>   (single whole-run invocation, no race). Needs a test run with
+>   `--config regions=tests/data/test_regions.tsv` to confirm.
+>
+> - **Resume-from-failure not tested**: the plan's acceptance gate
+>   includes killing a run mid-pipeline and re-launching to verify only
+>   missing steps rerun. Snakemake's checkpoint + output-file mechanism
+>   should handle this automatically, but it wasn't exercised in this
+>   session.
+>
+> - **No CI job yet**: `.github/workflows/test.yml` still only runs the
+>   bash dispatcher path. Adding a `snakemake-test` job that runs the
+>   quick fixture through `snakemake --cores 4` is a clean follow-up.
+>
+> - **`docs/development.md` running-with-snakemake section**: for end users.
+>
+> ---
+
+> ## 📍 Previous status — Phase 1b complete
 >
 > **Last updated**: 2026-04-09 (end of Session 2 — Phase 1b landed)
 > **Branch**: `pipeline-modernization` @ `e9ebfaf` (+9 commits since session 1)
