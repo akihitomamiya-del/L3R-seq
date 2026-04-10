@@ -75,6 +75,7 @@ snakemake --cores 4 --configfile config.yaml
 | `--forcerun <rule>` | Re-run a specific rule even if outputs exist |
 | `--until <rule>` | Stop after a specific rule (e.g. `--until map`) |
 | `--config key=value` | Override any config.yaml value (e.g. `--config pattern=CT,AG`) |
+| `--configfile <path>` | Use an alternate YAML (e.g. `experiments/slam.yaml`) |
 | `--rerun-incomplete` | Restart only the jobs that didn't finish cleanly |
 
 ### Resume-from-failure
@@ -92,9 +93,43 @@ snakemake --cores 4 --configfile config.yaml \
 
 The `min_frac=0.3` override is needed for the synthetic test fixture (whose consensus reads are ~500bp fragments of a 1300bp region); production data should keep the default `min_frac=0.95`.
 
-### config.yaml vs. config.sh
+### Single source of truth (config.yaml)
 
-`config.yaml` (Snakefile) and `config.sh` (bash dispatcher) must contain the same default values for the parameters they share. A CI check (`scripts/check_config_sync.py`) enforces this — edit both files in lockstep when changing a default.
+As of Phase 4 (config centralization), `config.yaml` is canonical for all pipeline step defaults. Both execution paths read from it:
+
+- **Snakefile** — reads `config.yaml` natively via `snakemake --configfile config.yaml`.
+- **Bash dispatcher** — loads `config.yaml` via `scripts/load_config.sh`, which shells out to `python -m l3rseq.config` (in the `l3rseq_py` env) and emits bash assignments. The dispatcher also keeps a pure-bash `_fallback_defaults` block in `load_config.sh` as a safety net for when `config.yaml` or `l3rseq_py` isn't available. `scripts/check_config_sync.py` runs in CI to guarantee the fallback block stays identical to `config.yaml` for the 24 overlap keys.
+
+Precedence in the dispatcher: **CLI flag > config.yaml (via `--config-file`) > fallback defaults**.
+
+`config.sh` is now a small file holding only the values that don't belong in YAML: conda environment names (`ENV_*`) and `$(nproc)`-derived thread counts computed per host.
+
+#### Per-experiment configs (`--config-file`)
+
+The in-repo `config.yaml` ships with test-fixture values for `ref`, `input_dir`, etc. — they drive the Snakemake quick-test fixture. The bash dispatcher does **not** auto-load these. To use a YAML file from the dispatcher, pass it explicitly:
+
+```bash
+# Copy the shipped config as a starting point
+cp config.yaml experiments/slam.yaml
+$EDITOR experiments/slam.yaml     # tweak pattern, thresholds, paths
+
+# Run the dispatcher with that file (--config-file can appear anywhere)
+./L3Rseq --config-file experiments/slam.yaml run --input data/slam_run1 --outdir runs/slam_run1
+
+# Any CLI flag still overrides the YAML value (CLI > YAML > fallback)
+./L3Rseq --config-file experiments/slam.yaml run --pattern AG ...
+```
+
+The same file works for the Snakemake path: `snakemake --configfile experiments/slam.yaml --cores 4`.
+
+#### Adding a new parameter
+
+1. Add the key to `config.yaml` with its default value.
+2. Add the matching bash assignment to `_fallback_defaults()` in `scripts/load_config.sh`.
+3. Extend `YAML_TO_BASH` in `src/l3rseq/config.py` to register the mapping.
+4. Run `PYTHONPATH=src python3 scripts/check_config_sync.py` locally to confirm sync.
+
+CI fails the PR if any of those steps is missed.
 
 ---
 

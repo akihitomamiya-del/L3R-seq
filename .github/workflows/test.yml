@@ -163,9 +163,12 @@ jobs:
       packages: read
     steps:
       - uses: actions/checkout@v4
-      - name: Verify config.yaml and config.sh are in sync
+      - name: Verify config.yaml and load_config.sh fallback are in sync
         shell: bash
-        run: python3 scripts/check_config_sync.py
+        run: |
+          export PATH="/opt/miniforge/bin:/opt/miniforge/condabin:$PATH"
+          source activate l3rseq_py
+          PYTHONPATH=src python3 scripts/check_config_sync.py
       - name: Lint with ruff
         shell: bash
         run: |

@@ -9,12 +9,65 @@ set -euo pipefail
 # Resolve script locations
 # ---------------------------------------------------------------------------
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+
+# Load conda env names + $(nproc)-derived thread defaults (bash-only values).
 source "$SCRIPT_DIR/config.sh"
 
 # Resolve resource paths relative to the script directory
 RESOURCES_DIR="$SCRIPT_DIR/resources"
 DEFAULT_BLAST_DB_PATH="$RESOURCES_DIR/blast/TAIR10_ChrM/TAIR10_ChrM_db"
 DEFAULT_BLAST_DB2_PATH="$RESOURCES_DIR/blast/TAIR10_cDNA/TAIR10_cdna_db"
+
+# ---------------------------------------------------------------------------
+# Config loading: CLI > config.yaml > hardcoded fallback
+#
+# 1. Seed DEFAULT_* from the pure-bash fallback block in load_config.sh.
+# 2. Walk $@ for a global `--config-file <path>` flag (stripping it out of
+#    the arg list so subcommands don't see it). Default to $SCRIPT_DIR/config.yaml
+#    if present.
+# 3. Overlay values from the YAML file via the Python loader. The loader
+#    emits `DEFAULT_*` for overlap keys and `YAML_*` for run-scoped keys
+#    (input_dir, ref, regions, ...) that cmd_* functions use as fallbacks.
+# 4. Per-subcommand CLI flags override both. See cmd_run for the pattern.
+# ---------------------------------------------------------------------------
+source "$SCRIPT_DIR/scripts/load_config.sh"
+_fallback_defaults
+
+CONFIG_FILE=""
+_pass_args=()
+while [ $# -gt 0 ]; do
+    case "$1" in
+        --config-file)
+            if [ -z "${2:-}" ] || [[ "${2:-}" == --* ]]; then
+                echo "ERROR: --config-file requires a value" >&2
+                exit 1
+            fi
+            CONFIG_FILE="$2"
+            shift 2
+            ;;
+        *)
+            _pass_args+=("$1")
+            shift
+            ;;
+    esac
+done
+set -- "${_pass_args[@]+"${_pass_args[@]}"}"
+unset _pass_args
+
+# Only overlay YAML values when the user explicitly passes --config-file.
+# The in-repo config.yaml exists for the Snakemake path and ships with
+# test-fixture values (ref, input_dir, ...) — auto-loading them into the
+# dispatcher would silently override a user's CLI args with test values.
+# The _fallback_defaults block is by-contract identical to config.yaml's
+# overlap keys (enforced by scripts/check_config_sync.py in CI), so
+# implicit dispatcher behavior is unchanged.
+if [ -n "$CONFIG_FILE" ]; then
+    if [ ! -f "$CONFIG_FILE" ]; then
+        echo "ERROR: --config-file: $CONFIG_FILE not found" >&2
+        exit 1
+    fi
+    eval "$(l3rseq_load_config "$CONFIG_FILE")"
+fi
 
 # ---------------------------------------------------------------------------
 # Initialize conda (required for tool activation)
@@ -65,8 +118,12 @@ Utility:
 Full pipeline:
   run          Run all steps (or a subset with --start-at / --stop-at)
 
-Options:
-  --help       Show this help message
+Global options (may appear anywhere in the argument list):
+  --config-file <path>  Load step defaults + run-scoped values from a YAML
+                        file (opt-in). Precedence: CLI flag > YAML > fallback.
+                        The in-repo config.yaml is NOT auto-loaded — pass it
+                        explicitly to use it: L3Rseq --config-file config.yaml run ...
+  --help                Show this help message
 
 For subcommand-specific help: L3Rseq <subcommand> --help
 HELP
@@ -625,8 +682,12 @@ HELP
 # Subcommand: count (gene-level read counting)
 # ---------------------------------------------------------------------------
 cmd_count() {
-    local input_dir="" output_dir="" regions_file="" housekeeping=""
-    local min_frac="0.95" min_mapq="0"
+    local input_dir="${YAML_INPUT_DIR:-}"
+    local output_dir="${YAML_OUTPUT_DIR:-}"
+    local regions_file="${YAML_REGIONS:-}"
+    local housekeeping="${YAML_HOUSEKEEPING:-}"
+    local min_frac="${YAML_MIN_FRAC:-0.95}"
+    local min_mapq="${YAML_MIN_MAPQ:-0}"
 
     while [ $# -gt 0 ]; do
         case "$1" in
@@ -711,22 +772,29 @@ cmd_discover_introns() {
 # Subcommand: run (full pipeline)
 # ---------------------------------------------------------------------------
 cmd_run() {
-    local input_dir="" output_dir="" ref_file="" probe_file=""
-    local rpi_fasta="" var_file="" prefix=""
+    # Run-scoped locals initialize from YAML_* (set by the dispatcher's global
+    # config loader) so users can pre-seed them in config.yaml. CLI flags
+    # below still take precedence: CLI > YAML > defaults.
+    local input_dir="${YAML_INPUT_DIR:-}"
+    local output_dir="${YAML_OUTPUT_DIR:-}"
+    local ref_file="${YAML_REF:-}"
+    local probe_file="${YAML_UMI_PROBE:-}"
+    local rpi_fasta="${YAML_RPI_FASTA:-}"
+    local var_file="" prefix=""
     local start_at=1 stop_at=10
     local prefilter=0
     local pattern="$DEFAULT_PATTERN"
     local threads="$DEFAULT_CONSENSUS_THREADS"
-    local method="longread-umi"
+    local method="${YAML_UMI_METHOD:-longread-umi}"
     local umi_flank5="$DEFAULT_UMI_FLANK5"
     local umi_flank3="$DEFAULT_UMI_FLANK3"
-    local count_pattern=""
+    local count_pattern="${YAML_COUNT_PATTERN:-}"
     local keep_intermediates=0
-    # Library-specific overrides (default to config.sh values; for adapter/target
-    # customization, edit config.sh or use the individual subcommands directly)
-    local blast_db_path="$DEFAULT_BLAST_DB_PATH"
-    local blast_db2_path="$DEFAULT_BLAST_DB2_PATH"
-    local introns=""
+    # Library-specific overrides (default to config.yaml values; for adapter/target
+    # customization, edit config.yaml or use the individual subcommands directly)
+    local blast_db_path="${YAML_BLAST_DB:-$DEFAULT_BLAST_DB_PATH}"
+    local blast_db2_path="${YAML_BLAST_DB2:-$DEFAULT_BLAST_DB2_PATH}"
+    local introns="${YAML_INTRONS:-}"
     local target_fwd="$DEFAULT_TARGET_FWD"
     local target_rev="$DEFAULT_TARGET_REV"
     local verbose=0
