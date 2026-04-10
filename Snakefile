@@ -501,9 +501,16 @@ rule count:
         min_frac=config["min_frac"],
         min_mapq=config["min_mapq"],
     shell:
-        _shell_preamble(ENVS["map"]) + r"""
-        source {SCRIPTS_DIR}/11_count.sh
-        run_step_11 "{OUTPUT_DIR}" "{OUTPUT_DIR}" "{params.regions}" \
-            "{params.housekeeping}" "{params.min_frac}" "{params.min_mapq}"
+        _shell_preamble(ENVS["python"]) + r"""
+        extra=""
+        [ -n "{params.housekeeping}" ] && extra="$extra --housekeeping {params.housekeeping}"
+        PYTHONPATH={SRC_DIR} python -m l3rseq.count \
+            --input "{OUTPUT_DIR}" \
+            --outdir "{OUTPUT_DIR}" \
+            --regions "{params.regions}" \
+            --min-frac "{params.min_frac}" \
+            --min-mapq "{params.min_mapq}" \
+            --scripts-dir "{SCRIPTS_DIR}" \
+            $extra
         """
 
