@@ -343,7 +343,11 @@ rule consensus:
         tmp_out=$(mktemp -d)
         trap "rm -rf $tmp_in $tmp_out" EXIT
         mkdir -p "$tmp_in/{wildcards.barcode}/{wildcards.rpi}"
-        ln -sfn "$(readlink -f {input})" "$tmp_in/{wildcards.barcode}/{wildcards.rpi}/UMIclusterfull"
+        # cp -r, not a symlink — consensus_racon.sh uses `find $IN` without
+        # -L, which doesn't traverse symlinked directories (see CLAUDE.md
+        # "longread_umi_L3Rseq" notes). Hard-linking files + replicating
+        # directory structure would avoid the copy but this is a small tree.
+        cp -r "$(readlink -f {input})" "$tmp_in/{wildcards.barcode}/{wildcards.rpi}/UMIclusterfull"
         source {SCRIPTS_DIR}/05_consensus.sh
         run_step_05 "$tmp_in" "$tmp_out" "{threads}" "{params.rounds}" "{params.preset}"
         mkdir -p "{OUTPUT_DIR}/05_consensus/{wildcards.barcode}"
