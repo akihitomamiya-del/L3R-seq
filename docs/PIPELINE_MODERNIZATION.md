@@ -1,8 +1,8 @@
 # L3Rseq Pipeline Modernization — Phase 0 + Phase 1a
 
-> ## 📍 Current status — Phases 1c, 2, 3 all merged; Phase 4 partially landed
+> ## 📍 Current status — All major phases merged; Phase 4 complete
 >
-> **Last updated**: 2026-04-10 (Session 3 — Snakefile + Python step 11 + bash legacy archive all on main)
+> **Last updated**: 2026-04-10 (Session 4 — config.yaml as single source of truth)
 > **Branch**: `main`
 >
 > ### ✅ Done across all phases
@@ -13,7 +13,8 @@
 > | 2 | Snakefile wrapping all 11 pipeline steps (resume + DAG parallelism) | #4 |
 > | 3 | Python step 11 gene counting (pysam, byte-identical to bash) | #5 |
 > | 1c | Bash step 09 archived to `scripts/legacy/`, fixed `cmd_run` step-9 latent bug | #6 |
-> | 4 (partial) | Config drift detection (`scripts/check_config_sync.py` in CI) + Snakemake docs | #7 |
+> | 4a | Config drift detection (`scripts/check_config_sync.py` in CI) + Snakemake docs | #7 |
+> | 4b | `config.yaml` single source of truth; dispatcher loads YAML via `scripts/load_config.sh`; `--config-file` flag enables per-experiment configs; `CLI > YAML > fallback` precedence | (this PR) |
 >
 > **Test surface as of main**:
 > - `bash tests/run_tests.sh --quick --no-viewer` → **78/78** (dispatcher path)
@@ -26,13 +27,11 @@
 > - `bash tests/benchmarks/diff_step11.sh` → ALL MATCH
 > - `snakemake --configfile config.yaml --cores 4` → 32-33 jobs end-to-end
 >
-> ### ▶️ Phase 4 remaining work (real centralization)
+> ### ▶️ Phase 4 notes
 >
-> The drift detector is a guardrail, not architecture. The full Phase 4 still needs:
+> Phase 4b (this PR) picked **option (b)**: the bash dispatcher reads `config.yaml` via `python -m l3rseq.config` in the `l3rseq_py` env, loaded through `scripts/load_config.sh`. `config.sh` was slimmed to ENV names + `$(nproc)` thread defaults. A `_fallback_defaults()` bash block in `load_config.sh` is the pure-bash safety net; `scripts/check_config_sync.py` now compares that block (not `config.sh`) against `config.yaml`. See `docs/development.md` § "Single source of truth" for the precedence model.
 >
-> - **Single source of truth**: pick one of (a) `config.yaml` is canonical, `config.sh` is generated; (b) bash dispatcher reads YAML at startup via a Python helper; (c) keep both, ratify the drift check as the contract.
-> - **CLI > YAML > defaults precedence** in the dispatcher (currently CLI > defaults only).
-> - **`echo` → `logging` migration** in any Python modules that still use plain `echo`-style output. Phase 1b's `tail_correct.py` and Phase 3's `count.py` already use the `logging.getLogger("l3rseq.X")` pattern; verify nothing was missed.
+> Logging audit (run 2026-04-10): zero `print()` or `sys.stderr` calls in `src/l3rseq/*.py`. `count.py` and `tail_correct.py` already use `logging.getLogger("l3rseq.X")` with `--verbose` wiring; the pure-algorithm modules (`cigar.py`, `walk.py`, `variants.py`, `splice.py`, `tags.py`, `blast.py`) emit no output at all. Phase 4 is complete — no further work outstanding.
 >
 > ### ▶️ Other deferred items
 >
