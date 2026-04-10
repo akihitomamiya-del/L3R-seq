@@ -163,6 +163,9 @@ jobs:
       packages: read
     steps:
       - uses: actions/checkout@v4
+      - name: Verify config.yaml and config.sh are in sync
+        shell: bash
+        run: python3 scripts/check_config_sync.py
       - name: Lint with ruff
         shell: bash
         run: |
