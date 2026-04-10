@@ -61,7 +61,7 @@ echo "[diff] Running BASH step 09 (scripts/09_tail_correct.sh directly) ..."
     source /opt/miniforge/etc/profile.d/conda.sh
     conda activate NanoporeMap
     # shellcheck source=/dev/null
-    source "$REPO_ROOT/scripts/09_tail_correct.sh"
+    source "$REPO_ROOT/scripts/legacy/09_tail_correct.sh"
     # run_step_09 args: input_dir output_dir ref var pattern blast1 blast2 clip_thresh variants_dir threads count_pattern introns
     run_step_09 \
         "$INPUT_DIR/07_map" \

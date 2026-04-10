@@ -28,9 +28,9 @@ check_exact() {
 # Source the scripts under test
 # ============================================================================
 
-source "$PIPELINE_DIR/scripts/09d_rebuild_cigar.sh"
-source "$PIPELINE_DIR/scripts/09f_splice_check.sh"
-source "$PIPELINE_DIR/scripts/09b_blast_rightclip.sh"
+source "$PIPELINE_DIR/scripts/legacy/09d_rebuild_cigar.sh"
+source "$PIPELINE_DIR/scripts/legacy/09f_splice_check.sh"
+source "$PIPELINE_DIR/scripts/legacy/09b_blast_rightclip.sh"
 
 echo "========================================"
 echo "Shell Function Unit Tests"
