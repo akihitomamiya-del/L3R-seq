@@ -2,19 +2,25 @@
 
 ## How it works
 
-`CLAUDE_CODE_OAUTH_TOKEN` is injected into the container as an environment
-variable at **creation time** via `containerEnv` in
-`.devcontainer/claude-code/devcontainer.json`:
+`CLAUDE_CODE_OAUTH_TOKEN` is injected into each VS Code remote session (terminals
+and tasks) via `remoteEnv` in `.devcontainer/claude-code/devcontainer.json`:
 
 ```json
-"containerEnv": {
-  "CLAUDE_CODE_OAUTH_TOKEN": "${localEnv:CLAUDE_CODE_OAUTH_TOKEN}",
-  ...
+"remoteEnv": {
+  "ANTHROPIC_API_KEY": "${localEnv:ANTHROPIC_API_KEY}",
+  "CLAUDE_CODE_OAUTH_TOKEN": "${localEnv:CLAUDE_CODE_OAUTH_TOKEN}"
 }
 ```
 
-`${localEnv:CLAUDE_CODE_OAUTH_TOKEN}` reads from the **host** environment at
-the moment the container is created. No token is ever stored in the repo.
+`${localEnv:CLAUDE_CODE_OAUTH_TOKEN}` is re-evaluated every time VS Code connects
+to the container and reads from the **host** environment at that moment. No
+token is ever stored in the repo.
+
+**Why `remoteEnv` and not `containerEnv`?** `remoteEnv` is scoped to VS Code
+remote sessions — the token is only visible to your interactive shells, not to
+container-level processes (firewall script, IGV viewer, background tasks). It is
+also not baked into container metadata (`docker inspect`). Practically, this
+means token rotation only requires a VS Code restart, not a container rebuild.
 
 ---
 
@@ -44,11 +50,12 @@ resolve env vars at startup — it reads `~/.zshenv` but NOT `~/.zshrc`. The
 VS Code reads `~/.zshenv` **only at launch**. After first writing the token:
 
 1. **Quit VS Code completely** (Cmd+Q, not just close window)
-2. **Reopen VS Code** — it reads the new `~/.zshenv` and has the token
-3. **Rebuild the container** — `${localEnv:CLAUDE_CODE_OAUTH_TOKEN}` expands correctly
+2. **Reopen VS Code** — it reads the new `~/.zshenv` and has the token, then
+   reconnects to the devcontainer. The new remote session gets
+   `CLAUDE_CODE_OAUTH_TOKEN` injected via `remoteEnv`.
 
-For all future rebuilds, steps 1–2 are only needed again if the **token value
-changes**.
+No rebuild is required. Rebuild is also not needed for subsequent token
+changes — just quit and reopen VS Code.
 
 ---
 
@@ -114,7 +121,7 @@ claude -p "say pong"              # should print: pong
 
 ## Diagnosis tree if auth breaks
 
-**Step 1: Is the token in the container?**
+**Step 1: Is the token in the terminal?**
 ```bash
 echo $CLAUDE_CODE_OAUTH_TOKEN
 ```
@@ -122,9 +129,10 @@ echo $CLAUDE_CODE_OAUTH_TOKEN
 - **Prints the token → auth should work.** If `claude` still returns 401, a
   named Docker volume (`~/.claude`) may have stale credentials — see
   "Nuclear option" below.
-- **Empty → `containerEnv` expansion failed.** The host didn't have the token
-  when the container was built. Fix: quit VS Code, reopen it, rebuild.
-  No container-side fix is possible — the token must come from the host.
+- **Empty → `remoteEnv` expansion failed.** VS Code didn't have the token in
+  its host environment when it reconnected. Fix: quit VS Code, reopen it.
+  The new VS Code process will re-read `~/.zshenv` and inject the token into
+  the next remote session. No rebuild needed.
 
 **Step 2: Verify the Mac chain (run in a Mac terminal):**
 ```bash
@@ -153,13 +161,15 @@ docker volume rm <volume-name>
 
 **Yes — no action needed after a reboot.**
 
-`containerEnv` vars are baked into the container at creation time. Docker
-stores them with the container. After a reboot, VS Code reconnects to the
-existing container, which already has the token.
+`remoteEnv` vars are re-evaluated each time VS Code connects to the container.
+After a reboot, Docker Desktop restarts and VS Code reconnects to the existing
+container — the reconnect re-reads `${localEnv:CLAUDE_CODE_OAUTH_TOKEN}` from
+the Mac environment (restored from `~/.zshenv`) and injects the token into
+the new remote session.
 
-You only need to quit/reopen VS Code when the **token value changes**, because
-`${localEnv:CLAUDE_CODE_OAUTH_TOKEN}` is evaluated at container *creation* time,
-not at *start* time.
+You only need to quit/reopen VS Code when the **token value changes**, so
+that the new VS Code process picks up the new `~/.zshenv` value before it
+reconnects.
 
 ---
 
@@ -176,7 +186,8 @@ Rotate the token if it was accidentally exposed (commit, chat log, shared doc).
    echo 'export CLAUDE_CODE_OAUTH_TOKEN="sk-ant-oat01-NEW-TOKEN"' > ~/.claude/env.sh
    ```
 3. If using Codespaces: update the secret at github.com/settings/codespaces.
-4. Quit VS Code → reopen → rebuild the container.
+4. Quit VS Code → reopen. The next remote session picks up the new token via
+   `remoteEnv`. No rebuild needed.
 5. Verify: `echo $CLAUDE_CODE_OAUTH_TOKEN && claude -p "say pong"`
 
 **Note:** Issuing a new token does NOT automatically invalidate the old one.

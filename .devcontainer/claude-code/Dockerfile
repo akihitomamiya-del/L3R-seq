@@ -45,8 +45,8 @@ RUN mkdir -p /home/vscode/.claude /usr/local/share/npm-global && \
     chown -R vscode:vscode /home/vscode/.claude /usr/local/share/npm-global
 
 # Firewall scripts + passwordless sudo
-COPY .devcontainer/claude-code/init-firewall.sh .devcontainer/claude-code/start-firewall.sh /usr/local/bin/
-RUN chmod +x /usr/local/bin/init-firewall.sh /usr/local/bin/start-firewall.sh && \
+COPY .devcontainer/claude-code/init-firewall.sh .devcontainer/claude-code/start-firewall.sh .devcontainer/claude-code/firewall-warning.sh /usr/local/bin/
+RUN chmod +x /usr/local/bin/init-firewall.sh /usr/local/bin/start-firewall.sh /usr/local/bin/firewall-warning.sh && \
     echo "vscode ALL=(root) NOPASSWD: /usr/local/bin/init-firewall.sh, /usr/local/bin/start-firewall.sh" > /etc/sudoers.d/vscode-firewall && \
     chmod 0440 /etc/sudoers.d/vscode-firewall
 
@@ -79,9 +79,14 @@ RUN sh -c "$(wget -O- https://github.com/deluan/zsh-in-docker/releases/download/
     -a "export PROMPT_COMMAND='history -a' && export HISTFILE=/commandhistory/.bash_history" \
     -x
 
-# Re-initialize conda for zsh (zsh-in-docker overwrites ~/.zshrc)
+# Re-initialize conda for zsh (zsh-in-docker overwrites ~/.zshrc) and wire up
+# the firewall status warning so every new shell sees it if the firewall
+# failed to initialize.
 RUN /opt/miniforge/bin/conda init zsh \
-    && sed -i 's/POWERLEVEL9K_LEFT_PROMPT_ELEMENTS=(user/POWERLEVEL9K_LEFT_PROMPT_ELEMENTS=(anaconda user/' ~/.zshrc
+    && sed -i 's/POWERLEVEL9K_LEFT_PROMPT_ELEMENTS=(user/POWERLEVEL9K_LEFT_PROMPT_ELEMENTS=(anaconda user/' ~/.zshrc \
+    && echo '' >> ~/.zshrc \
+    && echo '# Firewall status banner (set by /usr/local/bin/start-firewall.sh)' >> ~/.zshrc \
+    && echo '[ -f /usr/local/bin/firewall-warning.sh ] && . /usr/local/bin/firewall-warning.sh' >> ~/.zshrc
 
 # Install Claude Code CLI
 ARG CLAUDE_CODE_VERSION=latest

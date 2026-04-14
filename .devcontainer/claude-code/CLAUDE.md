@@ -60,10 +60,12 @@ This is a **sandboxed devcontainer** with a network firewall. Key constraints:
   (e.g., `node igv_viewer/screenshot.js`). Use `--no-sandbox` flag when
   launching Puppeteer directly.
 - **Claude Code authenticates automatically** via `CLAUDE_CODE_OAUTH_TOKEN`
-  injected at container creation time (`containerEnv` in `devcontainer.json`).
-  Verify with `echo $CLAUDE_CODE_OAUTH_TOKEN && claude -p "say pong"`. If the
-  variable is empty, the host didn't have the token when the container was built.
-  Full setup and diagnosis: `docs/auth.md`.
+  injected into each VS Code remote session (`remoteEnv` in `devcontainer.json`,
+  alongside `ANTHROPIC_API_KEY`). Verify with
+  `echo $CLAUDE_CODE_OAUTH_TOKEN && claude -p "say pong"`. If the variable is
+  empty, VS Code didn't have the token in its host environment when it
+  reconnected — quit and reopen VS Code (no rebuild needed). Full setup and
+  diagnosis: `docs/auth.md`.
 
 ## Devcontainer configurations
 
@@ -72,7 +74,7 @@ Three configs live under `.devcontainer/`:
 | Directory | Name | Notes |
 |---|---|---|
 | `devcontainer.json` (root) | L3Rseq Pipeline | **Default for Codespaces.** Uses pre-built ghcr image. No Claude Code CLI. |
-| `claude-code/` | L3Rseq Pipeline (Claude Code Sandbox) | Builds from Dockerfile. Adds Claude CLI, firewall, dev tooling. Auth via `CLAUDE_CODE_OAUTH_TOKEN` in `containerEnv`. |
+| `claude-code/` | L3Rseq Pipeline (Claude Code Sandbox) | Builds from Dockerfile. Adds Claude CLI, firewall, dev tooling. Auth via `CLAUDE_CODE_OAUTH_TOKEN` in `remoteEnv`. |
 | `build/` | L3Rseq Pipeline (build) | Builds from Dockerfile. For testing local image changes |
 
 ## Docker image publishing
