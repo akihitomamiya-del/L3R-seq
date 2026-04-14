@@ -40,6 +40,7 @@
   "containerEnv": {
     "NODE_OPTIONS": "--max-old-space-size=4096",
     "CLAUDE_CONFIG_DIR": "/home/vscode/.claude",
+    "CLAUDE_CODE_OAUTH_TOKEN": "${localEnv:CLAUDE_CODE_OAUTH_TOKEN}",
     "POWERLEVEL9K_DISABLE_GITSTATUS": "true",
     "IGV_DATA_DIR": "/data/output",
     "PUPPETEER_SKIP_DOWNLOAD": "true"
