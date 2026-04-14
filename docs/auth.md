@@ -119,6 +119,78 @@ claude -p "say pong"              # should print: pong
 
 ---
 
+## Full checklist (after devcontainer config changes)
+
+Run these in a **fresh VS Code terminal** after the rebuild completes. Use
+this checklist after any change to `devcontainer.json`, `Dockerfile`, or the
+firewall scripts — the quick check above is enough for ordinary rebuilds.
+
+**1. Token is injected via `remoteEnv`:**
+```bash
+echo $CLAUDE_CODE_OAUTH_TOKEN
+# → sk-ant-oat01-...    (should print the token)
+```
+If empty: VS Code didn't have the token when it reconnected.
+Fix: quit VS Code completely (Cmd+Q), reopen, test again. No rebuild needed.
+
+**2. Token is NOT baked into container metadata** (proves it's in `remoteEnv`,
+not `containerEnv`):
+```bash
+# From the Mac terminal:
+docker inspect <container-id> | grep CLAUDE_CODE_OAUTH_TOKEN
+# → no output   (empty = good; means the token isn't in containerEnv)
+```
+If this prints the token, the devcontainer.json change didn't take — check
+that `CLAUDE_CODE_OAUTH_TOKEN` is under `remoteEnv` (not `containerEnv`)
+and rebuild once more.
+
+**3. Claude Code authenticates:**
+```bash
+claude -p "say pong"
+# → pong
+```
+If 401: see "Diagnosis tree if auth breaks" below.
+
+**4. Firewall initialized successfully:**
+```bash
+cat /tmp/firewall-status
+# → ok
+```
+If `failed`: the container is running without network restrictions. A red
+banner should also appear at the top of every new shell. Retry:
+`sudo /usr/local/bin/start-firewall.sh` and read `/tmp/firewall-init.log`.
+
+**5. Firewall warning banner is wired up** (only visible when firewall fails —
+you can simulate by writing `failed` to the status file):
+```bash
+# Simulate a firewall failure:
+echo failed | sudo tee /tmp/firewall-status
+
+# Open a NEW terminal — you should see a red banner:
+#   ⚠  WARNING: Network firewall failed to initialize.
+#      Container is running WITHOUT network restrictions.
+#      ...
+
+# Restore good state:
+echo ok | sudo tee /tmp/firewall-status
+```
+
+**6. `postCreateCommand` uses `&&` throughout** (no silent failures between
+steps):
+```bash
+grep postCreateCommand /workspace/.devcontainer/claude-code/devcontainer.json
+# → should contain no `;`, only `&&` between the three steps
+```
+
+**7. `ANTHROPIC_API_KEY` regression check** (it already used `remoteEnv` before
+the OAuth token move — make sure nothing broke it):
+```bash
+echo $ANTHROPIC_API_KEY
+# → should print the API key if ANTHROPIC_API_KEY is set on the Mac
+```
+
+---
+
 ## Diagnosis tree if auth breaks
 
 **Step 1: Is the token in the terminal?**
