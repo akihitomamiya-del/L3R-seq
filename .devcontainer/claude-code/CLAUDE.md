@@ -59,13 +59,19 @@ This is a **sandboxed devcontainer** with a network firewall. Key constraints:
 - **Puppeteer + Chrome** is available for headless screenshots of the viewer
   (e.g., `node igv_viewer/screenshot.js`). Use `--no-sandbox` flag when
   launching Puppeteer directly.
-- **Claude Code authenticates automatically** via `CLAUDE_CODE_OAUTH_TOKEN`
-  injected into each VS Code remote session (`remoteEnv` in `devcontainer.json`,
-  alongside `ANTHROPIC_API_KEY`). Verify with
-  `echo $CLAUDE_CODE_OAUTH_TOKEN && claude -p "say pong"`. If the variable is
-  empty, VS Code didn't have the token in its host environment when it
-  reconnected — quit and reopen VS Code (no rebuild needed). Full setup and
-  diagnosis: `docs/auth.md`.
+- **Claude Code authentication.** Two methods work out of the box:
+  1. **Browser login (default for new users)** — inside the container, run
+     `claude /login`, pick Claude Pro/Max, authorize in browser, paste the
+     code back. Credentials persist in the `~/.claude` Docker volume across
+     rebuilds. Zero host-side config.
+  2. **Host-injected token (automation / Codespaces)** — set
+     `CLAUDE_CODE_OAUTH_TOKEN` on the host; `remoteEnv` in `devcontainer.json`
+     injects it into every VS Code remote session. Takes precedence over the
+     credentials file when set.
+  Both methods coexist — if the env var is set it wins, otherwise the CLI
+  falls back to the credentials file, otherwise it prompts for login. Verify
+  whichever you use: `claude -p "say pong"`. Full setup and troubleshooting:
+  `docs/auth.md`.
 
 ## Devcontainer configurations
 
@@ -74,7 +80,7 @@ Three configs live under `.devcontainer/`:
 | Directory | Name | Notes |
 |---|---|---|
 | `devcontainer.json` (root) | L3Rseq Pipeline | **Default for Codespaces.** Uses pre-built ghcr image. No Claude Code CLI. |
-| `claude-code/` | L3Rseq Pipeline (Claude Code Sandbox) | Builds from Dockerfile. Adds Claude CLI, firewall, dev tooling. Auth via `CLAUDE_CODE_OAUTH_TOKEN` in `remoteEnv`. |
+| `claude-code/` | L3Rseq Pipeline (Claude Code Sandbox) | Builds from Dockerfile. Adds Claude CLI, firewall, dev tooling. Auth: browser login (default) or `CLAUDE_CODE_OAUTH_TOKEN` via `remoteEnv`. |
 | `build/` | L3Rseq Pipeline (build) | Builds from Dockerfile. For testing local image changes |
 
 ## Docker image publishing

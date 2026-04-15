@@ -1,9 +1,81 @@
 # Claude Code Authentication
 
-## How it works
+Two auth methods work out of the box — pick whichever fits you.
 
-`CLAUDE_CODE_OAUTH_TOKEN` is injected into each VS Code remote session (terminals
-and tasks) via `remoteEnv` in `.devcontainer/claude-code/devcontainer.json`:
+1. **[Browser login](#method-1--browser-login-recommended)** — zero host-side
+   setup, one-time `claude /login` inside the container. Recommended for most
+   users.
+2. **[Host-injected token](#method-2--host-injected-token-automation-codespaces)** —
+   an OAuth token set as an env var on the host, injected into the container
+   via `remoteEnv`. Good for automation, Codespaces, or a single token shared
+   across many devcontainers.
+
+At runtime, the Claude CLI picks in this order:
+
+1. `$CLAUDE_CODE_OAUTH_TOKEN` if set → method 2
+2. `~/.claude/.credentials.json` if present → method 1
+3. Otherwise prompts for login
+
+The two methods coexist — the env var simply wins when present, so power users
+can keep the token method while new users onboard via the browser.
+
+---
+
+## Method 1 — Browser login (recommended)
+
+Works with Claude Pro, Max, or an Anthropic API key. No host configuration.
+
+### One-time setup
+
+1. Open the devcontainer.
+2. In a terminal:
+   ```bash
+   claude /login
+   ```
+3. Pick Claude Pro/Max (or Anthropic API key).
+4. A URL is printed — open it in your browser, authorize, copy the code back
+   and paste it into the terminal prompt.
+5. Verify:
+   ```bash
+   claude -p "say pong"
+   # → pong
+   ```
+
+### Persistence across rebuilds
+
+Credentials are written to `~/.claude/.credentials.json` inside the container.
+That directory is a named Docker volume
+(`claude-code-config-${devcontainerId}`), where `${devcontainerId}` is a stable
+hash of workspace path + config file. The volume is reused across:
+
+- Container restarts (VS Code stop / start)
+- Container rebuilds (same workspace + same devcontainer config)
+- Host reboots
+
+The volume is **not** reused if:
+
+- You explicitly remove it (`docker volume rm claude-code-config-*`)
+- You clone the repo to a different folder → different `devcontainerId` →
+  new volume → re-login required once
+
+### Switching accounts / re-login
+
+```bash
+claude /logout     # clears ~/.claude/.credentials.json
+claude /login      # log in again (different account or fresh token)
+```
+
+---
+
+## Method 2 — Host-injected token (automation, Codespaces)
+
+Use this when you want auth to "just be there" without any interactive login —
+good for fresh containers, CI-like workflows, or when sharing a single token
+across many devcontainers.
+
+### How it works
+
+`.devcontainer/claude-code/devcontainer.json` declares:
 
 ```json
 "remoteEnv": {
@@ -12,19 +84,21 @@ and tasks) via `remoteEnv` in `.devcontainer/claude-code/devcontainer.json`:
 }
 ```
 
-`${localEnv:CLAUDE_CODE_OAUTH_TOKEN}` is re-evaluated every time VS Code connects
-to the container and reads from the **host** environment at that moment. No
-token is ever stored in the repo.
+`${localEnv:CLAUDE_CODE_OAUTH_TOKEN}` is re-evaluated every time VS Code
+reconnects to the container, reading from the **host** environment at that
+moment. No token is ever stored in the repo.
+
+When this env var is present inside the container, the Claude CLI uses it and
+ignores `~/.claude/.credentials.json`. If the host never sets the var, the
+`remoteEnv` line is a no-op and method 1 takes over automatically.
 
 **Why `remoteEnv` and not `containerEnv`?** `remoteEnv` is scoped to VS Code
 remote sessions — the token is only visible to your interactive shells, not to
-container-level processes (firewall script, IGV viewer, background tasks). It is
-also not baked into container metadata (`docker inspect`). Practically, this
+container-level processes (firewall script, IGV viewer, background tasks). It
+is also not baked into container metadata (`docker inspect`). Practically, this
 means token rotation only requires a VS Code restart, not a container rebuild.
 
----
-
-## VS Code (Mac dev setup)
+### VS Code on macOS — setup chain
 
 Three files form the chain from Mac → container:
 
@@ -32,8 +106,11 @@ Three files form the chain from Mac → container:
 ```bash
 export CLAUDE_CODE_OAUTH_TOKEN="sk-ant-oat01-..."
 ```
+Get the token by running `claude setup-token` on the Mac after logging in to
+Claude once.
 
-**2. `~/.zshenv`** — sources the token for every zsh session (including VS Code):
+**2. `~/.zshenv`** — sources the token for every zsh session (including
+VS Code):
 ```bash
 [ -f ~/.claude/env.sh ] && source ~/.claude/env.sh
 ```
@@ -42,31 +119,29 @@ non-interactive). VS Code spawns a non-interactive login shell (`zsh -l`) to
 resolve env vars at startup — it reads `~/.zshenv` but NOT `~/.zshrc`. The
 `[ -f ... ]` guard prevents errors if the file is missing.
 
-**3. `.devcontainer/claude-code/devcontainer.json`** — passes the token in via
-`containerEnv` as shown above.
+**3. `.devcontainer/claude-code/devcontainer.json`** — already wires
+`remoteEnv` as shown above; no edits needed.
 
 ### Required order after initial setup
 
 VS Code reads `~/.zshenv` **only at launch**. After first writing the token:
 
-1. **Quit VS Code completely** (Cmd+Q, not just close window)
+1. **Quit VS Code completely** (Cmd+Q, not just close window).
 2. **Reopen VS Code** — it reads the new `~/.zshenv` and has the token, then
    reconnects to the devcontainer. The new remote session gets
    `CLAUDE_CODE_OAUTH_TOKEN` injected via `remoteEnv`.
 
-No rebuild is required. Rebuild is also not needed for subsequent token
-changes — just quit and reopen VS Code.
+No rebuild required. Rebuild is also not needed for subsequent token changes —
+just quit and reopen VS Code.
 
----
+### GitHub Codespaces
 
-## GitHub Codespaces
+Codespaces injects development environment secrets directly into the container
+as environment variables — no `~/.zshenv` trick needed. Once the secret is
+registered, `CLAUDE_CODE_OAUTH_TOKEN` is automatically available in any
+Codespace for this repo.
 
-GitHub Codespaces injects development environment secrets directly into the
-container as environment variables — no special `containerEnv` wiring needed.
-Once the secret is registered, `CLAUDE_CODE_OAUTH_TOKEN` is automatically
-available in any Codespace for this repo.
-
-### One-time setup — register the secret
+**One-time setup — register the secret:**
 
 1. Go to **github.com/settings/codespaces**
 2. Under *Secrets*, click **New secret**
@@ -75,13 +150,11 @@ available in any Codespace for this repo.
 5. Under *Repository access*, select this repo (or "All repositories")
 6. Click **Add secret**
 
-### Which devcontainer Codespaces uses
+**Which devcontainer Codespaces uses:**
 
 Codespaces defaults to the root `.devcontainer/devcontainer.json`, which uses
-the pre-built ghcr image and does **not** include Claude Code CLI. You need
-to select the `claude-code/` config instead.
-
-**Option A — Select the config when creating the Codespace (no admin needed):**
+the pre-built ghcr image and does **not** include Claude Code CLI. You need to
+select the `claude-code/` config instead.
 
 1. On the repo page, click **Code → Codespaces tab**
 2. Click the **⋯ kebab menu** (three dots, top-right of the Codespaces panel)
@@ -94,160 +167,9 @@ You repeat this selection each time you create a new Codespace. There is no
 repo-wide "default config" setting in Codespaces — each codespace is configured
 at creation.
 
-**Option B — Add Claude Code to the root config (more work, harder to maintain):**
+### Token rotation
 
-The root `devcontainer.json` uses the pre-built ghcr image which lacks Claude
-Code CLI. You'd need to add it as a devcontainer feature or an install step.
-Option A is simpler.
-
-### Verify it's working
-
-In a fresh Codespace terminal:
-```bash
-echo $CLAUDE_CODE_OAUTH_TOKEN    # should print the token
-claude -p "say pong"              # should print: pong
-```
-
----
-
-## After any rebuild — quick check
-
-```bash
-echo $CLAUDE_CODE_OAUTH_TOKEN    # should print the token
-claude -p "say pong"              # should print: pong
-```
-
----
-
-## Full checklist (after devcontainer config changes)
-
-Run these in a **fresh VS Code terminal** after the rebuild completes. Use
-this checklist after any change to `devcontainer.json`, `Dockerfile`, or the
-firewall scripts — the quick check above is enough for ordinary rebuilds.
-
-**1. Token is injected via `remoteEnv`:**
-```bash
-echo $CLAUDE_CODE_OAUTH_TOKEN
-# → sk-ant-oat01-...    (should print the token)
-```
-If empty: VS Code didn't have the token when it reconnected.
-Fix: quit VS Code completely (Cmd+Q), reopen, test again. No rebuild needed.
-
-**2. Token is NOT baked into container metadata** (proves it's in `remoteEnv`,
-not `containerEnv`):
-```bash
-# From the Mac terminal:
-docker inspect <container-id> | grep CLAUDE_CODE_OAUTH_TOKEN
-# → no output   (empty = good; means the token isn't in containerEnv)
-```
-If this prints the token, the devcontainer.json change didn't take — check
-that `CLAUDE_CODE_OAUTH_TOKEN` is under `remoteEnv` (not `containerEnv`)
-and rebuild once more.
-
-**3. Claude Code authenticates:**
-```bash
-claude -p "say pong"
-# → pong
-```
-If 401: see "Diagnosis tree if auth breaks" below.
-
-**4. Firewall initialized successfully:**
-```bash
-cat /tmp/firewall-status
-# → ok
-```
-If `failed`: the container is running without network restrictions. A red
-banner should also appear at the top of every new shell. Retry:
-`sudo /usr/local/bin/start-firewall.sh` and read `/tmp/firewall-init.log`.
-
-**5. Firewall warning banner is wired up** (only visible when firewall fails —
-you can simulate by writing `failed` to the status file):
-```bash
-# Simulate a firewall failure:
-echo failed | sudo tee /tmp/firewall-status
-
-# Open a NEW terminal — you should see a red banner:
-#   ⚠  WARNING: Network firewall failed to initialize.
-#      Container is running WITHOUT network restrictions.
-#      ...
-
-# Restore good state:
-echo ok | sudo tee /tmp/firewall-status
-```
-
-**6. `postCreateCommand` uses `&&` throughout** (no silent failures between
-steps):
-```bash
-grep postCreateCommand /workspace/.devcontainer/claude-code/devcontainer.json
-# → should contain no `;`, only `&&` between the three steps
-```
-
-**7. `ANTHROPIC_API_KEY` regression check** (it already used `remoteEnv` before
-the OAuth token move — make sure nothing broke it):
-```bash
-echo $ANTHROPIC_API_KEY
-# → should print the API key if ANTHROPIC_API_KEY is set on the Mac
-```
-
----
-
-## Diagnosis tree if auth breaks
-
-**Step 1: Is the token in the terminal?**
-```bash
-echo $CLAUDE_CODE_OAUTH_TOKEN
-```
-
-- **Prints the token → auth should work.** If `claude` still returns 401, a
-  named Docker volume (`~/.claude`) may have stale credentials — see
-  "Nuclear option" below.
-- **Empty → `remoteEnv` expansion failed.** VS Code didn't have the token in
-  its host environment when it reconnected. Fix: quit VS Code, reopen it.
-  The new VS Code process will re-read `~/.zshenv` and inject the token into
-  the next remote session. No rebuild needed.
-
-**Step 2: Verify the Mac chain (run in a Mac terminal):**
-```bash
-source ~/.zshenv && echo $CLAUDE_CODE_OAUTH_TOKEN
-```
-If this prints the token, VS Code will have it after a restart.
-If empty, check `~/.claude/env.sh` exists and has the correct content.
-
----
-
-## Nuclear option — clear stale Docker credentials
-
-If the token is present but `claude` still returns 401, the named Docker
-volume `claude-code-config-*` may contain expired credentials.
-
-```bash
-# On Mac — find and remove the volume (container must be stopped first):
-docker volume ls | grep claude-code-config
-docker volume rm <volume-name>
-# Then rebuild the container. The volume is recreated fresh.
-```
-
----
-
-## Does auth survive a Mac reboot?
-
-**Yes — no action needed after a reboot.**
-
-`remoteEnv` vars are re-evaluated each time VS Code connects to the container.
-After a reboot, Docker Desktop restarts and VS Code reconnects to the existing
-container — the reconnect re-reads `${localEnv:CLAUDE_CODE_OAUTH_TOKEN}` from
-the Mac environment (restored from `~/.zshenv`) and injects the token into
-the new remote session.
-
-You only need to quit/reopen VS Code when the **token value changes**, so
-that the new VS Code process picks up the new `~/.zshenv` value before it
-reconnects.
-
----
-
-## Token rotation
-
-Rotate the token if it was accidentally exposed (commit, chat log, shared doc).
+Rotate the token if it's accidentally exposed (commit, chat log, shared doc).
 
 1. Generate a new token on the Mac:
    ```bash
@@ -263,23 +185,149 @@ Rotate the token if it was accidentally exposed (commit, chat log, shared doc).
 5. Verify: `echo $CLAUDE_CODE_OAUTH_TOKEN && claude -p "say pong"`
 
 **Note:** Issuing a new token does NOT automatically invalidate the old one.
-Both remain valid until the old one is explicitly revoked or expires. For local
-exposure, switching to the new token is sufficient.
+Both remain valid until the old one is explicitly revoked or expires.
 
 ---
 
-## When the token expires (~April 2027)
+## Quick verification
 
-Same procedure as token rotation above. Nothing in the repo changes.
+Works for either method:
+```bash
+claude -p "say pong"
+# → pong
+```
+
+For method 2 specifically, also check injection:
+```bash
+echo $CLAUDE_CODE_OAUTH_TOKEN
+# → sk-ant-oat01-...   (should print the token)
+```
+
+---
+
+## Diagnosis tree if auth breaks
+
+**Step 1: Which method are you on?**
+```bash
+echo $CLAUDE_CODE_OAUTH_TOKEN
+```
+
+- **Prints a token** → method 2 is active. Go to step 2.
+- **Empty** → method 2 didn't inject (or you never set it up). Check if
+  method 1 credentials exist:
+  ```bash
+  ls -la ~/.claude/.credentials.json
+  ```
+  - File present → method 1 is active. If `claude` still returns 401, the
+    saved token has expired: `claude /logout && claude /login`.
+  - File missing → no auth at all. Run `claude /login` (method 1), or fix
+    method 2 (step 3 below).
+
+**Step 2: Method 2 active but `claude` returns 401**
+
+The injected token has been revoked server-side, or it's stale. Rotate it:
+`claude setup-token` on the Mac → update `~/.claude/env.sh` → quit and reopen
+VS Code.
+
+**Step 3: Method 2 — env var is empty even though host has it set**
+
+VS Code didn't have `CLAUDE_CODE_OAUTH_TOKEN` when it reconnected. From the Mac
+terminal:
+```bash
+source ~/.zshenv && echo $CLAUDE_CODE_OAUTH_TOKEN
+```
+- Prints the token → quit VS Code (Cmd+Q), reopen. The new VS Code process
+  re-reads `~/.zshenv`.
+- Empty → check `~/.claude/env.sh` exists and has the correct content.
+
+---
+
+## Nuclear option — clear stale Docker credentials
+
+If nothing else works, reset the config volume:
+
+```bash
+# On Mac — find and remove the volume (container must be stopped first):
+docker volume ls | grep claude-code-config
+docker volume rm <volume-name>
+# Then rebuild the container. The volume is recreated fresh.
+```
+
+**Warning:** this wipes the browser-login credentials, so method 1 users will
+need to run `claude /login` again. Method 2 users are unaffected — the env var
+is restored from the host on next VS Code reconnect.
+
+---
+
+## Full checklist (after devcontainer config changes)
+
+Run these in a **fresh VS Code terminal** after the rebuild completes. Use
+this checklist after any change to `devcontainer.json`, `Dockerfile`, or the
+firewall scripts. The quick verification above is enough for ordinary rebuilds.
+
+**1. Auth works** (either method):
+```bash
+claude -p "say pong"
+# → pong
+```
+
+**2. Method 2 only — token is injected via `remoteEnv`, not baked into the
+container metadata:**
+```bash
+# From the Mac terminal:
+docker inspect <container-id> | grep CLAUDE_CODE_OAUTH_TOKEN
+# → no output   (empty = good; means the token isn't in containerEnv)
+```
+If this prints the token, the devcontainer.json change didn't take — check
+that `CLAUDE_CODE_OAUTH_TOKEN` is under `remoteEnv` (not `containerEnv`) and
+rebuild once more.
+
+**3. Firewall initialized successfully:**
+```bash
+cat /tmp/firewall-status
+# → ok
+```
+If `failed`: the container is running without network restrictions. A red
+banner should also appear at the top of every new shell. Retry:
+`sudo /usr/local/bin/start-firewall.sh` and read `/tmp/firewall-init.log`.
+
+**4. Firewall warning banner is wired up** (only visible when firewall fails —
+you can simulate by writing `failed` to the status file):
+```bash
+# Simulate a firewall failure:
+echo failed | sudo tee /tmp/firewall-status
+
+# Open a NEW terminal — you should see a red banner:
+#   ⚠  WARNING: Network firewall failed to initialize.
+#      Container is running WITHOUT network restrictions.
+
+# Restore good state:
+echo ok | sudo tee /tmp/firewall-status
+```
+
+**5. `postCreateCommand` uses `&&` throughout** (no silent failures between
+steps):
+```bash
+grep postCreateCommand /workspace/.devcontainer/claude-code/devcontainer.json
+# → should contain no `;`, only `&&` between the three steps
+```
+
+**6. `ANTHROPIC_API_KEY` regression check** (it already used `remoteEnv`
+before the OAuth token move — make sure nothing broke it):
+```bash
+echo $ANTHROPIC_API_KEY
+# → should print the API key if ANTHROPIC_API_KEY is set on the Mac
+```
 
 ---
 
 ## Key files
 
-| File | Purpose | Edit when |
-|---|---|---|
-| `~/.claude/env.sh` (Mac) | Token — single source of truth | Token expires or rotates |
-| `~/.zshenv` (Mac) | Sources env.sh for VS Code + all shells | Never |
-| `.devcontainer/claude-code/devcontainer.json` | Active devcontainer config | devcontainer changes |
-| `.devcontainer/claude-code/Dockerfile` | Docker image build | Adding tools |
-| `.devcontainer/devcontainer.json` | Codespaces default — no Claude Code | Avoid |
+| File | Method | Purpose | Edit when |
+|---|---|---|---|
+| `~/.claude/.credentials.json` (in container) | 1 | Browser login credentials | Written by `claude /login`; never hand-edit |
+| `~/.claude/env.sh` (host Mac) | 2 | Token — single source of truth | Token expires or rotates |
+| `~/.zshenv` (host Mac) | 2 | Sources env.sh for VS Code + all shells | Never |
+| `.devcontainer/claude-code/devcontainer.json` | both | `remoteEnv` wiring + base devcontainer config | devcontainer changes |
+| `.devcontainer/claude-code/Dockerfile` | — | Docker image build | Adding tools |
+| `.devcontainer/devcontainer.json` (root) | — | Codespaces default — no Claude Code CLI | Avoid |
