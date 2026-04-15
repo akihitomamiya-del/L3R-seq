@@ -33,4 +33,7 @@ done
 
 echo "ERROR: Firewall failed after $MAX_RETRIES attempts. See $LOG" >&2
 echo "WARNING: Container is running WITHOUT network restrictions." | tee -a "$LOG"
-exit 1
+# Exit 0 on failure so postStartCommand does not abort the container rebuild.
+# The "failed" status file + firewall-warning.sh banner in every new shell
+# already surface the fail-open state to the user (commit 98ad0bf).
+exit 0
