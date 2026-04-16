@@ -23,5 +23,5 @@
   "workspaceMount": "source=${localWorkspaceFolder},target=/workspace,type=bind,consistency=delegated",
   "workspaceFolder": "/workspace",
   "postCreateCommand": "cd /workspace/igv_viewer && npm install --silent",
-  "postStartCommand": "node /workspace/igv_viewer/server.js > /tmp/igv-server.log 2>&1 &"
+  "postStartCommand": "setsid -f node /workspace/igv_viewer/server.js > /tmp/igv-server.log 2>&1"
 }

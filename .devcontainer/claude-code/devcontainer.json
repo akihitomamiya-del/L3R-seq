@@ -57,7 +57,7 @@
   "postCreateCommand": "mkdir -p ~/.claude && cp /workspace/.devcontainer/claude-code/CLAUDE.md ~/.claude/CLAUDE.md && cd /workspace/igv_viewer && npm install",
   "postStartCommand": {
     "firewall": "sudo /usr/local/bin/start-firewall.sh",
-    "igv-viewer": "node /workspace/igv_viewer/server.js > /tmp/igv-server.log 2>&1 &"
+    "igv-viewer": "setsid -f node /workspace/igv_viewer/server.js > /tmp/igv-server.log 2>&1"
   },
   "waitFor": "postStartCommand"
 }
