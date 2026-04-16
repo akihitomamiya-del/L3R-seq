@@ -60,7 +60,7 @@ L3Rseq run --input data/ --outdir results/ --ref ref.fa \
     --rpi-fasta barcodes.fa --pattern CT --threads 8
 ```
 
-This runs all 10 steps. Output goes to `results/01_concat/` through `results/10_csv/`. Use `--start-at` and `--stop-at` to run a subset of steps (e.g. `--start-at 4` skips preprocessing for pre-demultiplexed data). Each step is also available as a standalone subcommand (e.g. `L3Rseq map --input <dir> --outdir <dir> --ref <ref.fa>`); see the [code overview](docs/code-overview.md) for per-step usage and [adaptation](docs/adaptation.md) for applying L3Rseq to different organisms and library designs. If you prefer AI-assisted analysis, see [Claude Code](docs/development.md#claude-code-ai-assisted-development).
+This runs the core pipeline (steps 01–10). Output goes to `results/01_concat/` through `results/10_csv/`. Use `--start-at` and `--stop-at` to run a subset of steps (e.g. `--start-at 4` skips preprocessing for pre-demultiplexed data). Gene-level counting (step 11) is an optional [post-analysis](#post-analysis) step invoked separately. Each step is also available as a standalone subcommand (e.g. `L3Rseq map --input <dir> --outdir <dir> --ref <ref.fa>`); see the [code overview](docs/code-overview.md) for per-step usage and [adaptation](docs/adaptation.md) for applying L3Rseq to different organisms and library designs. If you prefer AI-assisted analysis, see [Claude Code](docs/development.md#claude-code-ai-assisted-development).
 
 **Common options:**
 
@@ -73,6 +73,19 @@ This runs all 10 steps. Output goes to `results/01_concat/` through `results/10_
 --prefilter               # rough-map pre-filter for noisy libraries
 --method umic-seq --probe probe.fa   # alternative UMI method
 ```
+
+To override per-step defaults from a YAML file, pass the global `--config-file` flag before the subcommand: `L3Rseq --config-file my.yaml run ...` (see [Development](docs/development.md#running-the-pipeline-with-snakemake) for the config model).
+
+### Alternative: Snakemake
+
+For DAG parallelism across `{barcode, RPI}` samples and resume-from-failure, an equivalent execution path is available via [Snakemake](https://snakemake.readthedocs.io/):
+
+```bash
+conda activate l3rseq_py
+snakemake --cores 4 --configfile config.yaml
+```
+
+Both paths produce the same output (steps 09 and 11 are byte-identical; all other steps share the same scripts). See [Development](docs/development.md#running-the-pipeline-with-snakemake) for the config model and per-experiment YAMLs.
 
 ## Pipeline overview
 
@@ -133,18 +146,25 @@ graph TD
 06 extract    Target region extraction (cutadapt)
 07 map        Mapping to reference (minimap2)
 08 variants   Variant calling (LoFreq)
-09 correct    3' tail correction with CIGAR-walk
+09 correct    3' tail correction with CIGAR-walk (Python / pysam)
 10 export     CSV export + quality report
+
+(optional post-analysis)
+11 count      Gene-level molecule counting (Python / pysam)
 ```
 
 For per-file details (inputs, outputs, tools, line counts), see the [Code Overview](docs/code-overview.md).
 
-After the main pipeline, optional post-analysis:
+### Post-analysis
+
+After the main pipeline, step 11 provides optional gene-level molecule counting (qPCR-style, isoform-aware):
 
 ```bash
 L3Rseq regions --gff annotation.gff3 --output regions.tsv
 L3Rseq count   --input results/ --outdir results/ --regions regions.tsv
 ```
+
+Output goes to `results/11_count/`. Both commands are Python-backed (`src/l3rseq/`, `l3rseq_py` conda env) and pysam-accelerated.
 
 ## Key features
 
@@ -182,6 +202,9 @@ Step 09 annotates each read with custom SAM tags, visible in the viewer and expo
 | RS | Remaining right-clip sequence (e.g., poly(A) tail) |
 | TL | Translocation flag (0 = normal, 1 = BLAST hit) |
 | SJ | Splice junction pattern (S/R/- per intron) |
+| SI | Splice index (count of spliced introns) |
+| IR | Intron retention count (count of retained introns) |
+| DS | Double-sorter key (combined sort value for two-axis sorting in the viewer) |
 
 ## Docker usage
 
@@ -228,7 +251,9 @@ On Linux, add `--user "$(id -u):$(id -g)"` so output files are owned by your hos
 | [Adaptation](docs/adaptation.md) | Adapting to your experiment, viewer guide, CIGAR-walk, splicing, gene counting |
 | [Requirements](docs/requirements.md) | Platform support, conda environments |
 | [Code overview](docs/code-overview.md) | Architecture, data flow, per-file summaries |
-| [Development](docs/development.md) | Viewer development, testing, known issues, Docker builds |
+| [Development](docs/development.md) | Viewer development, Snakemake, config model, Docker builds |
+| [Testing](docs/testing.md) | Test suite structure, coverage gaps, known issues |
+| [Pipeline modernization](docs/PIPELINE_MODERNIZATION.md) | Phase 0–4 history: Python port, Snakefile, config consolidation |
 
 ## License
 
