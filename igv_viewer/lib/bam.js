@@ -21,9 +21,17 @@ const { readdirSafe, isDirSafe, statSafe } = require("./helpers");
 
 let WORKSPACE, DATA_DIR;
 
+// 15s TTL cache keyed by outdir — /api/datasets calls discoverTracks once
+// per dataset to resolve the reference name, which reads every BAM/BAI on
+// disk. Caching by directory avoids rescanning the same tree on every API
+// call. Cleared on init(); staleness ceiling matches discovery.js.
+const TRACKS_CACHE_TTL_MS = 15000;
+const _tracksCache = new Map();
+
 function init(config) {
   WORKSPACE = config.WORKSPACE;
   DATA_DIR = config.DATA_DIR;
+  _tracksCache.clear();
 }
 
 // Read the first reference sequence name from a BAM header (BGZF compressed).
@@ -67,8 +75,7 @@ function resolveTrackPath(url) {
   return path.join(WORKSPACE, url.replace(/^\/data\//, ""));
 }
 
-// Auto-discover sorted BAM files inside a pipeline output directory.
-function discoverTracks(outdir) {
+function _scanTracks(outdir) {
   const tracks = [];
   for (const step of PIPELINE_STEPS) {
     const stepDir = path.join(outdir, step.dir);
@@ -118,6 +125,16 @@ function discoverTracks(outdir) {
     }
   }
   return tracks;
+}
+
+// Auto-discover sorted BAM files inside a pipeline output directory.
+function discoverTracks(outdir) {
+  const now = Date.now();
+  const hit = _tracksCache.get(outdir);
+  if (hit && hit.expiresAt > now) return hit.value;
+  const value = _scanTracks(outdir);
+  _tracksCache.set(outdir, { value, expiresAt: now + TRACKS_CACHE_TTL_MS });
+  return value;
 }
 
 module.exports = { init, bamReferenceName, trackUrl, resolveTrackPath, discoverTracks };
