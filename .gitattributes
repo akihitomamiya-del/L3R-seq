@@ -13,3 +13,18 @@ Snakefile    text eol=lf
 *.fasta      text eol=lf
 *.fa         text eol=lf
 *.fai        text eol=lf
+
+# Test data and expected outputs are compared byte-for-byte and parsed by
+# tools that treat CR as whitespace or as a line separator (Python's
+# universal newlines, bash string equality). CRLF drift on Windows hosts
+# causes spurious test failures — force LF for all text-format data files.
+*.txt        text eol=lf
+*.tsv        text eol=lf
+*.csv        text eol=lf
+*.bed        text eol=lf
+*.gff        text eol=lf
+*.gff3       text eol=lf
+*.yaml       text eol=lf
+*.yml        text eol=lf
+*.py         text eol=lf
+*.js         text eol=lf
