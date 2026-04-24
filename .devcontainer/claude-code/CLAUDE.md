@@ -114,6 +114,20 @@ Quick sync: `cp .devcontainer/claude-code/CLAUDE.md ~/.claude/CLAUDE.md`
   specific paths. New files won't be staged by `git add` unless their path is
   in `.gitignore` with a `!` prefix. `/workspace/CLAUDE.md` is intentionally
   gitignored — never commit it. The tracked copy is `.devcontainer/claude-code/CLAUDE.md`.
+- **Line endings (CRLF drift on Windows/WSL2 hosts)**: `.gitattributes` opens
+  with `* text=auto eol=lf`, which overrides Git-for-Windows' default
+  `core.autocrlf=true` and normalizes every text file to LF on checkout
+  regardless of host OS. This catch-all covers any new text extension
+  automatically (`.rs`, `.go`, new configs, etc.) — no `.gitattributes` update
+  needed for ordinary files. **The one case that needs manual action:** if you
+  add a *new binary file type* and see `warning: CRLF will be replaced by LF`
+  on `git add`, Git's auto-detect has misclassified it as text; append
+  `*.newext binary` to the binary-markers section in `.gitattributes` before
+  committing, otherwise LF-normalization may corrupt the file. Known binary
+  types (BAM, BAI, gz, PNG, BLAST DB shards) are already tagged. If you ever
+  see a large batch of "modified" files on `git status` that are
+  content-identical, it's CRLF drift — run `git ls-files --eol | awk '$1 ~
+  /crlf/'` to confirm, then `git add --renormalize <path>` to fix.
 - **Viewer development — strict cycle**: Every viewer change must follow:
   1. **Edit** the file(s) — apply fixes to ALL 3 pages (index/umi/genes) when relevant
   2. **Restart** the viewer: `L3Rseq viewer --stop && L3Rseq viewer --dir <dir>`

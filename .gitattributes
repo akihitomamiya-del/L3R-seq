@@ -1,3 +1,12 @@
+# Default: auto-detect text vs binary per file, and normalize text files to
+# LF on checkout regardless of host OS. This overrides Git-for-Windows'
+# default core.autocrlf=true, so a fresh clone on Windows produces the same
+# working tree as a clone on Linux/macOS — no phantom `git status` diffs,
+# no broken shebangs, no CRLF drift. All the explicit rules below are now
+# redundant with this catch-all but are kept because their comments document
+# WHY specific file classes must stay LF (critical for reviewers).
+* text=auto eol=lf
+
 # Force LF line endings for files the Linux container and pipeline execute.
 # Without this, Windows checkouts with core.autocrlf=true get CRLF shebangs,
 # which causes "No such file or directory" errors when Linux tries to exec
@@ -28,3 +37,30 @@ Snakefile    text eol=lf
 *.yml        text eol=lf
 *.py         text eol=lf
 *.js         text eol=lf
+
+# Explicit binary markers. The `* text=auto` default would usually detect
+# these correctly, but being explicit protects against edge cases (e.g. a
+# small BAM whose first bytes happen to look like ASCII, or a BLAST DB
+# shard that lacks NUL bytes early). Once tagged `binary`, Git never
+# attempts EOL filtering, content merging, or textconv on these files.
+*.bam        binary
+*.bai        binary
+*.gz         binary
+*.zip        binary
+*.tar        binary
+*.png        binary
+*.jpg        binary
+*.jpeg       binary
+*.ico        binary
+*.pdf        binary
+# BLAST database shards (nucleotide indexes)
+*.nhr        binary
+*.nin        binary
+*.nsq        binary
+*.ndb        binary
+*.ntf        binary
+*.nto        binary
+*.not        binary
+*.nog        binary
+*.nos        binary
+*.nhd        binary
