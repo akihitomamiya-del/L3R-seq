@@ -1,0 +1,15 @@
+# Force LF line endings for files the Linux container and pipeline execute.
+# Without this, Windows checkouts with core.autocrlf=true get CRLF shebangs,
+# which causes "No such file or directory" errors when Linux tries to exec
+# the interpreter.
+*.sh         text eol=lf
+L3Rseq       text eol=lf
+l3rseq-docker text eol=lf
+Snakefile    text eol=lf
+
+# FASTA and FAI must stay LF too — samtools-generated .fai byte offsets
+# are computed against the .fasta's exact byte layout, so CRLF drift on
+# the host would invalidate the index.
+*.fasta      text eol=lf
+*.fa         text eol=lf
+*.fai        text eol=lf
