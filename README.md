@@ -72,9 +72,12 @@ This runs the core pipeline (steps 01–10). Output goes to `results/01_concat/`
 --introns "847-2891"      # classify reads as spliced/unspliced
 --prefilter               # rough-map pre-filter for noisy libraries
 --method umic-seq --probe probe.fa   # alternative UMI method
+--umi-parallel-jobs 8     # run 8 RPIs concurrently in step 04 (default: 1 = serial)
 ```
 
 To override per-step defaults from a YAML file, pass the global `--config-file` flag before the subcommand: `L3Rseq --config-file my.yaml run ...` (see [Development](docs/development.md#running-the-pipeline-with-snakemake) for the config model).
+
+**Performance tip.** Step 04 (UMI binning) supports per-sample parallelism via `--umi-parallel-jobs N` (or env var `UMI_PARALLEL_JOBS=N`); threads are divided evenly across workers. On a 64-core host, `--umi-parallel-jobs 8` gives ~5× speedup for `longread-umi` and ~7× for `umic-seq`, with byte-identical output to serial. The devcontainer also mounts a fast `/runs` Docker volume at `/workspace/runs` so pipeline outputs avoid the slow Windows-host bind on WSL2 (~30× end-to-end speedup combined with the parallel flag). Details in [docs/pipeline_speed_investigation.md](docs/pipeline_speed_investigation.md).
 
 ### Alternative: Snakemake
 
@@ -176,6 +179,7 @@ Output goes to `results/11_count/`. Both commands are Python-backed (`src/l3rseq
 - **Built-in viewer** -- browser-based [IGV.js alignment viewer](docs/adaptation.md#alignment-viewer) with SAM tag sorting/coloring
 - **Noise separation** -- per-read noise count distinguishes editing from residual sequencing errors
 - **Flexible entry** -- enter at any step with `--start-at` / `--stop-at`; re-runs skip completed samples
+- **Parallel UMI binning** -- opt-in `--umi-parallel-jobs N` runs step 04 across N RPIs concurrently; ~5-8× speedup with byte-identical output
 
 ## Output
 
@@ -254,6 +258,8 @@ On Linux, add `--user "$(id -u):$(id -g)"` so output files are owned by your hos
 | [Development](docs/development.md) | Viewer development, Snakemake, config model, Docker builds |
 | [Testing](docs/testing.md) | Test suite structure, coverage gaps, known issues |
 | [Pipeline modernization](docs/PIPELINE_MODERNIZATION.md) | Phase 0–4 history: Python port, Snakefile, config consolidation |
+| [Pipeline speed investigation](docs/pipeline_speed_investigation.md) | WSL2/9P filesystem analysis, parallel-step-04 benchmarks, validation matrix |
+| [UMIC-seq speedup plan](docs/umic_seq_speedup_plan.md) | Continuity-preserving RPI parallelism for the UMIC-seq method |
 
 ## License
 
