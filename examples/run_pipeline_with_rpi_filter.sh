@@ -1,21 +1,24 @@
 #!/bin/bash
-# examples/LibCheck_sample.sh — L3Rseq analysis of LibCheck_sample data (BAI981)
+# examples/run_pipeline_with_rpi_filter.sh — three-phase pipeline template
 #
-# Processes the real Oxford Nanopore data in LibCheck_sample/ (barcode44,
-# barcode45, barcode46) through the full L3Rseq pipeline.
+# This template extends examples/run_pipeline.sh with two patterns useful
+# for real-data analyses:
 #
-# Sample: MpPHT1_atp9 (Marchantia polymorpha, library check 260118)
-# Flow cell: BAI981  |  Basecaller: dna_r10.4.1_e8.2_400bps_sup@v5.2.0
+#   - Phase split with optional RPI filtering: steps 01-03 run first
+#     (no reference needed), then a filter step keeps only the RPIs you
+#     care about, then steps 04-07 run on the filtered set. Useful when
+#     a barcode contains many RPIs but only a subset is in your library.
+#
+#   - Gene-level counting (step 11) appended to the end. Auto-discovers
+#     gene regions from a GFF3 and counts molecules per gene.
 #
 # HOW TO USE:
-#   1. Set REF to your target gene reference FASTA (see below)
-#   2. Set TARGET_FWD to your gene-specific forward primer
-#   3. Optionally adjust RPIS to select specific samples
-#   4. Run:  cd /workspace && bash examples/LibCheck_sample.sh
+#   1. Copy:  cp examples/run_pipeline_with_rpi_filter.sh runs/my_run.sh
+#   2. Edit the variables in the "YOUR EXPERIMENT" section
+#   3. Run:   cd /workspace && bash runs/my_run.sh
 #
-# The script runs in two phases:
-#   Phase 1 (steps 01-03): concat, trim, demux — runs immediately, no ref needed
-#   Phase 2 (steps 04-10): UMI → consensus → map → export — requires REF
+# Re-running on the same OUTDIR: `rm -rf "$OUTDIR"` first, otherwise the
+# leftover `03_demux_all/` directory breaks the RPI-filter step on rerun.
 
 set -euo pipefail
 
@@ -23,38 +26,33 @@ set -euo pipefail
 # YOUR EXPERIMENT — Change these values to match your data
 # ============================================================================
 
-# Input: LibCheck_sample/ already contains barcode44/, barcode45/, barcode46/
-# in the correct directory structure for step 01.
-INPUT_DIR="LibCheck_sample"
+# Input: directory containing barcodeNN/ subdirectories of FASTQs
+INPUT_DIR="data/my_input"
 
 # Output directory for all pipeline results
-OUTDIR="runs/LibCheck"
+OUTDIR="runs/my_experiment"
 
 # Reference FASTA — genomic DNA sequence of your target gene + downstream.
-# This is required for steps 07-10 (mapping, variant calling, correction).
-#   Example: REF="refs/MpPHT1_atp9_genomic.fasta"
-# If you only have the full genome, you can use it but a gene-specific
-# reference is strongly recommended for variant calling accuracy:
-#   REF="resources/references/MpTak_v7.1.fa"
-REF="resources/references/MpTak_v7.1.fa"
+# Required for steps 07-10 (mapping, variant calling, correction).
+# Leave empty to stop after Phase 1 (preprocessing only).
+REF=""
 
-# RPI barcode FASTA — 36 standard 20nt RPI barcodes
-RPI_FASTA="resources/rpi_barcodes/RPI_Barcode_20nt_Takehira.fasta"
+# RPI barcode FASTA. The repo ships with the standard 36 RPI barcodes:
+RPI_FASTA="resources/rpi_barcodes/RPI_Barcode_20nt.fasta"
 
 # Which RPIs to keep after demux (space-separated numbers).
 # Set to "" to process ALL RPIs found.
-RPIS="1 2 3 4 5 6 7 8 9 10 11 12"
+RPIS=""
 
-# Forward target primer — gene-specific primer used in your library prep.
-# Used by step 06 (extract) to trim consensus reads to the gene insert.
-# NNNN = IUPAC wildcard, matches any sequence at the 5' end. This keeps
-# all reads and lets the reverse adapter do the trimming/filtering.
-# Replace with your actual forward primer for stricter target selection.
+# Forward target primer used by step 06 (extract) to trim consensus reads
+# to the gene insert. Leave empty to skip target-fwd trimming.
 TARGET_FWD=""
 
-
-# UMI extraction method (longread-umi uses flanking-sequence extraction)
+# UMI extraction method: "longread-umi" (flanking-sequence) or "umic-seq"
 METHOD="longread-umi"
+
+# GFF3 annotation for gene-level counting (Phase 3). Leave empty to skip.
+GFF=""
 
 THREADS=$(nproc 2>/dev/null || echo 4)
 
@@ -63,8 +61,8 @@ THREADS=$(nproc 2>/dev/null || echo 4)
 # ============================================================================
 
 echo "========================================"
-echo "L3Rseq — LibCheck_sample analysis"
-echo "  Input:   $INPUT_DIR (barcode44, barcode45, barcode46)"
+echo "L3Rseq pipeline run"
+echo "  Input:   $INPUT_DIR"
 echo "  Output:  $OUTDIR"
 echo "  Method:  $METHOD"
 echo "  RPIs:    ${RPIS:-all}"
@@ -135,15 +133,9 @@ echo ""
 
 L3Rseq run --input "$OUTDIR" --outdir "$OUTDIR" "${ARGS[@]}" --start-at 4 --stop-at 7
 
-# ---- Done -------------------------------------------------------------------
+# ---- Phase 3: Gene-level counting (optional) -------------------------------
 
-# ---- Phase 3: Gene-level counting ------------------------------------------
-
-# Auto-discover gene regions from mapped reads + GFF annotation.
-# Requires a GFF3 file for the reference genome.
-GFF="resources/references/MpTak_v7.1.gff3"
-
-if [ -f "$GFF" ] && [ -d "$OUTDIR/07_map" ]; then
+if [ -n "$GFF" ] && [ -f "$GFF" ] && [ -d "$OUTDIR/07_map" ]; then
     echo ""
     echo "=== Phase 3: Gene-level counting ==="
     echo ""
@@ -167,14 +159,10 @@ echo "========================================"
 echo ""
 echo "Key output files:"
 echo "  Mapped BAMs:       $OUTDIR/07_map/"
-echo "  Gene counts:       $OUTDIR/11_count/"
-echo "  Regions:           $OUTDIR/regions.tsv"
+[ -n "$GFF" ] && echo "  Gene counts:       $OUTDIR/11_count/"
+[ -n "$GFF" ] && echo "  Regions:           $OUTDIR/regions.tsv"
 echo "  Pipeline summary:  $OUTDIR/pipeline_summary.tsv"
 echo ""
 echo "Next steps:"
 echo "  # View alignments and gene counts in your browser"
 echo "  L3Rseq viewer --dir $OUTDIR"
-echo ""
-echo "  # Re-run counting with housekeeping normalization"
-echo "  # L3Rseq count --input $OUTDIR --outdir $OUTDIR \\"
-echo "  #     --regions $OUTDIR/regions.tsv --housekeeping GENE_NAME"

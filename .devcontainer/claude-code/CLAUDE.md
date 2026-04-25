@@ -263,8 +263,10 @@ Quick sync: `cp .devcontainer/claude-code/CLAUDE.md ~/.claude/CLAUDE.md`
   in the pipeline (coverage ignoring min-mapq, stale file globs after rename) and
   test suite (variant check too lenient, grep -c unguarded, --test flag gaps).
   Consult that section before working on steps 07-11 or the test suite.
-- **Real data test**: Always `rm -rf runs/LibCheck` before re-running
-  `examples/LibCheck_sample.sh` — leftover `03_demux_all/` breaks RPI filtering.
+- **RPI-filter rerun gotcha**: When re-running an `examples/` script that
+  uses RPI filtering (e.g., `examples/run_pipeline_with_rpi_filter.sh`),
+  `rm -rf` the previous `OUTDIR` first — leftover `03_demux_all/` from a
+  prior run breaks RPI filtering on the second pass.
 
 ## Pipeline modernization habits
 

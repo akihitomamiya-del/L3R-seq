@@ -5,11 +5,13 @@ All notable changes are documented here.
 ## [Unreleased] - 2026-04-25
 
 ### Changed
-- Moved `runs/LibCheck_sample.sh` → `examples/LibCheck_sample.sh` and
-  removed the tracked `runs/README.md`. `runs/` is now an output-only
-  directory (devcontainers symlink it to a fast Docker volume), so
-  tracking files inside it caused permanent `D runs/...` entries in
-  `git status` whenever the symlink was active.
+- Cleaned up `runs/` so it is purely an output directory. The previous
+  example script that lived in `runs/` is now a generic template at
+  `examples/run_pipeline_with_rpi_filter.sh` (demonstrates 3-phase
+  resumable runs with optional RPI filtering and gene counting), and
+  the `runs/README.md` placeholder was removed. Devcontainers symlink
+  `runs/` to a fast Docker volume; tracking files inside that path
+  caused permanent `D runs/...` entries in `git status`.
 - **Snakemake is now the recommended execution path.** README leads with
   `snakemake --cores N --configfile config.yaml`; the bash dispatcher
   (`L3Rseq run`) is documented as the alternative for one-off invocations.
