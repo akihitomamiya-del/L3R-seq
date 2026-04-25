@@ -22,6 +22,12 @@
   "updateRemoteUserUID": true,
   "workspaceMount": "source=${localWorkspaceFolder},target=/workspace,type=bind,consistency=delegated",
   "workspaceFolder": "/workspace",
-  "postCreateCommand": "cd /workspace/igv_viewer && npm install --silent",
+  "mounts": [
+    "source=l3rseq-runs,target=/runs,type=volume"
+  ],
+  "remoteEnv": {
+    "TMPDIR": "/runs/.tmp"
+  },
+  "postCreateCommand": "cd /workspace/igv_viewer && npm install --silent && sudo chown -R vscode:vscode /runs && mkdir -p /runs/.tmp && (test -L /workspace/runs || (test -d /workspace/runs && mv /workspace/runs /workspace/runs.bind-old || true; ln -s /runs /workspace/runs))",
   "postStartCommand": "setsid -f node /workspace/igv_viewer/server.js > /tmp/igv-server.log 2>&1"
 }
