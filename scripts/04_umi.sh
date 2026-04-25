@@ -46,6 +46,7 @@ run_step_04() {
         # Build task list: bname<TAB>fq<TAB>fname
         local _tasks
         _tasks=$(mktemp)
+        # shellcheck disable=SC2064  # We want $_tasks expanded now (mktemp path is unique per invocation)
         trap "rm -f '$_tasks'" RETURN
         local _step04_count=0
         for barcode_dir in "$demux_base"/*/; do
@@ -121,8 +122,9 @@ run_step_04() {
 
         if [ "$_jobs" -gt 1 ] && command -v parallel >/dev/null 2>&1; then
             echo "  [parallel] $_jobs jobs × $_threads_per_job threads/job (UMI_PARALLEL_JOBS=$_jobs)"
+            # {1}/{2}/{3} are GNU parallel column substitutions, quoted to keep shellcheck happy.
             parallel --line-buffer -j "$_jobs" --colsep '\t' \
-                _step04_process_one {1} {2} {3} < "$_tasks"
+                _step04_process_one '{1}' '{2}' '{3}' < "$_tasks"
         else
             while IFS=$'\t' read -r bname fq fname; do
                 _step04_process_one "$bname" "$fq" "$fname"
@@ -175,6 +177,7 @@ run_step_04() {
     # Build task list: bname<TAB>fq<TAB>fname
     local _tasks_umic
     _tasks_umic=$(mktemp)
+    # shellcheck disable=SC2064  # We want $_tasks_umic expanded now (mktemp path is unique per invocation)
     trap "rm -f '$_tasks_umic'" RETURN
     local _step04_umic_count=0
     for barcode_dir in "$demux_base"/*/; do
@@ -262,8 +265,9 @@ run_step_04() {
 
     if [ "$_jobs" -gt 1 ] && [ -n "$_parallel" ]; then
         echo "  [parallel] $_jobs jobs × $_threads_per_job threads/job (UMI_PARALLEL_JOBS=$_jobs)"
+        # {1}/{2}/{3} are GNU parallel column substitutions, quoted to keep shellcheck happy.
         "$_parallel" --line-buffer -j "$_jobs" --colsep '\t' \
-            _step04_umic_process_one {1} {2} {3} < "$_tasks_umic"
+            _step04_umic_process_one '{1}' '{2}' '{3}' < "$_tasks_umic"
     else
         [ "$_jobs" -gt 1 ] && [ -z "$_parallel" ] && \
             echo "  WARNING: UMI_PARALLEL_JOBS=$_jobs requested but GNU parallel not found; falling back to serial" >&2
