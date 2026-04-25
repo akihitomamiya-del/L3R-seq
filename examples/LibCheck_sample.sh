@@ -1,5 +1,5 @@
 #!/bin/bash
-# runs/LibCheck_sample.sh — L3Rseq analysis of LibCheck_sample data (BAI981)
+# examples/LibCheck_sample.sh — L3Rseq analysis of LibCheck_sample data (BAI981)
 #
 # Processes the real Oxford Nanopore data in LibCheck_sample/ (barcode44,
 # barcode45, barcode46) through the full L3Rseq pipeline.
@@ -11,7 +11,7 @@
 #   1. Set REF to your target gene reference FASTA (see below)
 #   2. Set TARGET_FWD to your gene-specific forward primer
 #   3. Optionally adjust RPIS to select specific samples
-#   4. Run:  cd /workspace && bash runs/LibCheck_sample.sh
+#   4. Run:  cd /workspace && bash examples/LibCheck_sample.sh
 #
 # The script runs in two phases:
 #   Phase 1 (steps 01-03): concat, trim, demux — runs immediately, no ref needed

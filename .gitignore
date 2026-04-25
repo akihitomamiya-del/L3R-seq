@@ -47,9 +47,6 @@
 !UMIC-seq_L3Rseq/**
 !examples/
 !examples/**
-!runs/
-!runs/README.md
-!runs/LibCheck_sample.sh
 !docs/
 !docs/**
 !igv_viewer/

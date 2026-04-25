@@ -5,6 +5,11 @@ All notable changes are documented here.
 ## [Unreleased] - 2026-04-25
 
 ### Changed
+- Moved `runs/LibCheck_sample.sh` → `examples/LibCheck_sample.sh` and
+  removed the tracked `runs/README.md`. `runs/` is now an output-only
+  directory (devcontainers symlink it to a fast Docker volume), so
+  tracking files inside it caused permanent `D runs/...` entries in
+  `git status` whenever the symlink was active.
 - **Snakemake is now the recommended execution path.** README leads with
   `snakemake --cores N --configfile config.yaml`; the bash dispatcher
   (`L3Rseq run`) is documented as the alternative for one-off invocations.

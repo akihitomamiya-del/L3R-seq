@@ -264,7 +264,7 @@ Quick sync: `cp .devcontainer/claude-code/CLAUDE.md ~/.claude/CLAUDE.md`
   test suite (variant check too lenient, grep -c unguarded, --test flag gaps).
   Consult that section before working on steps 07-11 or the test suite.
 - **Real data test**: Always `rm -rf runs/LibCheck` before re-running
-  `runs/LibCheck_sample.sh` — leftover `03_demux_all/` breaks RPI filtering.
+  `examples/LibCheck_sample.sh` — leftover `03_demux_all/` breaks RPI filtering.
 
 ## Pipeline modernization habits
 
