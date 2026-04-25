@@ -2,7 +2,7 @@
 
 All notable changes are documented here.
 
-## [Unreleased] - 2026-04-25
+## [1.2.1] - 2026-04-25
 
 ### Changed
 - Cleaned up `runs/` so it is purely an output directory. The previous
@@ -30,6 +30,16 @@ All notable changes are documented here.
 - README: "Performance notes" section honestly documents the
   small-dataset overhead of snakemake's per-rule scheduling vs the
   bash dispatcher's lighter-weight invocation.
+- `tests/run_tests_snake.sh` + `tests/config_synthetic.yaml`
+  (Phase 4 — snakemake test parity). CI now diffs the snakemake path's
+  step-09 corrected BAMs and step-11 gene counts against the bash
+  dispatcher's output on the synthetic fixtures, so future drift
+  between the two execution paths fails CI. ~30s additional runtime
+  in the existing `quick-test` job.
+
+### Fixed
+- `L3Rseq --version` now reports `1.2.1` (was stuck at `1.1.2` through
+  the v1.2.0 release).
 
 ## [1.2.0] - 2026-04-25
 
