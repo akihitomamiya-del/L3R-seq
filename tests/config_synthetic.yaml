@@ -1,0 +1,124 @@
+# tests/config_synthetic.yaml — Snakemake config for the parity harness
+#
+# Drives `tests/run_tests_snake.sh`, the Phase 4 differential test that
+# proves the snakemake execution path produces byte-identical step 09
+# (corrected BAM) and step 11 (gene counts) output to the bash dispatcher
+# on the synthetic fixtures.
+#
+# This config mirrors the parameters that `bash tests/run_tests.sh --quick`
+# uses for its "Test 2" pipeline run:
+#
+#   ./L3Rseq run --input tests/data/demux \
+#                --outdir tests/output/pipeline_CT \
+#                --ref resources/references/test_gene.fasta \
+#                --method longread-umi \
+#                --pattern CT \
+#                --start-at 4 --stop-at 10
+#
+# The Snakefile has no `--start-at` equivalent, so the parity harness
+# pre-stages tests/output/snake_quick/03_demux/ from tests/data/demux/
+# before invoking snakemake. Snakemake then resumes from step 04 because
+# the demux checkpoint output already exists, giving both paths identical
+# step-04 inputs (the prerequisite for byte-identical comparison).
+#
+# Run with:
+#   bash tests/run_tests_snake.sh
+#
+# To run the snake path manually (after pre-staging 03_demux):
+#   conda activate l3rseq_py
+#   snakemake --cores 4 --configfile tests/config_synthetic.yaml
+
+# ---------------------------------------------------------------------------
+# Paths — point at the synthetic fixtures that ship with the repo
+# ---------------------------------------------------------------------------
+input_dir:  tests/data/raw_fastq
+output_dir: tests/output/snake_quick
+ref:        resources/references/test_gene.fasta
+rpi_fasta:  resources/rpi_barcodes/RPI_Barcode_20nt.fasta
+
+# ---------------------------------------------------------------------------
+# Run parameters — match the bash --quick invocation
+# ---------------------------------------------------------------------------
+pattern:       CT
+count_pattern: ""
+introns:       ""
+umi_method:    longread-umi
+
+# ---------------------------------------------------------------------------
+# Step 02 — cutadapt adapter trimming
+# (Same defaults as config.yaml; included for self-contained reproduction.)
+# ---------------------------------------------------------------------------
+adapter_fwd:   'CAAGCAGAAGACGGCATACGAGATNNNNNNGTGACTGGAGTTCCTTGGCACCCGAGAATTCCA;min_overlap=63'
+adapter_rev:   'TGGAATTCTCGGGTGCCAAGGAACTCCAGTCACNNNNNNATCTCGTATGCCGTCTTCTGCTTG;min_overlap=63'
+adapter_trim3: 'TGGAATTCTCGGGTGCCAAGGAACTCCAGTCACNNNNNNATCTCGTATGCCGTCTTCTGCTTG$'
+error_rate:    0.2
+
+# ---------------------------------------------------------------------------
+# Step 03 — demultiplex
+# ---------------------------------------------------------------------------
+demux_error_rate: 1
+demux_min_overlap: 20
+
+# ---------------------------------------------------------------------------
+# Step 04 — UMI extraction
+# ---------------------------------------------------------------------------
+umi_len:             15
+umi_flank5:          CTGAC
+umi_flank3:          TGGAATTCTCGGGTGCCAAGGC
+umi_size_thresh:     3
+umi_cluster_steps:   "15 29 1"
+umi_sample_size:     50
+umi_loc:             down
+umi_min_probe_score: 33
+umi_aln_thresh:      24
+umi_probe:           ""
+
+# ---------------------------------------------------------------------------
+# Step 05 — consensus calling
+# ---------------------------------------------------------------------------
+consensus_rounds: 4
+consensus_preset: "lr:hq"
+
+# ---------------------------------------------------------------------------
+# Step 06 — target sequence extraction
+# ---------------------------------------------------------------------------
+target_fwd:         'CTACGCGCAAATTCTCATTGG'
+target_rev:         'CTGACNNNNNNNNNNNNNNNTGGAATTCTCGGGTGCCAAGGAACTCCAGTCA'
+target_min_overlap: 52
+
+# ---------------------------------------------------------------------------
+# Step 07 — mapping
+# ---------------------------------------------------------------------------
+map_preset: "lr:hq"
+
+# ---------------------------------------------------------------------------
+# Step 08 — variant calling
+# ---------------------------------------------------------------------------
+min_af: 0.01
+
+# ---------------------------------------------------------------------------
+# Step 09 — tail correction
+# ---------------------------------------------------------------------------
+clip_thresh: 50
+blast_db:    ""
+blast_db2:   ""
+
+# ---------------------------------------------------------------------------
+# Step 11 — gene counting (enabled so the harness can diff step-11 outputs)
+# Matches the bash test 8 invocation: --regions tests/data/test_regions.tsv
+# --min-frac 0.3 (synthetic consensus reads are ~500-800bp fragments of the
+# 1300bp test_gene, so they don't clear the default 0.95 overlap threshold).
+# ---------------------------------------------------------------------------
+regions:      tests/data/test_regions.tsv
+housekeeping: ""
+min_frac:     0.3
+min_mapq:     0
+
+# ---------------------------------------------------------------------------
+# Per-step thread allocation
+# ---------------------------------------------------------------------------
+threads:
+  umi:       4
+  consensus: 4
+  map:       4
+  correct:   4

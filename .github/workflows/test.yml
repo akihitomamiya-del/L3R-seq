@@ -41,6 +41,15 @@ jobs:
         run: |
           export PATH="/opt/miniforge/bin:/opt/miniforge/condabin:$PATH"
           bash tests/run_tests.sh --quick --no-viewer
+      - name: Snakemake parity (Phase 4 — bash vs. snake byte-identical diff)
+        shell: bash
+        run: |
+          export PATH="/opt/miniforge/bin:/opt/miniforge/condabin:$PATH"
+          # Reuses tests/output/pipeline_CT/ from the bash-path step above
+          # as the baseline; runs snakemake into tests/output/snake_quick/
+          # and diffs corrected.sort.bams + step-11 TSVs. Fails if either
+          # path drifts.
+          bash tests/run_tests_snake.sh --cores 4
       - name: Install Chrome for Puppeteer
         run: |
           cd igv_viewer
