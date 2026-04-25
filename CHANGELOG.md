@@ -2,7 +2,7 @@
 
 All notable changes are documented here.
 
-## [Unreleased] - 2026-04-25
+## [1.2.0] - 2026-04-25
 
 ### Added
 - `--umi-parallel-jobs N` (also `UMI_PARALLEL_JOBS=N` env var): run N RPIs
