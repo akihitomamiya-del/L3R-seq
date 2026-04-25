@@ -354,6 +354,7 @@ cmd_umi() {
     local sample_size="$DEFAULT_SAMPLE_SIZE"
     local umi_flank5="$DEFAULT_UMI_FLANK5"
     local umi_flank3="$DEFAULT_UMI_FLANK3"
+    local umi_parallel_jobs="${UMI_PARALLEL_JOBS:-1}"
 
     while [ $# -gt 0 ]; do
         case "$1" in
@@ -370,10 +371,16 @@ cmd_umi() {
             --size-thresh)     require_arg "$1" "${2:-}"; size_thresh="$2"; shift 2 ;;
             --cluster-steps)   require_arg "$1" "${2:-}"; cluster_steps="$2"; shift 2 ;;
             --sample-size)     require_arg "$1" "${2:-}"; sample_size="$2"; shift 2 ;;
-            --help)            echo "Usage: L3Rseq umi --input <dir> --outdir <dir> [--probe <file>] [--method umic-seq|longread-umi] [options]"; return 0 ;;
+            --umi-parallel-jobs) require_arg "$1" "${2:-}"; umi_parallel_jobs="$2"; shift 2 ;;
+            --help)            echo "Usage: L3Rseq umi --input <dir> --outdir <dir> [--probe <file>] [--method umic-seq|longread-umi] [--umi-parallel-jobs <n>] [options]"; return 0 ;;
             *)                 echo "Unknown option: $1" >&2; return 1 ;;
         esac
     done
+
+    case "$umi_parallel_jobs" in
+        ''|*[!0-9]*) echo "ERROR: --umi-parallel-jobs must be a positive integer (got: '$umi_parallel_jobs')" >&2; return 1 ;;
+    esac
+    [ "$umi_parallel_jobs" -lt 1 ] && { echo "ERROR: --umi-parallel-jobs must be >= 1" >&2; return 1; }
 
     [ -z "$input_dir" ] && { echo "ERROR: --input is required" >&2; return 1; }
     [ -z "$output_dir" ] && { echo "ERROR: --outdir is required" >&2; return 1; }
@@ -388,12 +395,14 @@ cmd_umi() {
 
     # Activate appropriate conda environment based on method
     if [ "$method" = "longread-umi" ]; then
-        _conda_run "$ENV_LONGREAD_UMI" "04_umi.sh" run_step_04 "$input_dir" "$output_dir" "$probe_file" \
+        UMI_PARALLEL_JOBS="$umi_parallel_jobs" \
+            _conda_run "$ENV_LONGREAD_UMI" "04_umi.sh" run_step_04 "$input_dir" "$output_dir" "$probe_file" \
             "$umi_len" "$umi_loc" "$min_probe_score" "$aln_thresh" \
             "$size_thresh" "$cluster_steps" "$sample_size" "$method" \
             "$umi_flank5" "$umi_flank3"
     else
-        _conda_run "$ENV_UMIC" "04_umi.sh" run_step_04 "$input_dir" "$output_dir" "$probe_file" \
+        UMI_PARALLEL_JOBS="$umi_parallel_jobs" \
+            _conda_run "$ENV_UMIC" "04_umi.sh" run_step_04 "$input_dir" "$output_dir" "$probe_file" \
             "$umi_len" "$umi_loc" "$min_probe_score" "$aln_thresh" \
             "$size_thresh" "$cluster_steps" "$sample_size" "$method" \
             "$umi_flank5" "$umi_flank3"
@@ -798,6 +807,7 @@ cmd_run() {
     local target_fwd="$DEFAULT_TARGET_FWD"
     local target_rev="$DEFAULT_TARGET_REV"
     local verbose=0
+    local umi_parallel_jobs="${UMI_PARALLEL_JOBS:-1}"
 
     while [ $# -gt 0 ]; do
         case "$1" in
@@ -825,6 +835,7 @@ cmd_run() {
             --no-target-fwd)      target_fwd=""; shift ;;
             --keep-intermediates) keep_intermediates=1; shift ;;
             --verbose)            verbose=1; shift ;;
+            --umi-parallel-jobs)  require_arg "$1" "${2:-}"; umi_parallel_jobs="$2"; shift 2 ;;
             --help)
                 cat <<'RUNHELP'
 Usage: L3Rseq run --input <dir> --outdir <dir> [options]
@@ -861,6 +872,10 @@ Pipeline control:
   --keep-intermediates    Keep all intermediate files (default: clean up)
   --verbose               Show full tool diagnostic output (minimap2, racon, bwa, etc.)
   --prefix <str>          Output file prefix for step 01
+  --umi-parallel-jobs <n> Run N RPIs concurrently in step 04 (default: 1 = serial).
+                          Threads are divided evenly (--threads / N per worker).
+                          Output is byte-identical to serial. Also accepts env
+                          var UMI_PARALLEL_JOBS=N.
 
 Adapter/target sequences default to config.sh values. Override per-step
 with individual subcommands (L3Rseq trim --adapter-fwd, etc.).
@@ -872,6 +887,10 @@ RUNHELP
 
     [ -z "$input_dir" ] && { echo "ERROR: --input is required" >&2; return 1; }
     [ -z "$output_dir" ] && { echo "ERROR: --outdir is required" >&2; return 1; }
+    case "$umi_parallel_jobs" in
+        ''|*[!0-9]*) echo "ERROR: --umi-parallel-jobs must be a positive integer (got: '$umi_parallel_jobs')" >&2; return 1 ;;
+    esac
+    [ "$umi_parallel_jobs" -lt 1 ] && { echo "ERROR: --umi-parallel-jobs must be >= 1" >&2; return 1; }
     validate_introns "$introns" || return 1
 
     # Export verbose flag for child scripts (consensus_racon, umi_binning_single)
@@ -998,12 +1017,14 @@ RUNHELP
             run_size_thresh="$DEFAULT_LONGREAD_SIZE_THRESH"
         fi
         if [ "$method" = "longread-umi" ]; then
-            _conda_run "$ENV_LONGREAD_UMI" "04_umi.sh" run_step_04 "$umi_input" "$output_dir" "$probe_file" \
+            UMI_PARALLEL_JOBS="$umi_parallel_jobs" \
+                _conda_run "$ENV_LONGREAD_UMI" "04_umi.sh" run_step_04 "$umi_input" "$output_dir" "$probe_file" \
                 "$DEFAULT_UMI_LEN" "$DEFAULT_UMI_LOC" "$DEFAULT_MIN_PROBE_SCORE" \
                 "$DEFAULT_ALN_THRESH" "$run_size_thresh" "$DEFAULT_CLUSTER_STEPS" \
                 "$DEFAULT_SAMPLE_SIZE" "$method" "$umi_flank5" "$umi_flank3"
         else
-            _conda_run "$ENV_UMIC" "04_umi.sh" run_step_04 "$umi_input" "$output_dir" "$probe_file" \
+            UMI_PARALLEL_JOBS="$umi_parallel_jobs" \
+                _conda_run "$ENV_UMIC" "04_umi.sh" run_step_04 "$umi_input" "$output_dir" "$probe_file" \
                 "$DEFAULT_UMI_LEN" "$DEFAULT_UMI_LOC" "$DEFAULT_MIN_PROBE_SCORE" \
                 "$DEFAULT_ALN_THRESH" "$run_size_thresh" "$DEFAULT_CLUSTER_STEPS" \
                 "$DEFAULT_SAMPLE_SIZE" "$method" "$umi_flank5" "$umi_flank3"
