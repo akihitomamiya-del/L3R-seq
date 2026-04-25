@@ -93,7 +93,7 @@ This runs the core pipeline (steps 01–10). Use `--start-at` and `--stop-at` to
 --umi-parallel-jobs 8     # run 8 RPIs concurrently in step 04 (default: 1 = serial)
 ```
 
-**Performance notes.** Both paths produce the same outputs (steps 09 and 11 are byte-identical; all other steps share the same scripts).
+**Performance notes.** Both paths produce the same outputs.
 
 - **Snakemake** wins on larger jobs — DAG parallelism runs different stages concurrently for different RPIs. Has per-rule overhead (~1-2s per rule for conda activation + tmp staging) which can dominate on very small datasets (<20 RPIs, fast amplicon refs). On amplicon-scale data with few samples, the bash dispatcher with `--umi-parallel-jobs N` may finish in less wall time. On genome-wide refs or 30+ RPIs, snakemake's DAG parallelism dominates.
 - **Bash dispatcher** `--umi-parallel-jobs N` only parallelizes step 04. Stages 05-10 still iterate RPIs serially within each step (though tools like racon/minimap2 use multiple threads internally).
