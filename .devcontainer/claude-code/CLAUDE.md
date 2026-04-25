@@ -138,6 +138,29 @@ git tag v1.0.XX && git push origin v1.0.XX   # triggers .github/workflows/docker
 
 After CI finishes, rebuild the devcontainer to pick up the new base image.
 
+## Branch protection
+
+`main` has minimal branch protection enabled (set 2026-04-25):
+
+- ❌ Force pushes blocked (`git push --force origin main`)
+- ❌ Branch deletion blocked (`git push origin :main`)
+- ✅ Normal pushes still allowed (no PR-required, no review-required, no
+  status-check gating — solo-dev friendly)
+- ✅ `enforce_admins = false` so the repo owner can still bypass in
+  emergencies
+
+Rationale: minimal-friction protection — only blocks the genuinely
+destructive operations no normal workflow needs. Can be tightened later
+(e.g., add status-check requirement, require PR for main).
+
+To inspect or change:
+
+```bash
+# View current rules
+gh api repos/akihitomamiya-del/L3R-seq/branches/main/protection
+# Web UI: Settings → Branches → Edit rule
+```
+
 ### CLAUDE.md copies (keep in sync)
 
 There are three copies of this file — update all three when making changes:
