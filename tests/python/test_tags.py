@@ -158,3 +158,56 @@ class TestConditionalEmission:
         assert "SJ" in names
         assert "SI" in names
         assert "IR" in names
+
+
+class TestDsTagInt32Bounds:
+    """DS tag is dropped when it would overflow pysam's 'i' (int32) format.
+
+    Regression test for the crash reported running step 09 against a
+    genome-wide reference (terminus * 10000 exceeds int32 max around
+    terminus > 215_000). pysam.set_tags raises struct.error on the bare
+    write; ``build_tags`` instead omits DS to keep the BAM writable.
+    """
+
+    INT32_MAX = 2_147_483_647
+
+    def test_ds_at_max_int32_still_emitted(self) -> None:
+        # Exactly at the boundary — should still fit and be present.
+        tags = build_tags(_base_values(doublesorter=self.INT32_MAX))
+        ds = next((t for t in tags if t[0] == "DS"), None)
+        assert ds == ("DS", self.INT32_MAX, "i")
+
+    def test_ds_above_int32_dropped(self) -> None:
+        # 1 above max — DS should be dropped rather than crash pysam.
+        tags = build_tags(_base_values(doublesorter=self.INT32_MAX + 1))
+        names = [t[0] for t in tags]
+        assert "DS" not in names
+
+    def test_ds_below_int32_min_dropped(self) -> None:
+        # Negative overflow (unlikely in real data but defended for symmetry).
+        tags = build_tags(_base_values(doublesorter=-(self.INT32_MAX + 2)))
+        names = [t[0] for t in tags]
+        assert "DS" not in names
+
+    def test_other_tags_unaffected_when_ds_dropped(self) -> None:
+        # When DS is dropped, the remaining tag order matches the same
+        # 9-tag sequence with a hole where DS was.
+        tags = build_tags(_base_values(doublesorter=10**12))
+        names = [t[0] for t in tags]
+        assert names == ["3E", "RC", "RS", "TL", "EC", "NC", "mL", "VR"]
+
+    def test_genome_wide_position_typical_overflow(self) -> None:
+        # terminus = 31_000_000 (chr5 of MpTak_v7.1) → DS = 310_000_000_000.
+        # Way above int32; DS dropped, no crash.
+        terminus = 31_000_000
+        clip = 5
+        ds_raw = terminus * 10000 + clip
+        assert ds_raw > self.INT32_MAX, "test premise: DS must overflow"
+        tags = build_tags(
+            _base_values(terminus=terminus, doublesorter=ds_raw, remaining_clip_n=clip)
+        )
+        # 3E and RC are still present (their values fit int32 individually).
+        d = {t[0]: t[1] for t in tags}
+        assert d["3E"] == terminus
+        assert d["RC"] == clip
+        assert "DS" not in d

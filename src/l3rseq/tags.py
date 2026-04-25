@@ -32,6 +32,7 @@ against the bash version, so any reordering here will fail that gate.
 
 from __future__ import annotations
 
+import sys
 from dataclasses import dataclass
 
 from l3rseq.splice import SpliceResult
@@ -40,6 +41,14 @@ from l3rseq.splice import SpliceResult
 #: is a 2-character string. Value type depends on ``type_char`` (i=int,
 #: Z=string, f=float). We only emit ``i`` and ``Z`` in step 09.
 TagTuple = tuple[str, object, str]
+
+#: Bounds for SAM ``i`` (signed 32-bit integer) tag values.
+_INT32_MIN = -2_147_483_648
+_INT32_MAX = 2_147_483_647
+
+#: One-time warning flag for DS overflow (process-scoped).
+#: ``build_tags`` is called once per read; we don't want to spam stderr.
+_warned_ds_overflow = False
 
 
 @dataclass(frozen=True)
@@ -111,9 +120,29 @@ def build_tags(values: Step09TagValues) -> list[TagTuple]:
         ("RC", values.remaining_clip_n, "i"),
         ("RS", values.remaining_clip_seq, "Z"),
         ("TL", values.translocation, "i"),
-        ("DS", values.doublesorter, "i"),
-        ("EC", values.ec, "i"),
     ]
+    # DS = terminus * 10000 + remaining_clip_n. For amplicon-scale references
+    # this fits in int32 fine. For genome-wide references the multiplier
+    # overflows around terminus > 215_000 (≈ chromosome positions in any
+    # eukaryotic genome). pysam writes 'i' tags as signed int32, so the bare
+    # set_tags() call would crash with struct.error. Drop DS when it would
+    # overflow rather than crash; the IGV viewer falls back to its default
+    # sort. One-time stderr notice on first overflow.
+    if _INT32_MIN <= values.doublesorter <= _INT32_MAX:
+        tags.append(("DS", values.doublesorter, "i"))
+    else:
+        global _warned_ds_overflow
+        if not _warned_ds_overflow:
+            print(
+                "[step 09] WARNING: DS tag value "
+                f"{values.doublesorter} exceeds int32 range; DS will be "
+                "omitted for reads with reference positions > ~215kb. "
+                "This is expected on genome-wide references and does not "
+                "affect EC/3E/VR/SJ correctness.",
+                file=sys.stderr,
+            )
+            _warned_ds_overflow = True
+    tags.append(("EC", values.ec, "i"))
     if values.sc is not None:
         tags.append(("SC", values.sc, "i"))
     tags.extend(
