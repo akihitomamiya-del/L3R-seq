@@ -2,6 +2,28 @@
 
 All notable changes are documented here.
 
+## [Unreleased] - 2026-04-25
+
+### Changed
+- **Snakemake is now the recommended execution path.** README leads with
+  `snakemake --cores N --configfile config.yaml`; the bash dispatcher
+  (`L3Rseq run`) is documented as the alternative for one-off invocations.
+  Snakemake provides DAG-level parallelism across `{barcode, RPI}`
+  samples, resume-from-failure, and per-rule resource isolation. On
+  larger datasets this yields material speedups beyond what the bash
+  dispatcher's `--umi-parallel-jobs N` can achieve (which only
+  parallelizes step 04).
+- Removed the hardcoded `/opt/miniforge/envs/longread_umi/bin/parallel`
+  fallback from `scripts/04_umi.sh` (UMIC-seq branch). The fallback was
+  introduced when the UMIC-seq conda env didn't ship `parallel`; that
+  was fixed in v1.2.0 (Dockerfile change), so the workaround is no
+  longer needed.
+
+### Added
+- README: "Performance notes" section honestly documents the
+  small-dataset overhead of snakemake's per-rule scheduling vs the
+  bash dispatcher's lighter-weight invocation.
+
 ## [1.2.0] - 2026-04-25
 
 ### Added

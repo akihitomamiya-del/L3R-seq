@@ -345,10 +345,22 @@ touching the Python modules, config, or the dispatcher.
 
 ## Project overview
 
-L3Rseq is a long-read UMI sequencing pipeline for Oxford Nanopore data. The main
-entry point is the `L3Rseq` script (bash), which dispatches subcommands: `run`,
-`concat`, `regions`, `count`, `viewer`, etc. Pipeline steps live in `scripts/01_concat.sh`
-through `scripts/11_count.sh`. UMI-specific logic is in `longread_umi_L3Rseq/scripts/`.
+L3Rseq is a long-read UMI sequencing pipeline for Oxford Nanopore data.
+There are two execution paths:
+
+- **Snakemake (recommended)** — `snakemake --cores N --configfile config.yaml`
+  from the `l3rseq_py` env. DAG-parallel across `{barcode, RPI}` samples,
+  with resume-from-failure. Snakefile is at the repo root; per-rule logic
+  delegates to `scripts/0?_*.sh` and `src/l3rseq/*.py` so the two paths
+  share their step bodies.
+- **Bash dispatcher (alternative)** — the `L3Rseq` script (bash) which
+  dispatches subcommands: `run`, `concat`, `regions`, `count`, `viewer`,
+  etc. Quicker for one-off invocations with CLI flags but no DAG
+  parallelism (only `--umi-parallel-jobs N` for step-04 RPI concurrency).
+
+Both paths produce the same output (steps 09 and 11 are byte-identical).
+Pipeline steps live in `scripts/01_concat.sh` through `scripts/11_count.sh`.
+UMI-specific logic is in `longread_umi_L3Rseq/scripts/`.
 
 Analyzes RNA editing, splicing, 3' end cleavage, poly(A) tails on single molecules using nanopore long reads.
 
