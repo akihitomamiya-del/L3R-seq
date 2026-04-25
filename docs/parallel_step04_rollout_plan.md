@@ -13,7 +13,6 @@ changes, CLI exposure, docs, tests, and PR strategy.
   `UMI_PARALLEL_JOBS`. Default 1 (serial) preserves prior behavior.
 - `docs/pipeline_speed_investigation.md` — root-cause + benchmarks.
 - `docs/pipeline_fast_storage_plan.md` — workspace storage plan.
-- `docs/rep3_comparison_limitations.md` — REP3 caveats.
 - `docs/umic_seq_speedup_plan.md` — algorithmic plan + measured results.
 
 **Validated:**

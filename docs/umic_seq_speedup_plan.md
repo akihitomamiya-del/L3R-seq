@@ -608,7 +608,6 @@ should drop to 15-20 min if memory permits.
 
 - `docs/pipeline_speed_investigation.md` — the longread-umi / FS / parallel work from earlier today.
 - `docs/pipeline_fast_storage_plan.md` — rollout plan for the workspace storage change.
-- `docs/rep3_comparison_limitations.md` — what we couldn't verify against REP3 due to missing reference.
 - `runs/pipeline_timings.tsv` — benchmark log including the REP3 timings that motivated this doc.
 - Branch `speedup-step04-parallel` — the longread-umi RPI-parallelization precedent. Any UMIC-seq work would live on a sibling branch or the same branch depending on review scope.
 - **Git archeology (2026-04-24):** verified no prior UMIC-seq RPI-parallelization attempt exists in any commit, branch, reflog, deleted file, or in the Takehira snapshot's independent git history. The pattern in Appendix D is a genuine first implementation.

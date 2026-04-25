@@ -18,8 +18,7 @@ All notable changes are documented here.
 - Investigation docs: `docs/pipeline_speed_investigation.md` (root-cause
   analysis of 9P slowdown), `docs/pipeline_fast_storage_plan.md` (storage
   rollout), `docs/umic_seq_speedup_plan.md` (UMIC-seq parallelism plan +
-  benchmarks), `docs/parallel_step04_rollout_plan.md` (combined rollout),
-  `docs/rep3_comparison_limitations.md` (REP3 reference-missing caveats).
+  benchmarks), `docs/parallel_step04_rollout_plan.md` (combined rollout).
 
 ### Performance
 - Step 04 LibCheck (36 RPIs) on `/workspace` 9P: 22m 24s → 44s on `/runs`
