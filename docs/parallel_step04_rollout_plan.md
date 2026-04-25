@@ -5,6 +5,78 @@ and validated on branch `speedup-step04-parallel`. This doc covers
 turning that branch into a production-ready merge: devcontainer
 changes, CLI exposure, docs, tests, and PR strategy.
 
+## ⏭️ Next steps right now (2026-04-25, post-CI)
+
+PR #11 (https://github.com/akihitomamiya-del/L3R-seq/pull/11) is open
+and **all CI checks are green** (shellcheck, quick-test, snakemake-test,
+python-test, Publish Docker image). Tag `v1.2.0` is built and the new
+image is on `ghcr.io/akihitomamiya-del/l3rseq:latest`.
+
+**Action needed (in this order):**
+
+1. **Rebuild the devcontainer in VS Code:**
+   `Cmd/Ctrl+Shift+P → "Dev Containers: Rebuild Container"`. Pick
+   "Without Cache" if you want to be sure the new `:latest` is pulled.
+2. **Smoke-test inside the rebuilt container:**
+   ```bash
+   conda activate UMIC-seq && command -v parallel    # should print a path now
+   ls -la /workspace/runs                            # should be a symlink → /runs
+   df -h /runs                                       # ext4, NOT C:\
+   ```
+   Then a one-RPI parallel sanity run on the synthetic test data:
+   ```bash
+   bash tests/run_tests.sh --quick
+   UMI_PARALLEL_JOBS=2 bash tests/run_tests.sh --quick
+   ```
+3. **Merge PR #11.** Either click "Merge pull request" on GitHub
+   (recommended: "Create a merge commit" to preserve the chunked
+   history), or:
+   ```bash
+   gh pr merge 11 --merge --delete-branch
+   ```
+4. **Sync local main:**
+   ```bash
+   git checkout main && git pull
+   git branch -d speedup-step04-parallel    # already deleted on remote
+   ```
+5. **Optional follow-up commit (after merge + rebuild):** the hardcoded
+   fallback to `/opt/miniforge/envs/longread_umi/bin/parallel` in
+   `scripts/04_umi.sh` is no longer needed because `parallel` is now in
+   the UMIC-seq conda env. Remove it:
+   ```diff
+   - # Locate GNU parallel. The UMIC-seq conda env doesn't ship it; fall back
+   - # to the longread_umi env's parallel binary or the system one.
+   - local _parallel=""
+   - if command -v parallel >/dev/null 2>&1; then
+   -     _parallel="parallel"
+   - elif [ -x /opt/miniforge/envs/longread_umi/bin/parallel ]; then
+   -     _parallel="/opt/miniforge/envs/longread_umi/bin/parallel"
+   - fi
+   - if [ "$_jobs" -gt 1 ] && [ -n "$_parallel" ]; then
+   + if [ "$_jobs" -gt 1 ] && command -v parallel >/dev/null 2>&1; then
+        echo "  [parallel] $_jobs jobs × $_threads_per_job threads/job (UMI_PARALLEL_JOBS=$_jobs)"
+   -     "$_parallel" --line-buffer -j "$_jobs" --colsep '\t' \
+   +     parallel --line-buffer -j "$_jobs" --colsep '\t' \
+            _step04_umic_process_one '{1}' '{2}' '{3}' < "$_tasks_umic"
+   ```
+   Open as a small follow-up PR. Verify with the same UMIC-seq smoke
+   run before merging.
+
+**Reference / management commands:**
+
+```bash
+# Inspect the Docker volume (works even when container is gone)
+docker volume ls
+docker run --rm -v l3rseq-runs:/data alpine ls /data
+
+# Backup the volume to a tarball on /workspace
+docker run --rm -v l3rseq-runs:/data -v /workspace:/out alpine \
+    tar czf /out/runs-backup-$(date +%F).tar.gz -C /data .
+
+# Inspect main's branch protection
+gh api repos/akihitomamiya-del/L3R-seq/branches/main/protection
+```
+
 ## Current state (2026-04-25)
 
 **Done — uncommitted on branch `speedup-step04-parallel`:**
