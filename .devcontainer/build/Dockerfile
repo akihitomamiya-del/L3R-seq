@@ -105,6 +105,7 @@ RUN mamba create -y -n UMIC-seq -c conda-forge -c bioconda \
     scikit-bio=0.6.1 \
     tqdm=4.66.4 \
     matplotlib=3.8.4 \
+    parallel=20260122 \
     && mamba clean -afy
 
 COPY UMIC-seq_L3Rseq/UMIC-seq_fastq_v2.py /tmp/UMIC-seq_fastq_v2.py
