@@ -47,7 +47,7 @@ This is a **sandboxed devcontainer** with a network firewall. Key constraints:
   - `cutadaptenv` — cutadapt (steps 03, 06)
   - `NanoporeMap` — minimap2, samtools, bcftools (steps 07, and demo data)
   - `LoFreq` — lofreq, bcftools (step 08)
-  - `UMIC-seq` — python3, biopython, scikit-bio (alternative UMI method)
+  - `UMIC-seq` — python3, biopython, scikit-bio, parallel (alternative UMI method)
   - `Entrez` — efetch, esearch (fetching NCBI references)
   - `analysis` — matplotlib, numpy (plotting scripts)
   - `l3rseq_py` — python3, pysam, biopython, pyranges, snakemake, pandas, scipy, pytest, ruff, mypy (Python algorithmic core for step 09 + dev tooling)
@@ -72,6 +72,50 @@ This is a **sandboxed devcontainer** with a network firewall. Key constraints:
   falls back to the credentials file, otherwise it prompts for login. Verify
   whichever you use: `claude -p "say pong"`. Full setup and troubleshooting:
   `docs/auth.md`.
+
+## Step 04 RPI parallelism (`UMI_PARALLEL_JOBS`)
+
+Step 04 (UMI binning, both `longread-umi` and `umic-seq` methods) supports
+running N RPIs concurrently via GNU parallel. Either CLI flag or env var:
+
+```bash
+L3Rseq run --umi-parallel-jobs 4 ...      # CLI flag
+UMI_PARALLEL_JOBS=4 L3Rseq run ...         # env var (same effect)
+```
+
+Default is 1 (serial — preserves original behavior). Threads are divided
+evenly across workers (`--threads / N` per worker). Output is byte-identical
+to serial — verified on REP3 and LibCheck. Recommended values:
+
+- `longread-umi` on a 64-core host: `--umi-parallel-jobs 8` (~4-8× speedup)
+- `umic-seq` on a 64-core host: `--umi-parallel-jobs 4` (~6-7× speedup; UMIC-seq
+  internally uses multiprocessing.Pool so don't oversubscribe)
+
+`docs/parallel_step04_rollout_plan.md` and `docs/umic_seq_speedup_plan.md`
+have full benchmarks and design notes.
+
+## Fast output volume (`/runs`)
+
+Docker named volume `l3rseq-runs` is mounted at `/runs` (ext4, native
+WSL2/Docker storage). The post-create hook symlinks `/workspace/runs → /runs`,
+so existing `--outdir runs/foo` invocations transparently land on the fast
+filesystem. Survives container rebuilds; only `docker volume rm l3rseq-runs`
+deletes it. `TMPDIR=/runs/.tmp` is set in remoteEnv for tool scratch.
+
+Background: `/workspace` is bind-mounted from the Windows host via 9P, which
+imposes 80-600× overhead on small-file metadata ops. Step 04 (UMI binning)
+creates ~20k small files per run, so the overhead is meaningful. Moving the
+output dir off 9P + RPI parallelism gives ~30× end-to-end speedup. See
+`docs/pipeline_speed_investigation.md` for the root-cause analysis.
+
+To inspect / extract / back up the volume after the container is gone:
+
+```bash
+docker volume ls
+docker run --rm -v l3rseq-runs:/data alpine ls /data
+docker run --rm -v l3rseq-runs:/data -v "$PWD:/out" alpine \
+    tar czf /out/runs-backup.tar.gz -C /data .
+```
 
 ## Devcontainer configurations
 

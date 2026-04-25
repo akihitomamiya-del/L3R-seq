@@ -2,6 +2,31 @@
 
 All notable changes are documented here.
 
+## [Unreleased] - 2026-04-25
+
+### Added
+- `--umi-parallel-jobs N` (also `UMI_PARALLEL_JOBS=N` env var): run N RPIs
+  concurrently in step 04 via GNU parallel. Threads divided evenly across
+  workers (`--threads / N` per worker). Default 1 = serial. Output is
+  byte-identical to serial, verified on REP3 and LibCheck. Measured
+  speedups: ~4-8× for `longread-umi`, ~6-7× for `umic-seq`.
+- Docker named volume `l3rseq-runs` mounted at `/runs` (ext4) for pipeline
+  output. `/workspace/runs` is symlinked to `/runs` on container create —
+  existing `--outdir runs/foo` invocations transparently use the fast
+  filesystem. `TMPDIR=/runs/.tmp` for tool scratch.
+- `parallel` package added to UMIC-seq conda environment (Dockerfile).
+- Investigation docs: `docs/pipeline_speed_investigation.md` (root-cause
+  analysis of 9P slowdown), `docs/pipeline_fast_storage_plan.md` (storage
+  rollout), `docs/umic_seq_speedup_plan.md` (UMIC-seq parallelism plan +
+  benchmarks), `docs/parallel_step04_rollout_plan.md` (combined rollout),
+  `docs/rep3_comparison_limitations.md` (REP3 reference-missing caveats).
+
+### Performance
+- Step 04 LibCheck (36 RPIs) on `/workspace` 9P: 22m 24s → 44s on `/runs`
+  ext4 + parallel (30.5×, validated against prior Linux baseline of 76s).
+- Step 04 REP3 (18 RPIs) UMIC-seq: 1h 48m serial → 16m 9s with
+  `UMI_PARALLEL_JOBS=4` (6.71×, byte-identical output).
+
 ## [1.1.2] - 2026-04-05
 
 ### Added
