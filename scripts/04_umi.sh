@@ -254,23 +254,12 @@ run_step_04() {
     export _step04_UMIC_THREADS_PER_JOB="$_threads_per_job"
     export -f _step04_umic_process_one
 
-    # Locate GNU parallel. The UMIC-seq conda env doesn't ship it; fall back
-    # to the longread_umi env's parallel binary or the system one.
-    local _parallel=""
-    if command -v parallel >/dev/null 2>&1; then
-        _parallel="parallel"
-    elif [ -x /opt/miniforge/envs/longread_umi/bin/parallel ]; then
-        _parallel="/opt/miniforge/envs/longread_umi/bin/parallel"
-    fi
-
-    if [ "$_jobs" -gt 1 ] && [ -n "$_parallel" ]; then
+    if [ "$_jobs" -gt 1 ] && command -v parallel >/dev/null 2>&1; then
         echo "  [parallel] $_jobs jobs × $_threads_per_job threads/job (UMI_PARALLEL_JOBS=$_jobs)"
         # {1}/{2}/{3} are GNU parallel column substitutions, quoted to keep shellcheck happy.
-        "$_parallel" --line-buffer -j "$_jobs" --colsep '\t' \
+        parallel --line-buffer -j "$_jobs" --colsep '\t' \
             _step04_umic_process_one '{1}' '{2}' '{3}' < "$_tasks_umic"
     else
-        [ "$_jobs" -gt 1 ] && [ -z "$_parallel" ] && \
-            echo "  WARNING: UMI_PARALLEL_JOBS=$_jobs requested but GNU parallel not found; falling back to serial" >&2
         while IFS=$'\t' read -r bname fq fname; do
             _step04_umic_process_one "$bname" "$fq" "$fname"
         done < "$_tasks_umic"

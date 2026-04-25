@@ -55,14 +55,32 @@ bash tests/run_tests.sh --quick     # smoke test (~30s)
 L3Rseq viewer                       # open the viewer (check Ports tab for URL)
 ```
 
+### Recommended: Snakemake
+
+The recommended way to run the pipeline is via [Snakemake](https://snakemake.readthedocs.io/), which gives DAG parallelism across `{barcode, RPI}` samples (different stages run concurrently for different RPIs), resume-from-failure on interrupt, and per-rule resource isolation.
+
+```bash
+conda activate l3rseq_py
+# Edit config.yaml with your paths + parameters, then:
+snakemake --cores 8 --configfile config.yaml
+```
+
+`config.yaml` is the single source of truth — every step parameter (input/output dirs, reference, RPI fasta, UMI method, thresholds) lives there. Override at the command line with `--config key=value`. See [`config.yaml`](config.yaml) in the repo root for the full schema with comments, and [Development](docs/development.md#running-the-pipeline-with-snakemake) for per-experiment YAMLs.
+
+Outputs land in `<output_dir>/01_concat/` through `<output_dir>/10_csv/`. Gene-level counting (step 11) is an optional [post-analysis](#post-analysis) step invoked separately. Snakemake automatically resumes if interrupted — the same command picks up where it left off.
+
+### Alternative: Bash dispatcher
+
+For quick one-off runs without editing a YAML, the bash dispatcher accepts CLI flags directly:
+
 ```bash
 L3Rseq run --input data/ --outdir results/ --ref ref.fa \
     --rpi-fasta barcodes.fa --pattern CT --threads 8
 ```
 
-This runs the core pipeline (steps 01–10). Output goes to `results/01_concat/` through `results/10_csv/`. Use `--start-at` and `--stop-at` to run a subset of steps (e.g. `--start-at 4` skips preprocessing for pre-demultiplexed data). Gene-level counting (step 11) is an optional [post-analysis](#post-analysis) step invoked separately. Each step is also available as a standalone subcommand (e.g. `L3Rseq map --input <dir> --outdir <dir> --ref <ref.fa>`); see the [code overview](docs/code-overview.md) for per-step usage and [adaptation](docs/adaptation.md) for applying L3Rseq to different organisms and library designs. If you prefer AI-assisted analysis, see [Claude Code](docs/development.md#claude-code-ai-assisted-development).
+This runs the core pipeline (steps 01–10). Use `--start-at` and `--stop-at` to run a subset of steps (e.g. `--start-at 4` skips preprocessing for pre-demultiplexed data). Each step is also available as a standalone subcommand (e.g. `L3Rseq map --input <dir> --outdir <dir> --ref <ref.fa>`); see the [code overview](docs/code-overview.md) for per-step usage. If you prefer AI-assisted analysis, see [Claude Code](docs/development.md#claude-code-ai-assisted-development).
 
-**Common options:**
+**Common options for `L3Rseq run`:**
 
 ```bash
 --start-at 4              # skip preprocessing (steps 01-03)
@@ -72,20 +90,16 @@ This runs the core pipeline (steps 01–10). Output goes to `results/01_concat/`
 --introns "847-2891"      # classify reads as spliced/unspliced
 --prefilter               # rough-map pre-filter for noisy libraries
 --method umic-seq --probe probe.fa   # alternative UMI method
+--umi-parallel-jobs 8     # run 8 RPIs concurrently in step 04 (default: 1 = serial)
 ```
 
-To override per-step defaults from a YAML file, pass the global `--config-file` flag before the subcommand: `L3Rseq --config-file my.yaml run ...` (see [Development](docs/development.md#running-the-pipeline-with-snakemake) for the config model).
+**Performance notes.** Both paths produce the same outputs.
 
-### Alternative: Snakemake
+- **Snakemake** wins on larger jobs — DAG parallelism runs different stages concurrently for different RPIs. Has per-rule overhead (~1-2s per rule for conda activation + tmp staging) which can dominate on very small datasets (<20 RPIs, fast amplicon refs). On amplicon-scale data with few samples, the bash dispatcher with `--umi-parallel-jobs N` may finish in less wall time. On genome-wide refs or 30+ RPIs, snakemake's DAG parallelism dominates.
+- **Bash dispatcher** `--umi-parallel-jobs N` only parallelizes step 04. Stages 05-10 still iterate RPIs serially within each step (though tools like racon/minimap2 use multiple threads internally).
+- The devcontainer also mounts a fast `/runs` Docker volume at `/workspace/runs` so pipeline outputs avoid the slow Windows-host bind on WSL2. Combining ext4 + RPI parallelism gave ~30× end-to-end speedup vs the 9P baseline on LibCheck. Details in [docs/pipeline_speed_investigation.md](docs/pipeline_speed_investigation.md).
 
-For DAG parallelism across `{barcode, RPI}` samples and resume-from-failure, an equivalent execution path is available via [Snakemake](https://snakemake.readthedocs.io/):
-
-```bash
-conda activate l3rseq_py
-snakemake --cores 4 --configfile config.yaml
-```
-
-Both paths produce the same output (steps 09 and 11 are byte-identical; all other steps share the same scripts). See [Development](docs/development.md#running-the-pipeline-with-snakemake) for the config model and per-experiment YAMLs.
+To override per-step defaults from a YAML file when using the bash dispatcher, pass the global `--config-file` flag before the subcommand: `L3Rseq --config-file my.yaml run ...`.
 
 ## Pipeline overview
 
@@ -176,6 +190,7 @@ Output goes to `results/11_count/`. Both commands are Python-backed (`src/l3rseq
 - **Built-in viewer** -- browser-based [IGV.js alignment viewer](docs/adaptation.md#alignment-viewer) with SAM tag sorting/coloring
 - **Noise separation** -- per-read noise count distinguishes editing from residual sequencing errors
 - **Flexible entry** -- enter at any step with `--start-at` / `--stop-at`; re-runs skip completed samples
+- **Parallel execution** -- Snakemake DAG parallelism (recommended) or bash `--umi-parallel-jobs N` for step-04 RPI-level concurrency
 
 ## Output
 
