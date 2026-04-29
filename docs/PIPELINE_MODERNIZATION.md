@@ -2,7 +2,7 @@
 
 > ## 📍 Current status — All major phases merged; Phase 4 complete
 >
-> **Last updated**: 2026-04-10 (Session 4 — config.yaml as single source of truth)
+> **Last updated**: 2026-04-29 (Session 5 — Snakemake skip_correct flag closes the bash↔snake gap)
 > **Branch**: `main`
 >
 > ### ✅ Done across all phases
@@ -14,7 +14,8 @@
 > | 3 | Python step 11 gene counting (pysam, byte-identical to bash) | #5 |
 > | 1c | Bash step 09 archived to `scripts/legacy/`, fixed `cmd_run` step-9 latent bug | #6 |
 > | 4a | Config drift detection (`scripts/check_config_sync.py` in CI) + Snakemake docs | #7 |
-> | 4b | `config.yaml` single source of truth; dispatcher loads YAML via `scripts/load_config.sh`; `--config-file` flag enables per-experiment configs; `CLI > YAML > fallback` precedence | (this PR) |
+> | 4b | `config.yaml` single source of truth; dispatcher loads YAML via `scripts/load_config.sh`; `--config-file` flag enables per-experiment configs; `CLI > YAML > fallback` precedence | #8 |
+> | 2-followup | Snakefile `skip_correct` flag — DAG runs 1→7 then jumps to step 11, skipping 8/9/10. CLI override `--config skip_correct=true`. Closes the last bash↔snake gap (was: `L3Rseq run --stop-at 7 && L3Rseq count`, now one snakemake invocation). | (this PR) |
 >
 > **Test surface as of main**:
 > - `bash tests/run_tests.sh --quick --no-viewer` → **78/78** (dispatcher path)
@@ -39,6 +40,45 @@
 > - **Phase 3c**: delete `scripts/11_count.sh` once 3b lands. Until then it hosts the awk aggregation helpers.
 > - **Phase 5+**: port step 04 (UMI extraction) — much more invasive due to `longread_umi`'s starcode integration, may not be worth it.
 > - **HPC profile** (`profiles/`): SLURM/PBS support for the Snakefile. Phase 2 explicitly deferred.
+>
+> ### ✅ Done (Phase 2 follow-up — `skip_correct` flag, 2026-04-29)
+>
+> Identified during Takehira-san's LibCheck setup: the Snakefile previously
+> forced step 09 (tail correction) to run before step 11 (gene counting),
+> because `rule count` declared `input: done = "{OUTPUT_DIR}/09_correct/.done"`.
+> The bash dispatcher had no such constraint — `count.py:260-264` already
+> prefers `09_correct/` but falls back to `07_map/`, so
+> `L3Rseq run --stop-at 7 && L3Rseq count` worked out of the box.
+>
+> Resolution: added a `skip_correct: false` config flag to `config.yaml`. When
+> `true`:
+> - `rule count`'s `input` becomes a function returning `mapped_bams()` (per-sample
+>   step-7 BAMs) instead of the step-09 sentinel.
+> - `all_targets()` drops `csv_outputs()` (step 10 has no corrected BAMs to
+>   export from). Keeps `gene_counts_all.tsv` if `regions` is configured.
+> - The DAG resolves to `concat → trim → demux → umi → consensus → extract → map → count`
+>   — Snakemake doesn't pull `rule variants/correct/export_csv` because nothing
+>   depends on them.
+> - CLI override works with no extra plumbing: `snakemake --config skip_correct=true regions=... ...`.
+>
+> Test surface: `tests/run_tests_snake.sh` gained `--mode={full,skip-correct}`.
+> The new mode (a) does a dry-run DAG contract assertion (zero
+> variants/correct/export_csv jobs) before any computation, (b) runs
+> `L3Rseq run --start-at 4 --stop-at 7 && L3Rseq count` as the bash baseline,
+> (c) asserts `08_variants/`, `09_correct/`, `10_csv/` directories never get
+> created, and (d) diffs `gene_counts_all.tsv` set-equal between bash and
+> snake. CI runs both modes via the `snakemake-test` job.
+>
+> Real-data validation (2026-04-29): re-ran the bash-produced
+> `Past_runs/runs/LibCheck/` (Marchantia, 36 samples × 39 genes, MpTak1_v7.1
+> genome) through `snakemake --config skip_correct=true ...` after pre-staging
+> `03_demux/` (since the past run filtered RPIs 1–12 manually). 146 jobs in
+> ~62 s on 32 cores. **Every output byte-identical** to the bash-dispatcher
+> output: 36/36 BAMs, 1404/1404 `gene_counts_all.tsv` rows, 36/36 per-sample
+> gene-count TSVs, 1404/1404 coverage depth files, `isoform_discovery.tsv`.
+> The 2026-04-05 `count.py` algorithm change for `N` (intron) CIGAR ops is a
+> no-op on this data because `lr:hq` minimap2 preset doesn't emit `N` ops in
+> DNA mode — the change only matters once `09_correct/` is in the source tree.
 >
 > ---
 >

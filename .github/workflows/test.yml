@@ -169,6 +169,15 @@ jobs:
             echo "FAIL: resume planned $planned jobs (expected ≤15)"; exit 1
           fi
           snakemake --configfile config.yaml --cores 4
+      - name: Snakemake skip_correct mode (DAG + parity)
+        shell: bash
+        run: |
+          export PATH="/opt/miniforge/bin:/opt/miniforge/condabin:$PATH"
+          # Asserts: (a) DAG with skip_correct=true excludes variants/correct/
+          # export_csv jobs, (b) 08_variants/, 09_correct/, 10_csv/ never get
+          # created during the run, and (c) gene_counts_all.tsv matches the
+          # bash dispatcher's `--start-at 4 --stop-at 7 + L3Rseq count` output.
+          bash tests/run_tests_snake.sh --mode skip-correct --cores 4
 
   python-test:
     runs-on: ubuntu-latest

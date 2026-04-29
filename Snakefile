@@ -52,6 +52,11 @@ OUTPUT_DIR = config["output_dir"]
 REF        = config["ref"]
 RPI_FASTA  = config["rpi_fasta"]
 
+# When true, the DAG runs steps 1→7 then jumps directly to step 11 (gene counting),
+# skipping 8/9/10 entirely. count.py auto-detects 07_map/ when 09_correct/ is absent.
+# Useful for mapping + qPCR-style transcript counting without editing analysis.
+SKIP_CORRECT = bool(config.get("skip_correct", False))
+
 # Conda env name map — mirrors config.sh ENV_*.
 # Rule `conda:` directives use these names. Snakemake resolves them to
 # /opt/miniforge/envs/<name> because these envs are pre-built in the
@@ -165,7 +170,9 @@ def csv_outputs(wildcards=None):
 # We include the step-10 CSVs (per-sample terminal artifact) and, if a regions
 # file is configured, the step-11 merged gene counts (run-wide terminal).
 def all_targets(wildcards=None):
-    targets = list(csv_outputs())
+    # When skip_correct is set, step 10 has no meaning (no corrected BAMs to
+    # export from), so drop the per-sample CSVs from the default goal.
+    targets = [] if SKIP_CORRECT else list(csv_outputs())
     if config.get("regions"):
         targets.append(f"{OUTPUT_DIR}/11_count/gene_counts_all.tsv")
     return targets
@@ -488,11 +495,20 @@ rule export_csv:
 # ---------------------------------------------------------------------------
 # Step 11 — gene counting (aggregation; single rule, no per-sample wildcards)
 # ---------------------------------------------------------------------------
+def count_input(wildcards=None):
+    """Step 11 input source. Default: depend on step-09's `.done` sentinel so
+    Snakemake schedules step 09 (and 08 transitively) once for the run, then
+    count.py walks 09_correct/ for corrected BAMs. With skip_correct=true,
+    depend on per-sample step-07 BAMs directly; count.py auto-falls-back to
+    07_map/ when 09_correct/ is absent (count.py:260-264). The DAG then never
+    pulls rule variants/correct/export_csv in."""
+    if SKIP_CORRECT:
+        return mapped_bams()
+    return f"{OUTPUT_DIR}/09_correct/.done"
+
 rule count:
     input:
-        # Depend on step 09's whole-run sentinel; run_step_11 walks the
-        # 09_correct tree itself to find per-sample BAMs.
-        done=f"{OUTPUT_DIR}/09_correct/.done",
+        count_input,
     output:
         f"{OUTPUT_DIR}/11_count/gene_counts_all.tsv",
     params:

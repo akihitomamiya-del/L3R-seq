@@ -40,6 +40,12 @@ count_pattern: ""       # Optional SC tag pattern (e.g. TC for SLAM). "" = disab
 introns:       ""       # Optional introns spec (BED path or "start-end,...") for step 09. "" = disabled
 umi_method:    longread-umi   # longread-umi | umic-seq
 
+# When true, the DAG runs steps 1→7 then jumps directly to step 11 (gene counting),
+# skipping 8/9/10 entirely. Useful for mapping + qPCR-style transcript counting
+# without editing analysis. Requires `regions:` to be set; count.py auto-falls-back
+# from 09_correct/ to 07_map/ for its BAM source.
+skip_correct:  false
+
 # ---------------------------------------------------------------------------
 # Step 02 — cutadapt adapter trimming (defaults from config.sh)
 # ---------------------------------------------------------------------------

@@ -56,24 +56,44 @@ cd "$REPO_ROOT"
 PY_ENV_BIN="/opt/miniforge/envs/l3rseq_py/bin"
 SAMTOOLS="/opt/miniforge/envs/NanoporeMap/bin/samtools"
 
-BASH_OUT="$SCRIPT_DIR/output/pipeline_CT"
-SNAKE_OUT="$SCRIPT_DIR/output/snake_quick"
 DEMUX_FIXTURE="$SCRIPT_DIR/data/demux"
 REGIONS="$SCRIPT_DIR/data/test_regions.tsv"
 CONFIG="$SCRIPT_DIR/config_synthetic.yaml"
 
 CORES=4
 REFRESH_BASELINE=0
+MODE="full"
 while [ $# -gt 0 ]; do
     case "$1" in
         --cores)    CORES="${2:?}"; shift 2 ;;
         --refresh)  REFRESH_BASELINE=1; shift ;;
+        --mode)     MODE="${2:?}"; shift 2 ;;
         -h|--help)
             sed -n '2,45p' "$0" | sed 's/^# \{0,1\}//'
             exit 0 ;;
         *) echo "Unknown option: $1" >&2; exit 2 ;;
     esac
 done
+
+# `full`         — bash 1→10 + count vs snake 1→11 (full DAG)
+# `skip-correct` — bash 1→7 + count   vs snake 1→7+11 (skip_correct=true), proves
+#                  the new flag closes the bash-vs-snake gap for the no-editing
+#                  workflow. count.py auto-falls-back to 07_map/ when 09_correct/
+#                  is absent.
+case "$MODE" in
+    full)
+        BASH_OUT="$SCRIPT_DIR/output/pipeline_CT"
+        SNAKE_OUT="$SCRIPT_DIR/output/snake_quick"
+        ;;
+    skip-correct)
+        BASH_OUT="$SCRIPT_DIR/output/pipeline_skip_correct"
+        SNAKE_OUT="$SCRIPT_DIR/output/snake_quick_skip"
+        ;;
+    *)
+        echo "ERROR: unknown --mode '$MODE' (expected 'full' or 'skip-correct')" >&2
+        exit 2
+        ;;
+esac
 
 # ---------------------------------------------------------------------------
 # Pre-flight checks
@@ -100,7 +120,7 @@ done
 }
 
 echo "========================================"
-echo "Phase 4 — Snakemake parity harness"
+echo "Phase 4 — Snakemake parity harness ($MODE mode)"
 echo "========================================"
 echo "  Repo root: $REPO_ROOT"
 echo "  Bash baseline:  $BASH_OUT"
@@ -116,18 +136,49 @@ if [ "$REFRESH_BASELINE" -eq 1 ]; then
     rm -rf "$BASH_OUT"
 fi
 
-if [ ! -d "$BASH_OUT/09_correct" ]; then
-    echo "[1/4] Bash baseline missing — running bash tests/run_tests.sh --quick --no-viewer --test 2 ..."
-    # `--test 2` runs only the steps 04-10 pipeline block; that's all the
-    # parity test compares. Avoid running test 1 (preprocess) and test 8
-    # (counting) here — we run step 11 explicitly below with the same
-    # parameters the snake config uses.
-    bash "$SCRIPT_DIR/run_tests.sh" --quick --no-viewer --test 2 \
-        > "$SCRIPT_DIR/output/_bash_baseline.log" 2>&1 || {
-            echo "ERROR: bash baseline run_tests.sh failed. Log:" >&2
-            tail -50 "$SCRIPT_DIR/output/_bash_baseline.log" >&2
-            exit 2
-        }
+# Marker for "bash baseline pipeline already produced what we need to diff":
+# full mode wants steps 04-10 (so 09_correct/ is the indicator), skip-correct
+# mode only goes through step 07.
+if [ "$MODE" = "full" ]; then
+    BASELINE_MARKER="$BASH_OUT/09_correct"
+else
+    BASELINE_MARKER="$BASH_OUT/07_map"
+fi
+
+if [ ! -d "$BASELINE_MARKER" ]; then
+    if [ "$MODE" = "full" ]; then
+        echo "[1/4] Bash baseline missing — running bash tests/run_tests.sh --quick --no-viewer --test 2 ..."
+        # `--test 2` runs only the steps 04-10 pipeline block; that's all the
+        # parity test compares. Avoid running test 1 (preprocess) and test 8
+        # (counting) here — we run step 11 explicitly below with the same
+        # parameters the snake config uses.
+        bash "$SCRIPT_DIR/run_tests.sh" --quick --no-viewer --test 2 \
+            > "$SCRIPT_DIR/output/_bash_baseline.log" 2>&1 || {
+                echo "ERROR: bash baseline run_tests.sh failed. Log:" >&2
+                tail -50 "$SCRIPT_DIR/output/_bash_baseline.log" >&2
+                exit 2
+            }
+    else
+        echo "[1/4] Bash baseline missing — running L3Rseq run --start-at 4 --stop-at 7 (skip-correct equivalent) ..."
+        # Pre-stage 03_demux/ so --start-at 4 has its input ready, then run
+        # the bash dispatcher just through mapping. This is exactly the bash
+        # equivalent of what `snakemake --config skip_correct=true` does.
+        rm -rf "$BASH_OUT"
+        mkdir -p "$BASH_OUT/03_demux"
+        cp -r "$DEMUX_FIXTURE/barcode01" "$DEMUX_FIXTURE/barcode02" "$BASH_OUT/03_demux/"
+        "$REPO_ROOT/L3Rseq" run \
+            --input "$DEMUX_FIXTURE" \
+            --outdir "$BASH_OUT" \
+            --ref resources/references/test_gene.fasta \
+            --pattern CT \
+            --method longread-umi \
+            --start-at 4 --stop-at 7 \
+            > "$SCRIPT_DIR/output/_bash_baseline.log" 2>&1 || {
+                echo "ERROR: bash baseline L3Rseq run failed. Log:" >&2
+                tail -50 "$SCRIPT_DIR/output/_bash_baseline.log" >&2
+                exit 2
+            }
+    fi
     echo "  Done."
 else
     echo "[1/4] Bash baseline already present at $BASH_OUT — skipping."
@@ -165,12 +216,49 @@ cp -r "$DEMUX_FIXTURE"/barcode01 "$SNAKE_OUT/03_demux/"
 cp -r "$DEMUX_FIXTURE"/barcode02 "$SNAKE_OUT/03_demux/"
 echo "  Copied $(find "$SNAKE_OUT/03_demux" -name '*.fastq' | wc -l) demuxed FASTQs."
 
+# Snakemake takes ONE --config flag with space-separated `key=val` pairs;
+# repeating the flag overwrites earlier values. Build the override list once
+# so dry-run and actual run see the same overrides.
+SNAKE_OVERRIDE="output_dir=$SNAKE_OUT"
+if [ "$MODE" = "skip-correct" ]; then
+    SNAKE_OVERRIDE="$SNAKE_OVERRIDE skip_correct=true"
+fi
+
+# DAG contract assertion (only meaningful in skip-correct mode): with
+# 03_demux/ pre-staged, snakemake can fully enumerate the post-checkpoint
+# DAG, so a dry-run must show zero variants/correct/export_csv jobs when
+# skip_correct=true. Catches "flag wired wrong" before any computation.
+if [ "$MODE" = "skip-correct" ]; then
+    echo ""
+    echo "[2/4] DAG contract: dry-run must NOT include rules variants/correct/export_csv ..."
+    DRY_LOG="$SCRIPT_DIR/output/_snake_dryrun.log"
+    "$PY_ENV_BIN/snakemake" \
+        --configfile "$CONFIG" \
+        --cores 1 --dry-run \
+        --config $SNAKE_OVERRIDE \
+        > "$DRY_LOG" 2>&1 || {
+            echo "ERROR: dry-run failed. Log tail:" >&2
+            tail -40 "$DRY_LOG" >&2
+            exit 2
+        }
+    for r in variants correct export_csv; do
+        if grep -qE "^${r} +[0-9]+$" "$DRY_LOG"; then
+            n=$(grep -E "^${r} +[0-9]+$" "$DRY_LOG" | awk '{print $2}')
+            echo "  [FAIL] dry-run scheduled $n '$r' job(s); skip_correct should exclude this rule"
+            tail -40 "$DRY_LOG" >&2
+            exit 1
+        fi
+    done
+    echo "  [OK]   no variants/correct/export_csv jobs scheduled."
+fi
+
 echo ""
-echo "[2/4] Running snakemake --cores $CORES --configfile tests/config_synthetic.yaml ..."
+echo "[2/4] Running snakemake --cores $CORES --configfile tests/config_synthetic.yaml --config $SNAKE_OVERRIDE ..."
 SNAKE_LOG="$SCRIPT_DIR/output/_snake_run.log"
 if ! "$PY_ENV_BIN/snakemake" \
         --configfile "$CONFIG" \
         --cores "$CORES" \
+        --config $SNAKE_OVERRIDE \
         > "$SNAKE_LOG" 2>&1; then
     echo "ERROR: snakemake run failed. Log tail:" >&2
     tail -80 "$SNAKE_LOG" >&2
@@ -178,13 +266,24 @@ if ! "$PY_ENV_BIN/snakemake" \
 fi
 echo "  Done."
 
+# Post-run contract assertion (skip-correct only): the new flag's contract
+# is "steps 8/9/10 are NOT executed". The diff alone could pass even if the
+# flag silently no-op'd and those steps still ran, so check directly.
+if [ "$MODE" = "skip-correct" ]; then
+    for d in 08_variants 09_correct 10_csv; do
+        if [ -d "$SNAKE_OUT/$d" ]; then
+            echo "  [FAIL] skip_correct produced $SNAKE_OUT/$d (should not exist)"
+            exit 1
+        fi
+    done
+    echo "  [OK]   no 08_variants/, 09_correct/, 10_csv/ directories created."
+fi
+
 # ---------------------------------------------------------------------------
 # Step 3: diff step-09 corrected BAMs (samtools view | sort | cmp pattern,
-#         lifted from tests/benchmarks/diff_step09.sh)
+#         lifted from tests/benchmarks/diff_step09.sh). Skipped in
+#         skip-correct mode — step 09 doesn't run, so there are no BAMs.
 # ---------------------------------------------------------------------------
-echo ""
-echo "[3/4] Diffing step-09 corrected BAMs ..."
-
 TMPDIR=$(mktemp -d)
 trap 'rm -rf "$TMPDIR"' EXIT
 
@@ -198,38 +297,46 @@ SAMPLES=(
     "barcode02/barcode02_RPI_2"
 )
 
-for bc_rpi in "${SAMPLES[@]}"; do
-    rpi="${bc_rpi##*/}"
-    bash_bam="$BASH_OUT/09_correct/$bc_rpi/${rpi}_corrected.sort.bam"
-    snake_bam="$SNAKE_OUT/09_correct/$bc_rpi/${rpi}_corrected.sort.bam"
+if [ "$MODE" = "full" ]; then
+    echo ""
+    echo "[3/4] Diffing step-09 corrected BAMs ..."
 
-    if [ ! -f "$bash_bam" ]; then
-        echo "  [MISS] 09_correct/$bc_rpi — bash BAM not found"
-        DRIFT_FILES+=("$bash_bam")
-        FAIL+=1
-        continue
-    fi
-    if [ ! -f "$snake_bam" ]; then
-        echo "  [MISS] 09_correct/$bc_rpi — snake BAM not found"
-        DRIFT_FILES+=("$snake_bam")
-        FAIL+=1
-        continue
-    fi
+    for bc_rpi in "${SAMPLES[@]}"; do
+        rpi="${bc_rpi##*/}"
+        bash_bam="$BASH_OUT/09_correct/$bc_rpi/${rpi}_corrected.sort.bam"
+        snake_bam="$SNAKE_OUT/09_correct/$bc_rpi/${rpi}_corrected.sort.bam"
 
-    "$SAMTOOLS" view "$bash_bam"  | sort > "$TMPDIR/bash_$rpi.sam"
-    "$SAMTOOLS" view "$snake_bam" | sort > "$TMPDIR/snake_$rpi.sam"
+        if [ ! -f "$bash_bam" ]; then
+            echo "  [MISS] 09_correct/$bc_rpi — bash BAM not found"
+            DRIFT_FILES+=("$bash_bam")
+            FAIL+=1
+            continue
+        fi
+        if [ ! -f "$snake_bam" ]; then
+            echo "  [MISS] 09_correct/$bc_rpi — snake BAM not found"
+            DRIFT_FILES+=("$snake_bam")
+            FAIL+=1
+            continue
+        fi
 
-    if cmp -s "$TMPDIR/bash_$rpi.sam" "$TMPDIR/snake_$rpi.sam"; then
-        n=$(wc -l < "$TMPDIR/bash_$rpi.sam")
-        echo "  [OK]   09_correct/$bc_rpi — $n reads identical"
-        OK+=1
-    else
-        echo "  [FAIL] 09_correct/$bc_rpi — SAM body differs (first 5 diff lines):"
-        { diff "$TMPDIR/bash_$rpi.sam" "$TMPDIR/snake_$rpi.sam" || true; } | head -5 | sed 's/^/         /' || true
-        DRIFT_FILES+=("$snake_bam")
-        FAIL+=1
-    fi
-done
+        "$SAMTOOLS" view "$bash_bam"  | sort > "$TMPDIR/bash_$rpi.sam"
+        "$SAMTOOLS" view "$snake_bam" | sort > "$TMPDIR/snake_$rpi.sam"
+
+        if cmp -s "$TMPDIR/bash_$rpi.sam" "$TMPDIR/snake_$rpi.sam"; then
+            n=$(wc -l < "$TMPDIR/bash_$rpi.sam")
+            echo "  [OK]   09_correct/$bc_rpi — $n reads identical"
+            OK+=1
+        else
+            echo "  [FAIL] 09_correct/$bc_rpi — SAM body differs (first 5 diff lines):"
+            { diff "$TMPDIR/bash_$rpi.sam" "$TMPDIR/snake_$rpi.sam" || true; } | head -5 | sed 's/^/         /' || true
+            DRIFT_FILES+=("$snake_bam")
+            FAIL+=1
+        fi
+    done
+else
+    echo ""
+    echo "[3/4] Skipping step-09 BAM diff (skip-correct mode — no 09_correct/ output to diff)."
+fi
 
 # ---------------------------------------------------------------------------
 # Step 4: diff step-11 outputs (gene counts + coverage; pattern lifted from
