@@ -108,6 +108,17 @@ creates ~20k small files per run, so the overhead is meaningful. Moving the
 output dir off 9P + RPI parallelism gives ~30× end-to-end speedup. See
 `docs/pipeline_speed_investigation.md` for the root-cause analysis.
 
+**On native Linux this volume is a no-op for performance** — `/workspace`
+is already a fast ext4 bind mount, so `/runs` lives on the same disk and
+the symlink indirection costs nothing. The volume is intentionally kept
+in all three devcontainer configs so the setup stays portable: the
+speedup re-engages automatically the moment the repo is opened on a
+Windows/WSL2 host. If you ever decide to drop it, edit all three
+`.devcontainer/*/devcontainer.json` to remove the `l3rseq-runs` mount,
+the `TMPDIR` `remoteEnv` entry, and the chown/symlink tail of
+`postCreateCommand` — but only do this if cross-OS portability is no
+longer a concern. (Audit confirming Linux compatibility: 2026-04-29.)
+
 To inspect / extract / back up the volume after the container is gone:
 
 ```bash
