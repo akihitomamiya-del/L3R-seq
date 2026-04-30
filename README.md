@@ -63,9 +63,10 @@ The recommended way to run the pipeline is via [Snakemake](https://snakemake.rea
 
 ```bash
 conda activate l3rseq_py
-# Edit config.yaml with your paths + parameters, then:
 snakemake --cores 8 --configfile config.yaml
 ```
+
+The bare command above runs the pipeline on the bundled test fixtures (a quick way to verify the install works end-to-end via Snakemake). For your own data, copy and edit [`examples/run_with_snakemake.sh`](examples/run_with_snakemake.sh) — it points Snakemake at your input/output paths and reference via `--config key=val` overrides, dry-runs the DAG first, then executes.
 
 `config.yaml` is the single source of truth — every step parameter (input/output dirs, reference, RPI fasta, UMI method, thresholds) lives there. Override at the command line with `--config key=value`. See [`config.yaml`](config.yaml) in the repo root for the full schema with comments, and [Development](docs/development.md#running-the-pipeline-with-snakemake) for per-experiment YAMLs.
 

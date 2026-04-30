@@ -111,6 +111,12 @@ blast_db2:   ""   # cDNA DB (PCR chimera detection)
 # ---------------------------------------------------------------------------
 regions:      ""       # path to regions TSV (required to run step 11). "" = skip step 11
 housekeeping: ""       # housekeeping gene name (optional, enables normalization)
+# min_frac — minimum fraction of the gene region a read must cover to count.
+# 0.95 is correct for amplicon references (reads span ~the whole gene).
+# For whole-genome L3Rseq, reads are short ~700bp 3'-end fragments and cover
+# only ~14% of a 5 kb gene — drop to 0.01, otherwise every count is silently
+# 0 even though step-7 BAMs are healthy. See docs/adaptation.md "Iterative
+# workflow" for the broad→narrow tuning pattern.
 min_frac:     0.95
 min_mapq:     0
 
