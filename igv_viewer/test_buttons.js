@@ -335,6 +335,88 @@ async function main() {
       }
     }
 
+    // ── Test 11: Selective track loading after deselect-all ──
+    // Reproduces the "12x2 BAM" issue: with the default cap loading the
+    // first N tracks, the user clicks None and then a single checkbox to
+    // see just that one track. The original code returned early because
+    // the IGV browser had been destroyed when the last track was removed.
+    console.log("\n[Test 11] Selective track load after deselect-all");
+    await page.select("#dataset", dataset);
+    await page.waitForFunction(
+      () => document.getElementById("status")?.textContent.includes("Ready"),
+      { timeout: TIMEOUT }
+    );
+    await new Promise(r => setTimeout(r, 1000));
+    // Open the controls panel and the track list
+    await page.evaluate(() => {
+      const p = document.getElementById("controls-panel");
+      if (!p.classList.contains("open")) toggleControlsPanel();
+      const lp = document.getElementById("track-list-panel");
+      if (lp.style.display === "none") toggleTrackList();
+    });
+    await new Promise(r => setTimeout(r, 300));
+
+    await page.evaluate(() => {
+      [...document.querySelectorAll(".track-toolbar button")].find(b => b.textContent === "None").click();
+    });
+    await page.waitForFunction(
+      () => !window.browser || window.browser.trackViews.length === 0,
+      { timeout: TIMEOUT }
+    );
+    await new Promise(r => setTimeout(r, 500));
+    const afterNone = await page.evaluate(() => ({
+      browser: !!window.browser,
+      anyChecked: [...document.querySelectorAll('input[data-track-idx]')].some(cb => cb.checked),
+    }));
+    check("None button destroys browser", afterNone.browser, false);
+    check("None button unchecks every track box", afterNone.anyChecked, false);
+
+    await page.evaluate(() => {
+      const cb = document.querySelector('input[data-track-idx="0"]');
+      cb.checked = true;
+      cb.dispatchEvent(new Event("change", { bubbles: true }));
+    });
+    await page.waitForFunction(
+      () => document.getElementById("status")?.textContent.includes("Ready"),
+      { timeout: TIMEOUT }
+    );
+    await new Promise(r => setTimeout(r, 500));
+    const afterOne = await page.evaluate(() => ({
+      tracks: window.browser ? window.browser.trackViews.filter(tv => tv.track && tv.track.alignmentTrack).length : 0,
+      status: document.getElementById("status").textContent,
+    }));
+    check("Single track loads after deselect-all", afterOne.tracks, 1);
+    checkTrue("Status reflects 1 track loaded (status: " + afterOne.status + ")", /1 of \d+ tracks loaded/.test(afterOne.status));
+
+    // ── Test 12: Show-all-reads preserves custom selection ──
+    console.log("\n[Test 12] Show-all-reads preserves custom selection");
+    // Currently 1 of N tracks loaded from Test 11. Toggle Show all reads.
+    const tracksBefore = afterOne.tracks;
+    await page.click("#show-all");
+    await page.waitForFunction(
+      () => document.getElementById("status")?.textContent.includes("Ready"),
+      { timeout: TIMEOUT }
+    );
+    await new Promise(r => setTimeout(r, 1500));
+    const showAllOn = await page.evaluate(() => ({
+      checked: document.getElementById("show-all").checked,
+      tracks: window.browser ? window.browser.trackViews.filter(tv => tv.track && tv.track.alignmentTrack).length : 0,
+    }));
+    check("Show-all checkbox is on", showAllOn.checked, true);
+    check("Selection preserved after show-all toggle", showAllOn.tracks, tracksBefore);
+
+    // Toggle back off
+    await page.click("#show-all");
+    await page.waitForFunction(
+      () => document.getElementById("status")?.textContent.includes("Ready"),
+      { timeout: TIMEOUT }
+    );
+    await new Promise(r => setTimeout(r, 1000));
+    const showAllOff = await page.evaluate(() => ({
+      tracks: window.browser ? window.browser.trackViews.filter(tv => tv.track && tv.track.alignmentTrack).length : 0,
+    }));
+    check("Selection preserved on show-all toggle off", showAllOff.tracks, tracksBefore);
+
     // ── Summary ──
     console.log(`\n========================================`);
     console.log(`Results: ${pass} passed, ${fail} failed`);

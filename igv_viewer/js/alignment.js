@@ -191,7 +191,11 @@
 
     document.getElementById("show-all").onchange = () => {
       const sel = document.getElementById("dataset");
-      if (sel.value) loadDataset(sel.value);
+      if (!sel.value) return;
+      // Preserve the user's current track selection — otherwise toggling
+      // this checkbox silently resets to the default first-8.
+      if (browser) reloadWithCurrentSelection();
+      else loadDataset(sel.value);
     };
 
     /* ---- Display mode ---- */
@@ -644,9 +648,17 @@
     }
 
     async function toggleTrack(idx, enabled) {
-      if (!browser || loading) return;
+      if (loading) return;
       const t = allTracks[idx];
       if (!t) return;
+
+      // Browser was destroyed (all tracks previously deselected). Recreate
+      // it from the current checkbox state — otherwise the click is a silent
+      // no-op and the user can't re-add tracks one at a time.
+      if (!browser) {
+        if (enabled) await reloadWithCurrentSelection();
+        return;
+      }
 
       if (enabled) {
         const showAll = document.getElementById("show-all").checked;
