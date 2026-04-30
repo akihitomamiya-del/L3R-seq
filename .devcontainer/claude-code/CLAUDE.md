@@ -356,6 +356,186 @@ touching the Python modules, config, or the dispatcher.
   `tests/benchmarks/bench_step09.sh` for the correct sub-second timing
   pattern and the multi-iteration min/median/mean reporting.
 
+## Running the pipeline with Snakemake
+
+The Snakefile at the repo root is the modern entry point; the bash
+dispatcher (`L3Rseq run --start-at N --stop-at M`) still works but the DAG
+parallelism, resume-from-failure, and `skip_correct` flag are all in the
+Snakefile path. The patterns below apply to any production run.
+
+- **Use a per-experiment configfile, not the repo's `config.yaml`.** The
+  shipped `config.yaml` is wired to the test-fixture paths
+  (`tests/data/raw_fastq`, `tests/output/snake_quick`, `resources/references/test_gene.fasta`).
+  For a real run, copy it to `<run_dir>/config.yaml`, edit the
+  `input_dir` / `output_dir` / `ref` / `rpi_fasta` paths and any non-default
+  step parameters, then pass it via `--configfile <run_dir>/config.yaml`.
+  Override paths with `--config key=val` rather than editing the file twice.
+  Co-locate a `RUN_NOTES.md` next to the config that captures the
+  experimental decisions in human-readable form — this is the durable
+  scientific record for the run.
+
+- **`--configfile` REPLACES the repo default; it does not merge.** Whatever
+  YAML you pass becomes the entire `config` dict. Every key the Snakefile
+  reads (e.g. `config["threads"]["umi"]`, `config["adapter_fwd"]`, etc.)
+  must be present in the per-experiment file or Snakemake errors with
+  `KeyError`. Easiest path: start from a verbatim copy of the repo
+  `config.yaml`, then edit only the keys you need to change. **Don't drop
+  the `threads:` block** even if you intend to use defaults.
+
+- **Snakemake `--config` idiom.** Single flag, space-separated `key=val`
+  pairs:
+  ```
+  --config output_dir=/runs/foo skip_correct=true regions=/runs/foo/regions.tsv
+  ```
+  Repeating `--config` overwrites previous overrides — only the last
+  occurrence wins (`tests/run_tests_snake.sh:222` documents this). Build
+  the override string once and reuse it for both the dry-run and the real
+  run so you can't accidentally pass different overrides to each.
+
+- **Skipping step 01 (pre-concatenated FASTQs).** When the user already has
+  one FASTQ per native barcode, pre-stage `<output_dir>/01_concat/{barcode}.fastq.gz`
+  with the gzipped file. Snakemake's mtime check sees the output exists and
+  skips `rule concat`. **You still need an `input_dir` with one subdir per
+  barcode** because `BARCODES = sorted(os.listdir(input_dir))` runs at
+  Snakefile load time (`Snakefile:101-104`); empty placeholder dirs
+  (`mkdir -p input_dir/{barcode44,barcode45}`) are sufficient for discovery
+  even though no actual fastq.gz files are inside them.
+
+- **Multi-gene pool / no 5' anchor.** Set `target_fwd: ""` in the
+  configfile. Step 06 falls into the "trim reverse adapter only, keep all
+  reads" branch (`scripts/06_extract.sh:50-62`). This is the Snakemake-native
+  equivalent of the bash dispatcher's `--no-target-fwd` flag.
+
+- **Runs without RNA editing analysis.** Set `skip_correct: true` (the flag
+  merged 2026-04-29 — see `docs/PIPELINE_MODERNIZATION.md`). DAG resolves
+  to `concat → trim → demux → umi → consensus → extract → map → count`,
+  skipping `variants`/`correct`/`export_csv`. **Required**: still need
+  `regions: <path>` for `rule count` to be pulled into the DAG. The
+  `count.py:260-264` fallback (prefer `09_correct/`, else `07_map/`)
+  handles the BAM source automatically.
+
+- **`--until <rule>` doesn't work for stopping mid-pipeline at the
+  checkpoint boundary.** The post-checkpoint wildcards (`{rpi}`) are only
+  enumerable AFTER `rule demux` has materialized `03_demux/{barcode}/`, so
+  pre-checkpoint a dry-run with `--until map` shows zero jobs even though
+  trim+demux haven't run. Workarounds:
+  1. **Generate a seed regions.tsv from the GFF alone** (no
+     `--discover-from`) and run end-to-end with `regions=<seed>`. Snakemake
+     pulls in `rule count` as the terminal target, which transitively pulls
+     UMI through map via the checkpoint. After completion, optionally
+     re-discover with `--discover-from <out>/07_map --min-reads 5` to get a
+     curated list for downstream analysis.
+  2. **Two-phase explicit-targets** if you need step 7 outputs without
+     running step 11: phase 1 `snakemake` with `regions=""` runs trim +
+     demux; phase 2 explicitly demands the per-sample BAM paths
+     (constructed by globbing `03_demux/`).
+
+  Option (1) is the cleaner default — one snakemake invocation, snakemake
+  handles the checkpoint expansion itself.
+
+- **DAG contract dry-run before the real run.** Snakemake silently no-ops
+  bad invocations (e.g. a typo in a `--config` flag, a missing target).
+  Always dry-run first and assert the expected job counts:
+  ```bash
+  snakemake --configfile ... --cores 1 --dry-run --config $OVERRIDES \
+      2>&1 | tee dryrun.log
+  # for skip_correct runs, verify these rules are NOT scheduled:
+  for r in variants correct export_csv; do
+      grep -qE "^${r} +[0-9]+$" dryrun.log && {
+          echo "FAIL: $r scheduled"; exit 1; }
+  done
+  ```
+  See `tests/run_tests_snake.sh:231-253` for the canonical pattern.
+
+- **Output-tree contract assertion after the run.** A run finishing
+  successfully doesn't mean the flag did what you wanted. After a
+  `skip_correct` run, assert the directories that should NOT exist actually
+  don't:
+  ```bash
+  for d in 08_variants 09_correct 10_csv; do
+      [ -d $OUT/$d ] && { echo "FAIL: $d exists"; exit 1; }
+  done
+  ```
+
+- **`pigz` is in the `longread_umi` env, not on the default PATH.** Use
+  `/opt/miniforge/envs/longread_umi/bin/pigz` or
+  `conda run -n longread_umi pigz`. The default `gzip` works too but is
+  single-threaded — pigz at `-p 8` is ~6× faster on large FASTQs.
+
+- **Pipeline `--housekeeping` is per-sample.** It divides each gene's
+  count in sample S by the housekeeping gene's count in the same sample S.
+  This works ONLY when the housekeeping gene is co-amplified in every
+  library. For experimental designs where the housekeeping is in a
+  *separate* library prep (different native barcode, different RPI), the
+  built-in flag won't do what you want — those need cross-NB or cross-RPI
+  normalization, which is downstream-in-R, not pipeline scope. Get raw
+  counts via `gene_counts_all.tsv` and join in pandas/R.
+
+- **Auto-discover regions: two modes.**
+  - `L3Rseq regions --gff <file> --output regions.tsv` — extracts every
+    gene from the GFF (no BAM dependency). Use as a seed for the snakemake
+    DAG when you want to drive end-to-end in one invocation.
+  - `L3Rseq regions --gff <file> --discover-from <bam_dir> --output regions.tsv --min-reads N` —
+    filters to genes with ≥N reads in the step-7 BAMs. Use post-run for a
+    curated list. Requires step 7 to have completed already.
+
+- **Ultra-long reads can trip cutadapt at step 02.** Nanopore data
+  occasionally contains concatemer/sequencing-artifact reads that are
+  hundreds of KB to several MB long. Cutadapt's underlying `dnaio` reader
+  uses a 4 MB chunk allocation (`dnaio/chunks.py:read_chunks(buffer_size=4*1024**2)`)
+  and raises `OverflowError: FASTA/FASTQ record does not fit into buffer`
+  when a record (4 lines) doesn't fit cleanly. The failure mode is
+  non-deterministic — same data sometimes succeeds and sometimes fails
+  depending on chunk alignment. There's no `--buffer-size` flag in
+  cutadapt 4.9 to override this at runtime. Pre-filter the input to drop
+  outlier reads before snakemake:
+  ```bash
+  zcat barcode_X.fastq.gz | \
+    awk 'NR%4==1 {h=$0; getline s; getline p; getline q;
+                  if (length(s) <= 100000) {print h; print s; print p; print q}}' | \
+    /opt/miniforge/envs/longread_umi/bin/pigz -p 8 > barcode_X.filtered.fastq.gz
+  ```
+  100 KB is a safe cap for L3Rseq (typical amplicons are 1–5 kb;
+  reads >50 kb are concatemers anyway). Drop fraction is usually well
+  under 0.01%. Keep the original as `*.fastq.gz.orig` so it can be
+  restored. After replacing, snakemake's mtime check picks up the new
+  input automatically and re-runs only the affected barcode.
+
+- **`min_frac=0.95` (the documented default) is wrong for whole-genome
+  L3Rseq. Use `min_frac=0.01`.** L3Rseq amplicons are ~700 bp 3'-end
+  fragments of full transcripts that are 1–10 kb. `min_frac` is the
+  fraction of the *gene region* a read must overlap (`overlap /
+  region.length`, see `count.py:195`), so a 700 bp read on a 5 kb gene
+  yields ~14% — fails the 0.95 default, every time. **Symptom**: every
+  cell in `gene_counts_all.tsv` is 0 even though step-7 BAMs are healthy
+  and reads clearly hit the gene region (verify with
+  `samtools view -c <bam> chr:start-end`). **Verified in this session**:
+  re-running the count rule with `--config min_frac=0.01` took the UBE2
+  count from 0 → 12,459 reads on a sample. Pass via CLI when
+  re-running just the count rule:
+  ```bash
+  snakemake --configfile <config> --cores 32 --forcerun count \
+      --config skip_correct=true regions=<regions.tsv> min_frac=0.01 ...
+  ```
+  Or set in your per-experiment configfile from the start. The bash
+  dispatcher path has the same trap; past LibCheck was invoked with
+  `--min-frac 0.01` (see `Past_runs/runs/LibCheck_sample.sh`).
+
+- **IGV viewer needs `IGV_DATA_DIR=/runs` when the output dir is on the
+  `/runs` volume.** The viewer's `bam.js:trackUrl()` only emits servable
+  URLs for paths under `WORKSPACE` (`/data/...`) or `DATA_DIR`
+  (`/extdata/...`). With output under `/runs/<run_name>` and
+  `DATA_DIR=""` (the default), every track URL is null, the
+  `/api/tracks` endpoint returns "No BAM files found", and the alignment
+  page comes up empty. Fix: start with the env var set:
+  ```bash
+  IGV_DATA_DIR=/runs L3Rseq viewer --dir /runs/<run_name>
+  ```
+  This is needed in all three: bash dispatcher path, Codespaces, and any
+  case where the user set `output_dir` outside `/workspace`. Reasonable
+  follow-up: have `L3Rseq viewer` auto-set `IGV_DATA_DIR=/runs` when the
+  `--dir` argument is under `/runs/`.
+
 ## Project overview
 
 L3Rseq is a long-read UMI sequencing pipeline for Oxford Nanopore data.
