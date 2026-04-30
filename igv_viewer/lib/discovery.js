@@ -86,13 +86,20 @@ function discoverDatasets() {
 function _scanReferences() {
   const refDir = path.join(WORKSPACE, "resources/references");
   const refs = [];
-  for (const f of readdirSafe(refDir)) {
-    if (!f.endsWith(".fasta") && !f.endsWith(".fa")) continue;
-    const fai = path.join(refDir, f + ".fai");
-    if (!fs.existsSync(fai)) continue;
-    const name = f.replace(/\.(fasta|fa)$/, "");
-    refs.push({ id: name, name, fastaURL: `/ref/${f}`, indexURL: `/ref/${f}.fai` });
-  }
+  const walk = (dir, relPrefix) => {
+    for (const entry of readdirSafe(dir)) {
+      const abs = path.join(dir, entry);
+      const rel = relPrefix ? `${relPrefix}/${entry}` : entry;
+      let stat;
+      try { stat = fs.statSync(abs); } catch (_e) { continue; }
+      if (stat.isDirectory()) { walk(abs, rel); continue; }
+      if (!entry.endsWith(".fasta") && !entry.endsWith(".fa")) continue;
+      if (!fs.existsSync(abs + ".fai")) continue;
+      const name = entry.replace(/\.(fasta|fa)$/, "");
+      refs.push({ id: name, name, fastaURL: `/ref/${rel}`, indexURL: `/ref/${rel}.fai` });
+    }
+  };
+  walk(refDir, "");
   return refs;
 }
 
