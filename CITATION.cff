@@ -13,6 +13,24 @@ repository-code: "https://github.com/akihitomamiya-del/L3R-seq"
 authors:
   - family-names: Mamiya
     given-names: Akihito
+  - family-names: Takenaka
+    given-names: Mizuki
+  - family-names: Sugiyama
+    given-names: Munetaka
+preferred-citation:
+  type: article
+  authors:
+    - family-names: Mamiya
+      given-names: Akihito
+    - family-names: Takenaka
+      given-names: Mizuki
+    - family-names: Sugiyama
+      given-names: Munetaka
+  title: "L3R-seq: A long-read 3'RACE approach for deep quantitative analysis of RNA processing"
+  year: 2026
+  doi: "10.64898/2026.05.20.726719"
+  url: "https://www.biorxiv.org/content/10.64898/2026.05.20.726719v1"
+  journal: "bioRxiv"
 keywords:
   - nanopore
   - UMI

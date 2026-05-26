@@ -279,6 +279,8 @@ GPL-3.0 (required by UMIC-seq and longread_umi dependencies). See [LICENSE](LICE
 
 ## Citation
 
+> Mamiya A, Takenaka M, Sugiyama M. L3R-seq: A long-read 3'RACE approach for deep quantitative analysis of RNA processing. *bioRxiv* 2026. [doi:10.64898/2026.05.20.726719](https://doi.org/10.64898/2026.05.20.726719)
+
 > Mamiya A, Takenaka M, Sugiyama M. L3R-seq: A long-read 3'RACE approach for deep quantitative analysis of RNA processing. In: *Methods in Molecular Biology*. Springer. (*in press*)
 
 ## Acknowledgments
