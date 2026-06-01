@@ -73,9 +73,6 @@ done < <(echo "$gh_ranges" | jq -r '(.web + .api + .git)[]' | aggregate -q)
 for domain in \
     "registry.npmjs.org" \
     "api.anthropic.com" \
-    "sentry.io" \
-    "statsig.anthropic.com" \
-    "statsig.com" \
     "marketplace.visualstudio.com" \
     "vscode.blob.core.windows.net" \
     "update.code.visualstudio.com"; do
@@ -96,17 +93,28 @@ for domain in \
     done < <(echo "$ips")
 done
 
+# Optional domains — resolution failures are non-fatal (WARNING + skip),
+# unlike the required loop above which aborts the whole firewall.
+#
+# Telemetry / feature-flags.  Claude Code tolerates these being blocked,
+# so a retired hostname must NOT take the egress firewall down with it.
+# statsig.anthropic.com is NXDOMAIN as of 2026-05 — it previously sat in
+# the required loop above and silently disabled all network restrictions
+# (fail-open).  See upstream anthropics/claude-code#55623.
+#
 # VS Code Remote / Codespaces infrastructure.
-# These CDN and relay domains are required for the browser-based editor
-# to download the VS Code server, install extensions, and establish the
-# websocket tunnel.  Resolution failures are non-fatal because some
-# domains may not resolve outside Codespaces or may use CNAME-only records.
+# These CDN and relay domains let the browser-based editor download the
+# VS Code server, install extensions, and establish the websocket tunnel.
+# Some may not resolve outside Codespaces or may use CNAME-only records.
 #
 # NOTE: gallerycdn.vsassets.io uses a wildcard CNAME — the bare domain has
 # no A record, but {publisher}.gallerycdn.vsassets.io resolves via Akamai.
 # We resolve a synthetic subdomain ("x.gallerycdn.vsassets.io") to discover
 # the CDN IPs.  Similarly for gallery.vsassets.io.
 for domain in \
+    "sentry.io" \
+    "statsig.anthropic.com" \
+    "statsig.com" \
     "github.dev" \
     "vscode-cdn.net" \
     "x.gallerycdn.vsassets.io" \
