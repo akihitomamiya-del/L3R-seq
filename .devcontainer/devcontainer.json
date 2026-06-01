@@ -6,9 +6,9 @@
   },
   "customizations": {
     "vscode": {
-      "extensions": [
-        "bierner.markdown-mermaid"
-      ],
+      // Mermaid renders natively via VS Code's built-in
+      // mermaid-markdown-features; a third-party mermaid extension here would
+      // double-register and break diagram rendering in the Markdown preview.
       "settings": {
         "terminal.integrated.defaultProfile.linux": "zsh"
       }

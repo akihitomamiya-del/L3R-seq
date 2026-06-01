@@ -23,7 +23,7 @@
         "GitHub.codespaces",
         "anthropic.claude-code",
         "eamodio.gitlens",
-        "bierner.markdown-mermaid",
+        // mermaid renders natively via VS Code's built-in mermaid-markdown-features
         "mechatroner.rainbow-csv"
       ],
       "settings": {
