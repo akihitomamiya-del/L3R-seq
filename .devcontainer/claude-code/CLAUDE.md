@@ -125,6 +125,14 @@ address the issue.
   tagged). If `git status` shows a large batch of unchanged "modified"
   files: `git ls-files --eol | awk '$1 ~ /crlf/'` to confirm, then
   `git add --renormalize <path>`.
+- **`/runs` has two absolute paths**: the `/workspace/runs → /runs` symlink
+  makes every output file reachable as both `/workspace/runs/x` and `/runs/x`.
+  Tools that canonicalize paths or do prefix math trip on this — a symlink
+  isn't `isDirectory()` (directory walks skip `/workspace/runs`), and a
+  realpath'd `/runs/...` won't match a `/workspace/...` prefix. Anything
+  reading `/runs` must be symlink-aware: resolve realpaths consistently, or
+  address `/runs` via an explicit data dir (this is why the viewer needs
+  `IGV_DATA_DIR=/runs`). Bit the viewer once (commit 8210ccf).
 - **Viewer dev cycle (strict)**:
   1. Edit — apply to ALL 3 pages (index/umi/genes) when relevant
   2. Restart: `L3Rseq viewer --stop && L3Rseq viewer --dir <dir>`
