@@ -321,10 +321,14 @@ parallelism, resume-from-failure, and `skip_correct`.
   Pass `--config min_frac=0.01` or set in configfile from start. Bash
   dispatcher has the same trap (past LibCheck used `--min-frac 0.01`,
   see `Past_runs/runs/LibCheck_sample.sh`).
-- **IGV viewer needs `IGV_DATA_DIR=/runs`** when output is on `/runs`.
-  `bam.js:trackUrl()` only emits servable URLs for paths under `WORKSPACE`
-  or `DATA_DIR`; without it `/api/tracks` returns "No BAM files found".
-  Start with: `IGV_DATA_DIR=/runs L3Rseq viewer --dir /runs/<run_name>`.
+- **IGV viewer + `/runs` output**: the claude-code devcontainer now sets
+  `IGV_DATA_DIR=/runs` by default (`containerEnv`), so
+  `L3Rseq viewer --dir /runs/<run_name>` serves `/runs` datasets with no
+  extra flags. `bam.js:trackUrl()` only emits servable URLs for paths under
+  `WORKSPACE` or `IGV_DATA_DIR`, so if `IGV_DATA_DIR` is unset (e.g. the
+  plain Codespaces root config) or output lives outside `/runs`, set it
+  explicitly — else `/api/tracks` returns "No BAM files found":
+  `IGV_DATA_DIR=<dir> L3Rseq viewer --dir <dir>`.
 
 ## Project overview
 
