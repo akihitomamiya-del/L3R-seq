@@ -42,7 +42,7 @@
     "NODE_OPTIONS": "--max-old-space-size=4096",
     "CLAUDE_CONFIG_DIR": "/home/vscode/.claude",
     "POWERLEVEL9K_DISABLE_GITSTATUS": "true",
-    "IGV_DATA_DIR": "/data/output",
+    "IGV_DATA_DIR": "/runs",
     "PUPPETEER_SKIP_DOWNLOAD": "true"
   },
   "remoteEnv": {
