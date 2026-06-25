@@ -56,7 +56,7 @@
   "portsAttributes": {
     "8080": { "label": "IGV Viewer", "onAutoForward": "notify" }
   },
-  "postCreateCommand": "mkdir -p ~/.claude && cp /workspace/.devcontainer/claude-code/CLAUDE.md ~/.claude/CLAUDE.md && cd /workspace/igv_viewer && npm install && sudo chown -R vscode:vscode /runs && mkdir -p /runs/.tmp && (test -L /workspace/runs || (test -d /workspace/runs && mv /workspace/runs /workspace/runs.bind-old || true; ln -s /runs /workspace/runs))",
+  "postCreateCommand": "mkdir -p ~/.claude && cp /workspace/.devcontainer/claude-code/CLAUDE.md ~/.claude/CLAUDE.md && cd /workspace/igv_viewer && npm install && sudo /usr/local/bin/fix-runs-perms.sh && mkdir -p /runs/.tmp && (test -L /workspace/runs || (test -d /workspace/runs && mv /workspace/runs /workspace/runs.bind-old || true; ln -s /runs /workspace/runs))",
   "postStartCommand": {
     "firewall": "sudo /usr/local/bin/start-firewall.sh",
     "igv-viewer": "setsid -f node /workspace/igv_viewer/server.js > /tmp/igv-server.log 2>&1"
