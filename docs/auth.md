@@ -284,26 +284,27 @@ rebuild once more.
 
 **3. Firewall initialized successfully:**
 ```bash
-cat /tmp/firewall-status
+cat /run/firewall/status
 # → ok
 ```
-If `failed`: the container is running without network restrictions. A red
-banner should also appear at the top of every new shell. Retry:
-`sudo /usr/local/bin/start-firewall.sh` and read `/tmp/firewall-init.log`.
+If `failed`: init-firewall.sh failed *closed*, so egress is BLOCKED (not open) —
+the network may not work until you retry. A red banner also appears at the top
+of every new shell. Retry: `sudo /usr/local/bin/start-firewall.sh` and read
+`/run/firewall/init.log`.
 
-**4. Firewall warning banner is wired up** (only visible when firewall fails —
-you can simulate by writing `failed` to the status file):
-```bash
-# Simulate a firewall failure:
-echo failed | sudo tee /tmp/firewall-status
-
-# Open a NEW terminal — you should see a red banner:
-#   ⚠  WARNING: Network firewall failed to initialize.
-#      Container is running WITHOUT network restrictions.
-
-# Restore good state:
-echo ok | sudo tee /tmp/firewall-status
+**4. Firewall warning banner is wired up** (only visible when the firewall
+fails). The status file `/run/firewall/status` is root-owned under `/run`, and
+the restricted sudo no longer permits `sudo tee`, so the unprivileged `vscode`
+user can neither forge nor suppress it — a misbehaving agent cannot silence its
+own firewall-failure banner. The banner appears automatically in every new
+shell whenever a real init failure writes `failed`:
 ```
+#   ⚠  WARNING: Network firewall failed to initialize.
+#      Egress is BLOCKED (firewall failed closed) — network may not work.
+#      Retry: sudo /usr/local/bin/start-firewall.sh
+```
+To exercise it deliberately you must write the status as root, e.g. from the
+host: `docker exec -u 0 <ctr> sh -c 'echo failed > /run/firewall/status'`.
 
 **5. `postCreateCommand` uses `&&` throughout** (no silent failures between
 steps):

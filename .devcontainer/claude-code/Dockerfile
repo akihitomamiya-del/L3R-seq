@@ -49,13 +49,18 @@ RUN mkdir -p /home/vscode/.claude /usr/local/share/npm-global && \
 # with blanket passwordless sudo (/etc/sudoers.d/vscode = "vscode ALL=(root)
 # NOPASSWD:ALL"). That lets any code running as vscode flush the firewall
 # (e.g. `sudo iptables -F`) and defeat the egress allowlist, so we REMOVE that
-# file and grant sudo for ONLY these specific helper scripts -- mirroring the
-# upstream anthropics/claude-code model (firewall script only), plus a narrow
-# /runs ownership fixer (the volume mounts root-owned; see fix-runs-perms.sh).
+# file and grant sudo for ONLY two entrypoints: start-firewall.sh (the firewall
+# wrapper) and fix-runs-perms.sh (a narrow /runs ownership fixer; the volume
+# mounts root-owned). init-firewall.sh is deliberately NOT in the allowlist:
+# start-firewall.sh invokes it internally as root, so a direct
+# `sudo init-firewall.sh` grant would only hand vscode an on-demand
+# firewall-flush (the script opens egress before rebuilding the allowlist) --
+# exactly what this restriction prevents. Scripts are chmod 0755 (not
+# group-writable) so they can never be tampered with from the vscode side.
 COPY .devcontainer/claude-code/init-firewall.sh .devcontainer/claude-code/start-firewall.sh .devcontainer/claude-code/firewall-warning.sh .devcontainer/claude-code/fix-runs-perms.sh /usr/local/bin/
-RUN chmod +x /usr/local/bin/init-firewall.sh /usr/local/bin/start-firewall.sh /usr/local/bin/firewall-warning.sh /usr/local/bin/fix-runs-perms.sh && \
+RUN chmod 0755 /usr/local/bin/init-firewall.sh /usr/local/bin/start-firewall.sh /usr/local/bin/firewall-warning.sh /usr/local/bin/fix-runs-perms.sh && \
     rm -f /etc/sudoers.d/vscode && \
-    echo "vscode ALL=(root) NOPASSWD: /usr/local/bin/init-firewall.sh, /usr/local/bin/start-firewall.sh, /usr/local/bin/fix-runs-perms.sh" > /etc/sudoers.d/vscode-firewall && \
+    echo "vscode ALL=(root) NOPASSWD: /usr/local/bin/start-firewall.sh, /usr/local/bin/fix-runs-perms.sh" > /etc/sudoers.d/vscode-firewall && \
     chmod 0440 /etc/sudoers.d/vscode-firewall
 
 # Puppeteer Chrome (dev-only — headless screenshots for UI testing).

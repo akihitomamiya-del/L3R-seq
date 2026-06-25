@@ -2,6 +2,28 @@
 set -euo pipefail  # Exit on error, undefined vars, and pipeline failures
 IFS=$'\n\t'       # Stricter word splitting
 
+# Defense-in-depth: pin PATH so tool resolution never depends on the caller's
+# environment (the sudoers secure_path Default is then no longer load-bearing).
+# Mirrors the sudoers secure_path exactly so no tool resolution changes.
+export PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin:/snap/bin
+
+# Fail CLOSED. The reset-to-ACCEPT + flush below opens egress before the
+# allowlist is rebuilt, so ANY early exit in between (a failed fetch/resolve, or
+# a raced second invocation hitting the non-idempotent `ipset create`) would
+# otherwise leave egress wide open. This EXIT trap slams default policies to
+# DROP unless the script ran all the way through verification. Under
+# --dangerously-skip-permissions, losing egress is the safe failure direction.
+_FW_COMPLETED=0
+_fail_closed() {
+    if [ "$_FW_COMPLETED" -ne 1 ]; then
+        echo "ERROR: init-firewall.sh did not complete — failing CLOSED (default-DROP egress)." >&2
+        iptables -P INPUT DROP   2>/dev/null || true
+        iptables -P FORWARD DROP 2>/dev/null || true
+        iptables -P OUTPUT DROP  2>/dev/null || true
+    fi
+}
+trap _fail_closed EXIT
+
 # 1. Extract Docker DNS info BEFORE any flushing
 DOCKER_DNS_RULES=$(iptables-save -t nat | grep "127\.0\.0\.11" || true)
 
@@ -183,3 +205,8 @@ if ! curl --connect-timeout 5 https://api.github.com/zen >/dev/null 2>&1; then
 else
     echo "Firewall verification passed - able to reach https://api.github.com as expected"
 fi
+
+# All rules applied and both reachability checks passed — mark success so the
+# EXIT trap (installed near the top) leaves the real ruleset in place instead
+# of failing closed.
+_FW_COMPLETED=1

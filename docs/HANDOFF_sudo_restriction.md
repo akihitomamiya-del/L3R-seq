@@ -11,6 +11,25 @@ them).
 
 **Author of investigation/fix:** Claude (Opus 4.8), 2026-06-25.
 
+**Follow-up hardening (2026-06-25, second commit on this branch).** A post-rebuild
+audit verified the fix active (probes in §4.1 all pass) and surfaced residual
+weaknesses in the *allowed scripts themselves* — pre-existing, not regressions,
+but now load-bearing since these are the only root entrypoints. Addressed:
+- **init-firewall.sh fail-open → fail-closed.** It flushes egress to ACCEPT before
+  rebuilding the allowlist; any abort (failed fetch/resolve, or a raced second run
+  hitting the non-idempotent `ipset create`) left egress open. Added an `EXIT` trap
+  that sets default-DROP unless the script completes verification.
+- **Dropped `init-firewall.sh` from the sudoers allowlist** (now only
+  `start-firewall.sh` + `fix-runs-perms.sh`). start-firewall.sh calls it internally
+  as root, so the direct grant only gave vscode an on-demand firewall-flush.
+- **Moved firewall status/log off world-writable `/tmp` to `/run/firewall/`** (root
+  -owned), closing a symlink-TOCTOU that let a malicious postCreate npm script get
+  root to write/chmod an arbitrary file and forge the status banner.
+- **Scripts `chmod 0755`** (were `0775`, group-writable) + explicit `PATH` in the
+  firewall scripts (don't rely on the sudoers `secure_path` Default).
+Not fully closed: the *brief* open window during a normal in-progress rebuild
+(inherent to non-atomic iptables; a full fix needs `iptables-restore` atomic swap).
+
 ---
 
 ## 0. How to review this (pick your context)
