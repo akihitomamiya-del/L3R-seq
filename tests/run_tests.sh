@@ -1127,10 +1127,20 @@ echo "[TEST 7] Plot generation (analysis env)"
 echo ""
 
 # Check analysis env exists and has matplotlib/numpy
-if conda run -n analysis python -c "import matplotlib; import numpy" 2>/dev/null; then
+_imp_err=$(conda run -n analysis python -c "import matplotlib; import numpy" 2>&1)
+if [ -z "$_imp_err" ]; then
     pass "analysis env: matplotlib + numpy importable"
+elif echo "$_imp_err" | grep -q "ModuleNotFoundError"; then
+    fail "analysis env: matplotlib or numpy not installed"
 else
-    fail "analysis env: matplotlib or numpy missing"
+    # Packages are present but the import failed for another reason —
+    # commonly a corrupted shared lib / module in the env's storage layer
+    # (e.g. 'Input/output error' reading libz.so). A devcontainer rebuild
+    # repulls a clean image layer. Surface the real error, don't mislabel
+    # it as "missing".
+    _real_err=$(echo "$_imp_err" | grep -iE "error" | grep -v "conda.cli" | tail -1)
+    [ -z "$_real_err" ] && _real_err=$(echo "$_imp_err" | tail -1)
+    fail "analysis env: matplotlib/numpy import failed: $_real_err"
 fi
 
 # Generate plots for CT pipeline
