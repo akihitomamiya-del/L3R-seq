@@ -60,3 +60,5 @@ resources/blast/TAIR10_*/
 # Synthetic data staging area (committed data lives in tests/data/)
 tests/synthetic_data/
 igv_viewer/screenshots/
+# Devcontainer Features lockfile — auto-rewritten on every build (digest/format churn); untracked on purpose.
+.devcontainer/claude-code/devcontainer-lock.json
