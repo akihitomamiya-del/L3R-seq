@@ -250,6 +250,130 @@ class TestComputeCorrectionSplice:
         assert "IR" not in tag_names
 
 
+class TestComputeCorrectionIntronAsN:
+    """Introns written as N by a splice-aware aligner (minimap2 -x splice:hq).
+
+    N advances the reference like D, so the 3' end (3E), the walk start and mL
+    must include it; without it they land upstream by the intron length.
+    """
+
+    # exon 1 = ref 1-100, intron = 101-300 (all T), exon 2 = 301-400,
+    # downstream = 401-420
+    EXON1 = "ACGT" * 25
+    INTRON = "T" * 200
+    EXON2 = "CAGT" * 25
+    DOWNSTREAM = "GGGGCCCC" + "A" * 12
+    REF = EXON1 + INTRON + EXON2 + DOWNSTREAM
+
+    def test_no_clip_terminus_includes_intron(self) -> None:
+        result = compute_correction(
+            **_kwargs(
+                cigar_str="100M200N100M",
+                query_seq=self.EXON1 + self.EXON2,
+                ref_seq=self.REF,
+            )
+        )
+        assert result.new_cigar == "100M200N100M"
+        tag_dict = {name: value for name, value, _ in result.tags}
+        assert tag_dict["3E"] == 400  # not 200
+        assert tag_dict["mL"] == 400
+        assert tag_dict["DS"] == 4000000
+        assert tag_dict["EC"] == 0
+        assert tag_dict["NC"] == 0
+
+    def test_walk_compares_clip_with_ref_after_the_intron(self) -> None:
+        # The clip GGGG continues the reference at 401-404 and is absorbed.
+        # Walking from 201 (inside the intron, all T) would leave it clipped.
+        result = compute_correction(
+            **_kwargs(
+                cigar_str="100M200N100M4S",
+                query_seq=self.EXON1 + self.EXON2 + "GGGG",
+                ref_seq=self.REF,
+            )
+        )
+        assert result.new_cigar == "100M200N104M"
+        tag_dict = {name: value for name, value, _ in result.tags}
+        assert tag_dict["RC"] == 0
+        assert tag_dict["3E"] == 404
+        assert tag_dict["mL"] == 404
+
+    def test_untemplated_tail_kept_after_spliced_alignment(self) -> None:
+        # Poly(A) tail after exon 2: ref 401 is G, so nothing is absorbed.
+        result = compute_correction(
+            **_kwargs(
+                cigar_str="100M200N100M5S",
+                query_seq=self.EXON1 + self.EXON2 + "AAAAA",
+                ref_seq=self.REF,
+            )
+        )
+        assert result.new_cigar == "100M200N100M5S"
+        tag_dict = {name: value for name, value, _ in result.tags}
+        assert tag_dict["3E"] == 400
+        assert tag_dict["RC"] == 5
+        assert tag_dict["RS"] == "AAAAA"
+        assert tag_dict["DS"] == 4000005
+
+    def test_insertions_not_counted(self) -> None:
+        # Insertions (I) consume the read, not the reference: the 3' end is
+        # the same with or without them; only the intron (N) is added.
+        read = self.EXON1[:50] + "GGG" + self.EXON1[50:] + self.EXON2
+        result = compute_correction(
+            **_kwargs(cigar_str="50M3I50M200N100M", query_seq=read, ref_seq=self.REF)
+        )
+        tag_dict = {name: value for name, value, _ in result.tags}
+        assert tag_dict["3E"] == 400  # 50 + 50 + 200 + 100, not + 3
+        assert tag_dict["mL"] == 400
+
+    def test_insertions_not_counted_without_intron(self) -> None:
+        # Unspliced alignment with an insertion and a deletion: unchanged
+        # behaviour, 3E = aln_start - 1 + M + D.
+        read = self.EXON1[:50] + "GGG" + self.EXON1[50:60] + self.EXON1[62:100]
+        result = compute_correction(
+            **_kwargs(cigar_str="50M3I10M2D38M", query_seq=read, ref_seq=self.REF)
+        )
+        tag_dict = {name: value for name, value, _ in result.tags}
+        assert tag_dict["3E"] == 100  # 50 + 10 + 2 + 38
+        assert tag_dict["mL"] == 100
+
+    def test_insertion_does_not_shift_walk_start(self) -> None:
+        # Insertion before the intron, templated clip after exon 2: the walk
+        # must still start at ref 401.
+        read = self.EXON1[:50] + "GGG" + self.EXON1[50:] + self.EXON2 + "GGGG"
+        result = compute_correction(
+            **_kwargs(cigar_str="50M3I50M200N100M4S", query_seq=read, ref_seq=self.REF)
+        )
+        assert result.new_cigar == "50M3I50M200N104M"
+        tag_dict = {name: value for name, value, _ in result.tags}
+        assert tag_dict["3E"] == 404
+        assert tag_dict["RC"] == 0
+
+    def test_matches_d_intron_input_after_conversion(self) -> None:
+        # The same molecule aligned with the intron as D (default lr:hq) and
+        # converted by the intron annotation gets the same 3E and mL.
+        introns = [Intron(start=100, end=300)]
+        as_n = compute_correction(
+            **_kwargs(
+                cigar_str="100M200N100M",
+                query_seq=self.EXON1 + self.EXON2,
+                ref_seq=self.REF,
+                introns=introns,
+            )
+        )
+        as_d = compute_correction(
+            **_kwargs(
+                cigar_str="100M200D100M",
+                query_seq=self.EXON1 + self.EXON2,
+                ref_seq=self.REF,
+                introns=introns,
+            )
+        )
+        assert as_d.new_cigar == as_n.new_cigar == "100M200N100M"
+        tags_n = {name: value for name, value, _ in as_n.tags}
+        tags_d = {name: value for name, value, _ in as_d.tags}
+        for tag in ("3E", "mL", "DS", "EC", "NC", "VR"):
+            assert tags_n[tag] == tags_d[tag], tag
+
+
 class TestCorrectionResultDataclass:
     def test_equality(self) -> None:
         a = compute_correction(**_kwargs())

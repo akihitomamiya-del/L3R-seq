@@ -9,7 +9,7 @@ Tag set
 ==  ====  ==============================================================
 ID  Type  Meaning
 ==  ====  ==============================================================
-3E  i     3' end position on reference (``aln_start - 1 + M + D``)
+3E  i     3' end position on reference (``aln_start - 1 + M + D + N``)
 RC  i     Remaining right-clip length after correction
 RS  Z     Remaining right-clip sequence (empty string if fully corrected)
 TL  i     Translocation flag (1 if ChrM BLAST hit, else 0)
@@ -17,7 +17,7 @@ DS  i     Double-sorter (``terminus * 10000 + remaining_clip_n``)
 EC  i     Editing count (mismatches matching primary pattern)
 SC  i     Secondary count — **optional**, only if ``count_pattern`` is set
 NC  i     Noise count (non-editing, non-secondary mismatches)
-mL  i     Matched length (``M + D`` after correction)
+mL  i     Matched length (``M + D + N`` after correction: reference span)
 VR  Z     Variant string (semicolon-separated)
 SJ  Z     Splice pattern — **optional**, only if introns are annotated
 SI  i     Spliced intron count — emitted together with SJ
@@ -73,7 +73,7 @@ class Step09TagValues:
         ec: Primary editing count.
         sc: Secondary count. ``None`` disables the SC tag entirely.
         nc: Noise count (mismatches that match neither EC nor SC patterns).
-        matched_length: ``M + D`` length of the (possibly corrected) CIGAR.
+        matched_length: ``M + D + N`` length of the (possibly corrected) CIGAR.
         variants_str: Semicolon-separated variant string from
             :func:`l3rseq.variants.call_variants`.
         splice: Result from :func:`l3rseq.splice.check_splice` — ``None``
