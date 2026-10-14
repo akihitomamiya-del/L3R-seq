@@ -17,8 +17,10 @@ _process_sample_08() {
     local odir="$output_dir/08_variants/$bname/$rpi_name"
     mkdir -p "$odir"
 
-    # Call variants with LoFreq
-    if ! lofreq call -f "$ref_file" \
+    # Call variants with LoFreq. --force-overwrite: without it LoFreq refuses
+    # to replace an existing variants.vcf ("Cowardly refusing to overwrite"),
+    # so re-running step 08 in an existing output directory always failed.
+    if ! lofreq call --force-overwrite -f "$ref_file" \
         -o "$odir/variants.vcf" \
         "$sort_bam" 2>/dev/null; then
         echo "  ERROR: lofreq failed for $bname/$rpi_name" >&2

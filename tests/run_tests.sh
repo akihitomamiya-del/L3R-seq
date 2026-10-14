@@ -530,6 +530,32 @@ if [ -f "$OUT/pipeline_summary.tsv" ]; then
 else
     fail "pipeline_summary.tsv missing"
 fi
+
+# Regression: step 08 must be re-runnable in place. LoFreq refuses to overwrite
+# an existing variants.vcf unless called with --force-overwrite. The dispatcher
+# swallows per-sample failures (iterate_samples ... || true), so the old
+# behavior was a silent no-op: exit 0, "lofreq failed" in the log, stale files.
+# Check the log and that every variants.vcf was actually rewritten.
+_vars_before=$(find "$OUT/08_variants" -name observed_variants.txt -exec md5sum {} + | sort | md5sum)
+_rerun_mark="$OUTPUT_DIR/.test2_rerun08_start"
+touch "$_rerun_mark"
+sleep 1
+if "$PIPELINE_DIR/L3Rseq" variants --input "$OUT/07_map" --outdir "$OUT" --ref "$REF" \
+        --pattern CT > "$OUTPUT_DIR/test2_rerun08.log" 2>&1 \
+   && ! grep -q 'lofreq failed' "$OUTPUT_DIR/test2_rerun08.log"; then
+    _stale=$(find "$OUT/08_variants" -name variants.vcf ! -newer "$_rerun_mark" | wc -l)
+    _vars_after=$(find "$OUT/08_variants" -name observed_variants.txt -exec md5sum {} + | sort | md5sum)
+    if [ "$_stale" -ne 0 ]; then
+        fail "Step 08 re-run in place: $_stale variants.vcf not rewritten"
+    elif [ "$_vars_before" != "$_vars_after" ]; then
+        fail "Step 08 re-run in place: observed variants changed"
+    else
+        pass "Step 08 re-run in place: all variants.vcf rewritten, variants identical"
+    fi
+else
+    fail "Step 08 re-run in place failed (see $OUTPUT_DIR/test2_rerun08.log)"
+fi
+rm -f "$_rerun_mark"
 echo "  ⏱ Test 2: $(( SECONDS - T_START ))s"
 echo ""
 fi  # should_run 2

@@ -109,6 +109,12 @@ run_step_05() {
             local _ncons
             _ncons=$(grep -c '^>' "$_fa" || true)
             echo "    $_bname/$_rname: $_ncons consensus sequences"
+            if [ "$_ncons" -eq 0 ]; then
+                # Step 04 produced bins for this RPI, so zero consensus means racon
+                # failed on every bin (e.g. bad racon arguments); tool stderr is
+                # hidden unless --verbose.
+                echo "  WARNING: $_bname/$_rname: 0 consensus sequences from its UMI bins - racon likely failed (re-run with --verbose to see tool errors)" >&2
+            fi
             _summary_append "$output_dir" "$_bname" "$_rname" "05" "consensus_seqs" "$_ncons" || echo "  WARNING: Failed to write summary metric" >&2
         fi
     done

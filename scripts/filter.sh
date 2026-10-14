@@ -48,7 +48,10 @@ run_step_filter() {
             minimap2 -ax "$preset" "$ref_file" "$fq" 2>/dev/null > "$tmp_sam"
 
             # Extract mapped reads as fastq
-            samtools fastq -F 4 "$tmp_sam" > "$output_dir/filter/$bname/$fname" 2>/dev/null
+            # Primary alignments only (0x904 = unmapped|secondary|supplementary).
+            # -F 4 alone also emitted secondary/supplementary records, i.e. extra
+            # (and, for supplementary, hard-clipped partial) copies of the same read.
+            samtools fastq -F 0x904 "$tmp_sam" > "$output_dir/filter/$bname/$fname" 2>/dev/null
 
             local count_after
             count_after=$(( $(wc -l < "$output_dir/filter/$bname/$fname") / 4 ))
