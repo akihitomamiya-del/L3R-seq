@@ -16,6 +16,16 @@ All notable changes are documented here.
   them with identical consensus bodies. See docs/troubleshooting.md.
 
 ### Fixed
+- Step 08 can now be re-run in place: `lofreq call --force-overwrite`.
+  Without it LoFreq refused to overwrite an existing `variants.vcf`; the
+  Snakemake `variants` rule failed, and the dispatcher (which ignores
+  per-sample errors) exited 0 while keeping stale variants. New regression
+  test in `tests/run_tests.sh` (Test 2).
+- `scripts/filter.sh` (`--prefilter`): keep primary alignments only
+  (`samtools fastq -F 0x904`); `-F 4` also emitted secondary/supplementary
+  records, i.e. duplicate or partial copies of a read.
+- Step 05 warns when an RPI yields 0 consensus sequences from its UMI bins
+  (racon failing on every bin was previously silent).
 - `longread_umi_L3Rseq/scripts/consensus_racon.sh`: `-a` (extra racon
   arguments) passed only its first word through GNU parallel; all words are
   now forwarded.
