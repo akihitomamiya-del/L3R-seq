@@ -2,6 +2,24 @@
 
 All notable changes are documented here.
 
+## [Unreleased]
+
+### Added
+- `consensus_racon_args` config key (step 05): extra arguments passed to racon
+  in every polishing round, e.g. `"--no-trimming"`. Wired through the
+  Snakefile `consensus` rule, `L3Rseq run` (via `--config-file`), and
+  `L3Rseq consensus --racon-args <str>`. Default `""` keeps current behavior.
+  Motivation: racon's default end-trimming can cut the 5' end of a UMI
+  consensus, removing the `target_fwd` primer so that step 06 discards the
+  molecule. On PacBio HiFi amplicons this lost 29-65% of molecules for some
+  genes (fixed, sequence-dependent cut positions); `--no-trimming` restored
+  them with identical consensus bodies. See docs/troubleshooting.md.
+
+### Fixed
+- `longread_umi_L3Rseq/scripts/consensus_racon.sh`: `-a` (extra racon
+  arguments) passed only its first word through GNU parallel; all words are
+  now forwarded.
+
 ## [1.2.1] - 2026-04-25
 
 ### Changed

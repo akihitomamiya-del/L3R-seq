@@ -88,7 +88,7 @@ seed_racon () {
   local OUT=$2
   local ROUNDS=$3
   local PRESET=$4
-  local RACON_ARG=$5
+  local RACON_ARG="${*:5}"  # all remaining words: multi-word racon args survive GNU parallel
 
   # Name format
   local UMINO=${RB##*/}

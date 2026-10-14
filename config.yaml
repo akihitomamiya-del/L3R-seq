@@ -80,6 +80,13 @@ umi_probe:           ""    # probe FASTA (required iff umi_method == umic-seq)
 # ---------------------------------------------------------------------------
 consensus_rounds: 4
 consensus_preset: "lr:hq"
+# Extra arguments for racon in every polishing round, e.g. "--no-trimming".
+# "" = racon defaults. By default racon trims consensus ends with low read
+# support; because read-to-seed overlaps start at the first shared minimizer,
+# each round can cut a sequence-dependent stretch off the 5' end, including
+# the target_fwd primer, after which step 06 (^target_fwd anchor) discards
+# the molecule. "--no-trimming" keeps the ends (see docs/troubleshooting.md).
+consensus_racon_args: ""
 
 # ---------------------------------------------------------------------------
 # Step 06 — target sequence extraction

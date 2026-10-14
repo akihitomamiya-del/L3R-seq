@@ -59,6 +59,7 @@ _fallback_defaults() {
     # Step 05 — consensus (racon)
     DEFAULT_CONSENSUS_ROUNDS=4
     DEFAULT_CONSENSUS_PRESET=lr:hq
+    DEFAULT_CONSENSUS_RACON_ARGS=""
 
     # Step 06 — target extraction (cutadapt)
     DEFAULT_TARGET_FWD=CTACGCGCAAATTCTCATTGG

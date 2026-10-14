@@ -417,6 +417,7 @@ cmd_consensus() {
     local threads="$DEFAULT_CONSENSUS_THREADS"
     local rounds="$DEFAULT_CONSENSUS_ROUNDS"
     local preset="$DEFAULT_CONSENSUS_PRESET"
+    local racon_args="${DEFAULT_CONSENSUS_RACON_ARGS:-}"
 
     while [ $# -gt 0 ]; do
         case "$1" in
@@ -425,7 +426,11 @@ cmd_consensus() {
             --threads) require_arg "$1" "${2:-}"; threads="$2"; shift 2 ;;
             --rounds)  require_arg "$1" "${2:-}"; rounds="$2"; shift 2 ;;
             --preset)  require_arg "$1" "${2:-}"; preset="$2"; shift 2 ;;
-            --help)    echo "Usage: L3Rseq consensus --input <dir> --outdir <dir> [--threads <int>] [--rounds <int>] [--preset <str>]"; return 0 ;;
+            # Value usually starts with "-" (e.g. --no-trimming), so require_arg's
+            # "--*" guard does not apply; only require that a value is present.
+            --racon-args) [ $# -ge 2 ] || { echo "ERROR: --racon-args requires a value" >&2; return 1; }
+                       racon_args="$2"; shift 2 ;;
+            --help)    echo "Usage: L3Rseq consensus --input <dir> --outdir <dir> [--threads <int>] [--rounds <int>] [--preset <str>] [--racon-args <str>]"; return 0 ;;
             *)         echo "Unknown option: $1" >&2; return 1 ;;
         esac
     done
@@ -433,7 +438,8 @@ cmd_consensus() {
     [ -z "$input_dir" ] && { echo "ERROR: --input is required" >&2; return 1; }
     [ -z "$output_dir" ] && { echo "ERROR: --outdir is required" >&2; return 1; }
 
-    _conda_run "$ENV_LONGREAD_UMI" "05_consensus.sh" run_step_05 "$input_dir" "$output_dir" "$threads" "$rounds" "$preset"
+    _conda_run "$ENV_LONGREAD_UMI" "05_consensus.sh" run_step_05 "$input_dir" "$output_dir" "$threads" "$rounds" "$preset" \
+        0 "$racon_args"
 }
 
 # ---------------------------------------------------------------------------
@@ -1034,7 +1040,8 @@ RUNHELP
     # Step 5: Consensus (input: 04_umi/)
     if [ "$start_at" -le 5 ] && [ "$stop_at" -ge 5 ]; then
         _conda_run "$ENV_LONGREAD_UMI" "05_consensus.sh" run_step_05 "$output_dir/04_umi" "$output_dir" "$threads" \
-            "$DEFAULT_CONSENSUS_ROUNDS" "$DEFAULT_CONSENSUS_PRESET" "$keep_intermediates"
+            "$DEFAULT_CONSENSUS_ROUNDS" "$DEFAULT_CONSENSUS_PRESET" "$keep_intermediates" \
+            "${DEFAULT_CONSENSUS_RACON_ARGS:-}"
         # Cleanup step 04: bin FASTQs and UMI refs no longer needed after consensus
         if [ "$keep_intermediates" -eq 0 ]; then
             for _rpi_dir in "$output_dir"/04_umi/*/*; do
