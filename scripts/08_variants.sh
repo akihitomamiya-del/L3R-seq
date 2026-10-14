@@ -2,6 +2,7 @@
 # 08_variants.sh -- Variant calling with LoFreq + bcftools filtering
 # Called by L3Rseq dispatcher. Expects LoFreq conda env already activated.
 # Requires: INPUT_DIR, OUTPUT_DIR, REF_FILE, MIN_AF, PATTERN
+# Optional: LOFREQ_ARGS (extra `lofreq call` arguments, e.g. "--no-baq")
 
 set -euo pipefail
 source "$(dirname "${BASH_SOURCE[0]}")/lib.sh"
@@ -9,6 +10,9 @@ source "$(dirname "${BASH_SOURCE[0]}")/lib.sh"
 _process_sample_08() {
     local bname="$1" rpi_name="$2" rpi_dir="$3"
     local output_dir="$4" ref_file="$5" min_af="$6" _var_regex="$7" _pattern_label="$8"
+    local _lofreq_args="${9:-}"
+    local _lofreq_opt=()
+    [ -n "$_lofreq_args" ] && read -r -a _lofreq_opt <<< "$_lofreq_args"
 
     local sort_bam="$rpi_dir/${rpi_name}_aligned.sort.bam"
     require_input "$sort_bam" "$bname" "$rpi_name" "07" || return 0
@@ -20,7 +24,7 @@ _process_sample_08() {
     # Call variants with LoFreq. --force-overwrite: without it LoFreq refuses
     # to replace an existing variants.vcf ("Cowardly refusing to overwrite"),
     # so re-running step 08 in an existing output directory always failed.
-    if ! lofreq call --force-overwrite -f "$ref_file" \
+    if ! lofreq call --force-overwrite ${_lofreq_opt[@]+"${_lofreq_opt[@]}"} -f "$ref_file" \
         -o "$odir/variants.vcf" \
         "$sort_bam" 2>/dev/null; then
         echo "  ERROR: lofreq failed for $bname/$rpi_name" >&2
@@ -40,6 +44,7 @@ run_step_08() {
     local ref_file="$3"
     local min_af="$4"
     local pattern="$5"
+    local lofreq_args="${6:-}"
 
     mkdir -p "$output_dir/08_variants"
 
@@ -57,9 +62,10 @@ run_step_08() {
     done
 
     echo "[Step 08] Calling variants (pattern: ${_pattern_label}) ..."
+    [ -n "$lofreq_args" ] && echo "  lofreq extra arguments: $lofreq_args"
 
     iterate_samples "$input_dir" _process_sample_08 \
-        "$output_dir" "$ref_file" "$min_af" "$_var_regex" "$_pattern_label"
+        "$output_dir" "$ref_file" "$min_af" "$_var_regex" "$_pattern_label" "$lofreq_args"
 
     # Summary: variant position counts
     for _vdir in "$output_dir"/08_variants/*/*; do

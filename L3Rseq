@@ -503,6 +503,7 @@ cmd_variants() {
     local input_dir="" output_dir="" ref_file=""
     local min_af="$DEFAULT_MIN_AF"
     local pattern="$DEFAULT_PATTERN"
+    local lofreq_args="${DEFAULT_LOFREQ_ARGS:-}"
 
     while [ $# -gt 0 ]; do
         case "$1" in
@@ -511,7 +512,10 @@ cmd_variants() {
             --ref)     require_arg "$1" "${2:-}"; ref_file="$2"; shift 2 ;;
             --min-af)  require_arg "$1" "${2:-}"; min_af="$2"; shift 2 ;;
             --pattern) require_arg "$1" "${2:-}"; pattern="$2"; shift 2 ;;
-            --help)    echo "Usage: L3Rseq variants --input <dir> --outdir <dir> --ref <file> [--min-af <float>] [--pattern <str>]"; return 0 ;;
+            # Value usually starts with "-" (e.g. --no-baq), so not require_arg.
+            --lofreq-args) [ $# -ge 2 ] || { echo "ERROR: --lofreq-args requires a value" >&2; return 1; }
+                       lofreq_args="$2"; shift 2 ;;
+            --help)    echo "Usage: L3Rseq variants --input <dir> --outdir <dir> --ref <file> [--min-af <float>] [--pattern <str>] [--lofreq-args <str>]"; return 0 ;;
             *)         echo "Unknown option: $1" >&2; return 1 ;;
         esac
     done
@@ -520,7 +524,8 @@ cmd_variants() {
     [ -z "$output_dir" ] && { echo "ERROR: --outdir is required" >&2; return 1; }
     [ -z "$ref_file" ] && { echo "ERROR: --ref is required" >&2; return 1; }
 
-    _conda_run "$ENV_LOFREQ" "08_variants.sh" run_step_08 "$input_dir" "$output_dir" "$ref_file" "$min_af" "$pattern"
+    _conda_run "$ENV_LOFREQ" "08_variants.sh" run_step_08 "$input_dir" "$output_dir" "$ref_file" "$min_af" "$pattern" \
+        "$lofreq_args"
 }
 
 # ---------------------------------------------------------------------------
@@ -1076,7 +1081,8 @@ RUNHELP
     if [ "$start_at" -le 8 ] && [ "$stop_at" -ge 8 ]; then
         [ -z "$ref_file" ] && { echo "ERROR: --ref is required for step 8" >&2; return 1; }
         [ ! -f "$ref_file" ] && { echo "ERROR: --ref file not found: $ref_file" >&2; return 1; }
-        _conda_run "$ENV_LOFREQ" "08_variants.sh" run_step_08 "$output_dir/07_map" "$output_dir" "$ref_file" "$DEFAULT_MIN_AF" "$pattern"
+        _conda_run "$ENV_LOFREQ" "08_variants.sh" run_step_08 "$output_dir/07_map" "$output_dir" "$ref_file" "$DEFAULT_MIN_AF" "$pattern" \
+            "${DEFAULT_LOFREQ_ARGS:-}"
     fi
 
     # Step 9: Correct (input: 07_map/)

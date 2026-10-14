@@ -142,6 +142,32 @@ The consensus body is unchanged; only the trimmed ends are kept.
 
 ---
 
+## Editing sites missing from step 08 on spliced genes
+
+**Symptom**: For an intron-containing gene mapped with `splice:hq`, the step-08
+site list (`08_variants/<bc>/<rpi>/observed_variants.txt`) lacks sites that
+many molecules clearly carry (compare with the `All_mismatches` column of the
+step-10 CSV).
+
+**Cause**: LoFreq's BAQ (base alignment quality) recalibration on alignments
+that contain `N` (intron) operations down-weights real mismatches.
+
+**Effect**: Per-molecule editing counts and `All_mismatches` are computed from
+the alignments and are not affected. Step 09's tail correction uses the step-08
+list to tolerate edited bases in the 3' soft clip, so molecules ending just
+before a missed site can get an overstated 3' tail.
+
+**Solution**: disable BAQ and re-run from step 08:
+
+```yaml
+lofreq_args: "--no-baq"
+```
+
+(`L3Rseq variants --lofreq-args --no-baq` for the standalone subcommand.) On
+unspliced genes this changes the site list little or not at all.
+
+---
+
 ## "Unknown option" errors
 
 **Symptom**: `ERROR: unknown option --foo` when running a subcommand.

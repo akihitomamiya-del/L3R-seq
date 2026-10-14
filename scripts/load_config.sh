@@ -71,6 +71,7 @@ _fallback_defaults() {
 
     # Step 08 — variants (LoFreq)
     DEFAULT_MIN_AF=0.01
+    DEFAULT_LOFREQ_ARGS=""
     DEFAULT_PATTERN=CT
 
     # Step 09 — tail correction

@@ -416,6 +416,7 @@ rule variants:
         f"{OUTPUT_DIR}/08_variants/{{barcode}}/{{rpi}}/observed_variants.txt",
     params:
         min_af=config["min_af"],
+        lofreq_args=config.get("lofreq_args", ""),
         var_regex=lambda wc: _variant_regex_and_label(config["pattern"])[0],
         pattern_label=lambda wc: _variant_regex_and_label(config["pattern"])[1],
         map_dir=lambda wc: f"{OUTPUT_DIR}/07_map/{wc.barcode}/{wc.rpi}",
@@ -423,7 +424,7 @@ rule variants:
         _shell_preamble(ENVS["lofreq"]) + r"""
         source {SCRIPTS_DIR}/08_variants.sh
         _process_sample_08 "{wildcards.barcode}" "{wildcards.rpi}" "{params.map_dir}" \
-            "{OUTPUT_DIR}" "{input.ref}" "{params.min_af}" '{params.var_regex}' '{params.pattern_label}'
+            "{OUTPUT_DIR}" "{input.ref}" "{params.min_af}" '{params.var_regex}' '{params.pattern_label}' {params.lofreq_args:q}
         """
 
 # ---------------------------------------------------------------------------
