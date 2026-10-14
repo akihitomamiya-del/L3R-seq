@@ -78,6 +78,7 @@ umi_probe:           ""
 # ---------------------------------------------------------------------------
 consensus_rounds: 4
 consensus_preset: "lr:hq"
+consensus_racon_args: ""
 
 # ---------------------------------------------------------------------------
 # Step 06 — target sequence extraction

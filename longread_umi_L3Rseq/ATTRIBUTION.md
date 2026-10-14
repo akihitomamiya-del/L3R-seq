@@ -9,7 +9,7 @@ Søren M. Karst and Ryan M. Ziels, licensed under GPL-3.0.
 | File | Change |
 |---|---|
 | `scripts/dependencies.sh` | Replaced hardcoded usearch with vsearch and added compatibility flags |
-| `scripts/consensus_racon.sh` | Uses `$USEARCH_SORTOUT_FLAG` for vsearch compatibility |
+| `scripts/consensus_racon.sh` | Uses `$USEARCH_SORTOUT_FLAG` for vsearch compatibility; passes all words of `-a` (extra racon arguments) to racon, not just the first |
 
 ## New files
 

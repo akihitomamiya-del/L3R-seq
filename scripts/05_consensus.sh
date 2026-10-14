@@ -3,6 +3,8 @@
 # Called by L3Rseq dispatcher. Expects longread_umi conda env already activated.
 # Requires: INPUT_DIR, OUTPUT_DIR, THREADS, ROUNDS, PRESET
 # Optional: KEEP_INTERMEDIATES (0=clean per-bin dirs after consensus, 1=keep all)
+#           RACON_ARGS (extra racon arguments for every polishing round,
+#           e.g. "--no-trimming"; empty = racon defaults)
 
 set -euo pipefail
 source "$(dirname "${BASH_SOURCE[0]}")/lib.sh"
@@ -14,10 +16,14 @@ run_step_05() {
     local rounds="$4"
     local preset="$5"
     local keep_intermediates="${6:-0}"
+    local racon_args="${7:-}"
+    local _racon_opt=()
+    [ -n "$racon_args" ] && _racon_opt=(-a "$racon_args")
 
     mkdir -p "$output_dir/05_consensus"
 
     echo "[Step 05] Generating consensus sequences ..."
+    [ -n "$racon_args" ] && echo "  racon extra arguments: $racon_args"
     local _step05_count=0
 
     # Prefer workspace source (longread_umi_L3Rseq/) over conda env copy,
@@ -72,7 +78,8 @@ run_step_05() {
                 -o "$_cons_dir" \
                 -t "$threads" \
                 -r "$rounds" \
-                -p "$preset"
+                -p "$preset" \
+                ${_racon_opt[@]+"${_racon_opt[@]}"}
 
             # Cleanup per-bin intermediates (ovlp.paf, *_centroids.fa, per-bin dirs)
             # The merged consensus_*.fa is the only output needed by step 06.

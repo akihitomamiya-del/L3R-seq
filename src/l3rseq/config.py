@@ -59,6 +59,7 @@ YAML_TO_BASH: dict[str, str] = {
     # Step 05 — consensus
     "consensus_rounds": "DEFAULT_CONSENSUS_ROUNDS",
     "consensus_preset": "DEFAULT_CONSENSUS_PRESET",
+    "consensus_racon_args": "DEFAULT_CONSENSUS_RACON_ARGS",
     # Step 06 — target extraction
     "target_fwd": "DEFAULT_TARGET_FWD",
     "target_rev": "DEFAULT_TARGET_REV",

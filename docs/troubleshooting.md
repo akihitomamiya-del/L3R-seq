@@ -114,6 +114,34 @@ the barcode/RPI hierarchy created by steps 01-03.
 
 ---
 
+## Many molecules lost at step 06 (consensus starts inside or after the primer)
+
+**Symptom**: For some genes, step 06 (target extraction) keeps only a fraction
+of the UMI consensus sequences (e.g. 30-60%), while other genes keep >95%. The
+discarded consensus sequences map to the target, but their 5' ends start at a
+fixed position just inside or after the `target_fwd` primer.
+
+**Cause**: racon's default consensus end-trimming (step 05). Each read is
+aligned to the seed from its first shared minimizer, so the first bases of the
+seed look uncovered and racon trims them; repeated polishing rounds can cut
+further. The cut position depends only on the sequence, so it is the same for
+every molecule of a gene. Step 06 requires the primer at the 5' end
+(`^target_fwd`), so those molecules are discarded. The raw reads are fine.
+
+**Check**: map the step-05 consensus to the reference and look at the 5' start
+positions; or compare `05_consensus` counts with `06_extract` counts per RPI.
+
+**Solution**: disable racon's trimming and re-run from step 05:
+
+```yaml
+consensus_racon_args: "--no-trimming"
+```
+
+(`L3Rseq consensus --racon-args --no-trimming` for the standalone subcommand.)
+The consensus body is unchanged; only the trimmed ends are kept.
+
+---
+
 ## "Unknown option" errors
 
 **Symptom**: `ERROR: unknown option --foo` when running a subcommand.

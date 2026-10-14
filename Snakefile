@@ -343,6 +343,7 @@ rule consensus:
     params:
         rounds=config["consensus_rounds"],
         preset=config["consensus_preset"],
+        racon_args=config.get("consensus_racon_args", ""),
     threads: config["threads"]["consensus"]
     shell:
         _shell_preamble(ENVS["longread_umi"]) + r"""
@@ -356,7 +357,8 @@ rule consensus:
         # directory structure would avoid the copy but this is a small tree.
         cp -r "$(readlink -f {input})" "$tmp_in/{wildcards.barcode}/{wildcards.rpi}/UMIclusterfull"
         source {SCRIPTS_DIR}/05_consensus.sh
-        run_step_05 "$tmp_in" "$tmp_out" "{threads}" "{params.rounds}" "{params.preset}"
+        run_step_05 "$tmp_in" "$tmp_out" "{threads}" "{params.rounds}" "{params.preset}" \
+            0 {params.racon_args:q}
         mkdir -p "{OUTPUT_DIR}/05_consensus/{wildcards.barcode}"
         rm -rf "{OUTPUT_DIR}/05_consensus/{wildcards.barcode}/{wildcards.rpi}"
         mv "$tmp_out/05_consensus/{wildcards.barcode}/{wildcards.rpi}" "{OUTPUT_DIR}/05_consensus/{wildcards.barcode}/{wildcards.rpi}"
