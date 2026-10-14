@@ -104,6 +104,13 @@ map_preset: "lr:hq"
 # Step 08 — variant calling
 # ---------------------------------------------------------------------------
 min_af: 0.01
+# Extra arguments for `lofreq call`, e.g. "--no-baq". "" = LoFreq defaults.
+# LoFreq's BAQ (base alignment quality) step can miss frequent editing sites
+# on spliced alignments (CIGAR with N: intron-containing genes mapped with
+# splice:hq). "--no-baq" recovers them and is near-neutral for unspliced genes.
+# Only step 09's tail correction uses these site lists (to tolerate edited
+# bases in the 3' clip); per-molecule editing counts come from the alignments.
+lofreq_args: ""
 
 # ---------------------------------------------------------------------------
 # Step 09 — tail correction (Python, pysam-backed)

@@ -556,6 +556,29 @@ else
     fail "Step 08 re-run in place failed (see $OUTPUT_DIR/test2_rerun08.log)"
 fi
 rm -f "$_rerun_mark"
+
+# --lofreq-args must reach `lofreq call` (separate output dir, so Test 2's own
+# step-08 files stay untouched): a bogus option must make lofreq fail, and
+# --no-baq must run cleanly.
+_la_out="$OUTPUT_DIR/lofreq_args_check"
+rm -rf "$_la_out"
+"$PIPELINE_DIR/L3Rseq" variants --input "$OUT/07_map" --outdir "$_la_out" --ref "$REF" \
+    --pattern CT --lofreq-args --definitely-not-a-lofreq-option > "$_la_out.bogus.log" 2>&1 || true
+if grep -q 'lofreq failed' "$_la_out.bogus.log"; then
+    pass "Step 08 --lofreq-args forwarded to lofreq (bogus option rejected)"
+else
+    fail "Step 08 --lofreq-args: bogus option was not passed to lofreq"
+fi
+rm -rf "$_la_out"
+if "$PIPELINE_DIR/L3Rseq" variants --input "$OUT/07_map" --outdir "$_la_out" --ref "$REF" \
+        --pattern CT --lofreq-args --no-baq > "$_la_out.nobaq.log" 2>&1 \
+   && ! grep -q 'lofreq failed' "$_la_out.nobaq.log" \
+   && [ -n "$(find "$_la_out/08_variants" -name variants.vcf -print -quit)" ]; then
+    pass "Step 08 --lofreq-args --no-baq runs cleanly"
+else
+    fail "Step 08 --lofreq-args --no-baq failed (see $_la_out.nobaq.log)"
+fi
+rm -rf "$_la_out" "$_la_out.bogus.log" "$_la_out.nobaq.log"
 echo "  ⏱ Test 2: $(( SECONDS - T_START ))s"
 echo ""
 fi  # should_run 2

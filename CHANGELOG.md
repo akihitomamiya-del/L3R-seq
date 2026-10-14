@@ -5,6 +5,14 @@ All notable changes are documented here.
 ## [Unreleased]
 
 ### Added
+- `lofreq_args` config key (step 08): extra arguments for `lofreq call`, e.g.
+  `"--no-baq"`. Wired through the Snakefile `variants` rule, `L3Rseq run` (via
+  `--config-file`), and `L3Rseq variants --lofreq-args <str>`. Default `""`
+  keeps current behavior. Motivation: on spliced alignments (CIGAR `N`, e.g.
+  PacBio cox2 mapped with splice:hq) LoFreq's BAQ step missed 6 of 13 C-to-U
+  sites edited in 20-82% of molecules; `--no-baq` recovered all of them and was
+  near-neutral on unspliced genes. These site lists feed step 09's tail
+  correction. See docs/troubleshooting.md.
 - `consensus_racon_args` config key (step 05): extra arguments passed to racon
   in every polishing round, e.g. `"--no-trimming"`. Wired through the
   Snakefile `consensus` rule, `L3Rseq run` (via `--config-file`), and

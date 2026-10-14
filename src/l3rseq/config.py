@@ -68,6 +68,7 @@ YAML_TO_BASH: dict[str, str] = {
     "map_preset": "DEFAULT_MAP_PRESET",
     # Step 08 — variants
     "min_af": "DEFAULT_MIN_AF",
+    "lofreq_args": "DEFAULT_LOFREQ_ARGS",
     "pattern": "DEFAULT_PATTERN",
     # Step 09 — tail correction
     "clip_thresh": "DEFAULT_CLIP_THRESH",
