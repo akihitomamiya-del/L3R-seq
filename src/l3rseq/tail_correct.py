@@ -47,6 +47,7 @@ _ATGC_TAIL_RE = re.compile(r"^[ATGCatgc]+$")
 #: M-op length extractor, matches ``grep -Eo '[0-9]+M'`` in the bash
 #: per-read worker (``scripts/09_tail_correct.sh:213``).
 _M_OP_RE = re.compile(r"(\d+)M")
+_N_OP_RE = re.compile(r"(\d+)N")
 
 
 class ReadKind(Enum):
@@ -97,6 +98,18 @@ def _sum_m_ops(cigar_str: str) -> int:
     ``grep -Eo '[0-9]+M' | grep -Eo '[0-9]+' | awk '{a+=$1}'``.
     """
     return sum(int(m) for m in _M_OP_RE.findall(cigar_str))
+
+
+def _sum_n_ops(cigar_str: str) -> int:
+    """Sum the lengths of all N (skipped-reference, intron) operations.
+
+    N advances the reference like D. minimap2's splice presets (``splice``,
+    ``splice:hq``) write introns as N in the step-07 CIGAR, so the reference
+    span of such an alignment is M + D + N. (The default ``lr:hq`` writes long
+    deletions as D; annotated ones are converted to N only after the metrics
+    below are computed from the original D lengths.)
+    """
+    return sum(int(n) for n in _N_OP_RE.findall(cigar_str))
 
 
 def _extract_rightclip_seq(query_sequence: str, new_tail_s: int) -> str:
@@ -165,6 +178,9 @@ def compute_correction(
     rightclip_n = parsed.rightclip_n
     total_m = parsed.total_m
     total_d = parsed.total_d
+    # Introns already written as N by a splice-aware aligner; without them the
+    # 3' end and the walk start would land upstream by the intron length.
+    total_n = _sum_n_ops(cigar_str)
 
     # cDNA hit → PCR chimera. Strip tags, return as-is. Matches
     # scripts/09_tail_correct.sh:172-177.
@@ -185,6 +201,7 @@ def compute_correction(
             ref_seq=ref_seq,
             total_m=total_m,
             total_d=total_d,
+            total_n=total_n,
             rightclip_n=rightclip_n,
             translocation=translocation,
             pattern=pattern,
@@ -195,8 +212,9 @@ def compute_correction(
     # With right-clip: walk correct
     rightclip_seq = query_seq[-rightclip_n:]
     # Ref position of the first clipped base (1-based) — matches
-    # scripts/09_tail_correct.sh:184.
-    ref_position = aln_start - 1 + total_m + total_d + 1
+    # scripts/09_tail_correct.sh:184, plus N (the bash version predates
+    # splice-preset input).
+    ref_position = aln_start - 1 + total_m + total_d + total_n + 1
     match_counter = walk_correction(
         ref_seq, ref_position, rightclip_seq, known_variants
     )
@@ -215,11 +233,11 @@ def compute_correction(
         splice_result = check_splice(new_cigar, aln_start, introns)
         final_cigar = convert_intron_d_to_n(new_cigar, aln_start, introns)
 
-    # Metrics use post-splice new_total_m + ORIGINAL total_d (matches
+    # Metrics use post-splice new_total_m + ORIGINAL total_d + N (matches
     # scripts/09_tail_correct.sh:213-216).
     new_total_m = _sum_m_ops(final_cigar)
-    terminus = aln_start - 1 + new_total_m + total_d
-    matched_length = new_total_m + total_d
+    terminus = aln_start - 1 + new_total_m + total_d + total_n
+    matched_length = new_total_m + total_d + total_n
     doublesorter = terminus * 10000 + new_tail_s
 
     remaining_clip_seq = _extract_rightclip_seq(query_seq, new_tail_s)
@@ -252,6 +270,7 @@ def _compute_no_clip(
     ref_seq: str,
     total_m: int,
     total_d: int,
+    total_n: int,
     rightclip_n: int,
     translocation: int,
     pattern: str,
@@ -269,9 +288,9 @@ def _compute_no_clip(
         splice_result = check_splice(cigar_str, aln_start, introns)
         final_cigar = convert_intron_d_to_n(cigar_str, aln_start, introns)
 
-    # Metrics use ORIGINAL total_m + total_d (no walk happened)
-    terminus = aln_start - 1 + total_m + total_d
-    matched_length = total_m + total_d
+    # Metrics use ORIGINAL total_m + total_d + N (no walk happened)
+    terminus = aln_start - 1 + total_m + total_d + total_n
+    matched_length = total_m + total_d + total_n
     doublesorter = terminus * 10000 + rightclip_n  # rightclip_n == 0 here
 
     values = Step09TagValues(

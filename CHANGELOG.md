@@ -24,6 +24,20 @@ All notable changes are documented here.
   them with identical consensus bodies. See docs/troubleshooting.md.
 
 ### Fixed
+- Step 09 on spliced alignments: the 3' end (`3E`, CSV `ThreePrime_end`),
+  the double-sorter (`DS`), the matched length (`mL`) and the start of the
+  tail-correction walk now count `N` (intron skip) operations in the step-07
+  CIGAR. They were computed as `aln_start - 1 + M + D`, so with a splice
+  preset (`map_preset: splice:hq`, where minimap2 writes introns as `N`) every
+  spliced molecule got a 3' end upstream by its intron length, and its right
+  clip was compared with the wrong stretch of reference. The default `lr:hq`
+  path (introns as `D`, converted to `N` after these metrics) was not
+  affected, and now gives identical values for the same molecule.
+  PacBio cox2 (splice:hq, 1,344-nt intron): 12,043 of 14,284 molecules in one
+  sample had `ThreePrime_end` 1,344 nt too small; after the fix `3E` equals
+  the alignment's reference end for all of them, and tail length / edit
+  count changed for 1% / 0.5% of molecules. Editing positions (`VR`) were
+  already correct. Outputs with `N` in step-07 CIGARs need steps 09-10 re-run.
 - Step 08 can now be re-run in place: `lofreq call --force-overwrite`.
   Without it LoFreq refused to overwrite an existing `variants.vcf`; the
   Snakemake `variants` rule failed, and the dispatcher (which ignores
