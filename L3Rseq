@@ -294,6 +294,7 @@ cmd_demux() {
     local input_dir="" output_dir="" rpi_fasta=""
     local error_rate="$DEFAULT_DEMUX_ERROR_RATE"
     local min_overlap="$DEFAULT_DEMUX_MIN_OVERLAP"
+    local drop_ambiguous="${DEFAULT_DEMUX_DROP_AMBIGUOUS:-0}"
 
     while [ $# -gt 0 ]; do
         case "$1" in
@@ -302,7 +303,8 @@ cmd_demux() {
             --rpi-fasta)   require_arg "$1" "${2:-}"; rpi_fasta="$2"; shift 2 ;;
             --error-rate)  require_arg "$1" "${2:-}"; error_rate="$2"; shift 2 ;;
             --min-overlap) require_arg "$1" "${2:-}"; min_overlap="$2"; shift 2 ;;
-            --help)        echo "Usage: L3Rseq demux --input <dir> --outdir <dir> --rpi-fasta <file> [--error-rate <float>] [--min-overlap <int>]"; return 0 ;;
+            --drop-ambiguous) drop_ambiguous=1; shift ;;
+            --help)        echo "Usage: L3Rseq demux --input <dir> --outdir <dir> --rpi-fasta <file> [--error-rate <float>] [--min-overlap <int>] [--drop-ambiguous]"; return 0 ;;
             *)             echo "Unknown option: $1" >&2; return 1 ;;
         esac
     done
@@ -311,7 +313,8 @@ cmd_demux() {
     [ -z "$output_dir" ] && { echo "ERROR: --outdir is required" >&2; return 1; }
     [ -z "$rpi_fasta" ] && { echo "ERROR: --rpi-fasta is required" >&2; return 1; }
 
-    _conda_run "$ENV_CUTADAPT" "03_demultiplex.sh" run_step_03 "$input_dir" "$output_dir" "$rpi_fasta" "$error_rate" "$min_overlap"
+    _conda_run "$ENV_CUTADAPT" "03_demultiplex.sh" run_step_03 "$input_dir" "$output_dir" "$rpi_fasta" "$error_rate" "$min_overlap" \
+        "$drop_ambiguous"
 }
 
 # ---------------------------------------------------------------------------
@@ -1001,10 +1004,11 @@ RUNHELP
         [ -z "$rpi_fasta" ] && { echo "ERROR: --rpi-fasta is required for step 3" >&2; return 1; }
         [ -n "$rpi_fasta" ] && [ ! -f "$rpi_fasta" ] && { echo "ERROR: --rpi-fasta file not found: $rpi_fasta" >&2; return 1; }
         _conda_run "$ENV_CUTADAPT" "03_demultiplex.sh" run_step_03 "$output_dir/02_trim" "$output_dir" "$rpi_fasta" \
-            "$DEFAULT_DEMUX_ERROR_RATE" "$DEFAULT_DEMUX_MIN_OVERLAP"
-        # Cleanup: unclassified reads not used downstream
+            "$DEFAULT_DEMUX_ERROR_RATE" "$DEFAULT_DEMUX_MIN_OVERLAP" "${DEFAULT_DEMUX_DROP_AMBIGUOUS:-0}"
+        # Cleanup: unclassified (and ambiguous) reads not used downstream
         if [ "$keep_intermediates" -eq 0 ]; then
-            find "$output_dir/03_demux" -name '*_unclassified.fastq' -delete 2>/dev/null || true
+            find "$output_dir/03_demux" \( -name '*_unclassified.fastq' -o -name '*_unclassified_ambiguous.fastq' \) \
+                -delete 2>/dev/null || true
         fi
     fi
 

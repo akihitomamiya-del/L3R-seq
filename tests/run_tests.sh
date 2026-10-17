@@ -352,6 +352,85 @@ echo ""
 fi  # should_run 1c
 
 # ---------------------------------------------------------------------------
+# Test 1d: demux --drop-ambiguous (synthetic reads tied between two RPIs)
+# ---------------------------------------------------------------------------
+# RPI_1/RPI_9 and RPI_8/RPI_12 are 2 edits apart, so with -e 1 a read can sit
+# 1 edit from both. Without the option cutadapt gives it to the RPI listed
+# first; with it, the read moves to <barcode>_unclassified_ambiguous.fastq.
+
+if should_run 1d; then
+T_START=$SECONDS
+echo "[TEST 1d] demux --drop-ambiguous"
+echo ""
+
+_amb_dir="$OUTPUT_DIR/demux_ambiguous"
+rm -rf "$_amb_dir"
+mkdir -p "$_amb_dir/in/barcode01"
+python3 - "$PIPELINE_DIR/resources/rpi_barcodes/RPI_Barcode_20nt.fasta" \
+    "$_amb_dir/in/barcode01/barcode01_trim3.fastq" <<'PY'
+import random
+import sys
+
+random.seed(7)
+bars, name = {}, None
+for line in open(sys.argv[1]):
+    line = line.strip()
+    if line.startswith(">"):
+        name = line[1:]
+    elif line:
+        bars[name] = line
+
+
+def one_edit(b):
+    out = {b[:i] + c + b[i + 1:] for i in range(len(b)) for c in "ACGT" if c != b[i]}
+    out |= {b[:i] + b[i + 1:] for i in range(len(b))}
+    out |= {b[:i] + c + b[i:] for i in range(len(b) + 1) for c in "ACGT"}
+    return out
+
+
+def rc(s):
+    return s.translate(str.maketrans("ACGT", "TGCA"))[::-1]
+
+
+def rand(n):
+    return "".join(random.choice("ACGT") for _ in range(n))
+
+
+windows = [bars[r] for r in ("RPI_1", "RPI_9", "RPI_8", "RPI_12", "RPI_2") for _ in range(10)]
+for a, b in (("RPI_1", "RPI_9"), ("RPI_8", "RPI_12")):
+    windows += sorted(one_edit(bars[a]) & one_edit(bars[b])) * 5   # 2 tied windows x 5
+with open(sys.argv[2], "w") as fh:
+    for k, w in enumerate(windows):
+        seq = rand(300) + "T" * 20 + w + rand(40)
+        if k % 2:
+            seq = rc(seq)  # step 03 searches both orientations (--rc)
+        fh.write(f"@r{k}\n{seq}\n+\n{'I' * len(seq)}\n")
+PY
+gzip "$_amb_dir/in/barcode01/barcode01_trim3.fastq"
+
+_amb_n() { local f="$1"; [ -f "$f" ] && echo $(( $(wc -l < "$f") / 4 )) || echo 0; }
+"$PIPELINE_DIR/L3Rseq" demux --input "$_amb_dir/in" --outdir "$_amb_dir/default" \
+    --rpi-fasta "$PIPELINE_DIR/resources/rpi_barcodes/RPI_Barcode_20nt.fasta" > "$_amb_dir/default.log" 2>&1
+"$PIPELINE_DIR/L3Rseq" demux --input "$_amb_dir/in" --outdir "$_amb_dir/drop" \
+    --rpi-fasta "$PIPELINE_DIR/resources/rpi_barcodes/RPI_Barcode_20nt.fasta" --drop-ambiguous > "$_amb_dir/drop.log" 2>&1
+_d="$_amb_dir/default/03_demux/barcode01"
+_k="$_amb_dir/drop/03_demux/barcode01"
+check_exact "Demux default: tied reads go to the first-listed RPI (RPI_1)" "$(_amb_n "$_d/barcode01_RPI_1.fastq")" "20"
+check_exact "Demux default: RPI_12 keeps only its own reads" "$(_amb_n "$_d/barcode01_RPI_12.fastq")" "10"
+for r in RPI_1 RPI_9 RPI_8 RPI_12 RPI_2; do
+    check_exact "Demux --drop-ambiguous: $r keeps its 10 reads" "$(_amb_n "$_k/barcode01_$r.fastq")" "10"
+done
+check_exact "Demux --drop-ambiguous: tied reads moved out" "$(_amb_n "$_k/barcode01_unclassified_ambiguous.fastq")" "20"
+if awk -F'\t' '$1=="RPI_1" && $4==10 {f=1} END {exit !f}' "$_k/barcode01_ambiguous_report.tsv"; then
+    pass "Demux --drop-ambiguous: report lists 10 ambiguous reads for RPI_1"
+else
+    fail "Demux --drop-ambiguous: report missing RPI_1 row (see $_k/barcode01_ambiguous_report.tsv)"
+fi
+echo "  ⏱ Test 1d: $(( SECONDS - T_START ))s"
+echo ""
+fi  # should_run 1d
+
+# ---------------------------------------------------------------------------
 # Test 2: Steps 04-10 with CT pattern
 # ---------------------------------------------------------------------------
 
