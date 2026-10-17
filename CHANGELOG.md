@@ -5,6 +5,18 @@ All notable changes are documented here.
 ## [Unreleased]
 
 ### Added
+- `demux_drop_ambiguous` config key (step 03, default `false`): move reads whose
+  RPI barcode is within the allowed errors of two RPIs to
+  `<barcode>_unclassified_ambiguous.fastq` instead of letting cutadapt give them
+  to the RPI listed first in `rpi_fasta` (no warning). Per-RPI counts go to
+  `<barcode>_ambiguous_report.tsv` and the `ambiguous` summary metric. Wired
+  through the Snakefile `demux` checkpoint, `L3Rseq run` (via `--config-file`),
+  and `L3Rseq demux --drop-ambiguous`. Motivation: with `demux_error_rate: 1`
+  edits include indels, and 12 pairs of the 36 standard RPIs are only 2 edits
+  apart (e.g. RPI_1/RPI_9, RPI_8/RPI_12), so a read with one barcode indel can
+  match both. On PacBio HiFi libraries using RPI 1-33 this was 0.03-0.31% of
+  reads; `--no-indels` would instead lose ~4.4% of reads. See
+  docs/troubleshooting.md.
 - `lofreq_args` config key (step 08): extra arguments for `lofreq call`, e.g.
   `"--no-baq"`. Wired through the Snakefile `variants` rule, `L3Rseq run` (via
   `--config-file`), and `L3Rseq variants --lofreq-args <str>`. Default `""`

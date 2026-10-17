@@ -41,6 +41,7 @@ _fallback_defaults() {
     # Step 03 — RPI demultiplexing
     DEFAULT_DEMUX_ERROR_RATE=1
     DEFAULT_DEMUX_MIN_OVERLAP=20
+    DEFAULT_DEMUX_DROP_AMBIGUOUS=0
 
     # Step 04 — UMI extraction (UMIC-seq method)
     DEFAULT_UMI_LEN=15

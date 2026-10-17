@@ -168,6 +168,33 @@ unspliced genes this changes the site list little or not at all.
 
 ---
 
+## Reads assigned to the wrong RPI of a close pair
+
+**Symptom**: none visible — step 03 reports nothing unusual. A few reads per
+sample carry a barcode that is one edit from two RPIs.
+
+**Cause**: `demux_error_rate: 1` allows one edit, insertions and deletions
+included. The 36 standard RPIs differ at 3 or more positions, but 12 pairs are
+only 2 edits apart once indels count (RPI_1/RPI_9, RPI_7/RPI_31, RPI_8/RPI_12,
+RPI_8/RPI_25, RPI_11/RPI_24, RPI_13/RPI_15, RPI_14/RPI_27, RPI_25/RPI_31,
+RPI_26/RPI_34, RPI_29/RPI_32, RPI_29/RPI_36, RPI_33/RPI_34). Example: RPI_1
+(index `CGTGAT`) with its G deleted and RPI_9 (`CTGATC`) with its C deleted
+both read `ACGAGATCTGATGTGACTG`. cutadapt gives such a read to the RPI listed
+first in `rpi_fasta`.
+
+**Effect**: only libraries that use both RPIs of a pair. On PacBio HiFi data
+0.03-0.31% of reads were tied. With `umi_size_thresh` >= 2 a misassigned read
+is usually a singleton UMI in the wrong sample and is dropped, so molecule
+counts barely change; read-level and UMI-bin statistics shift slightly.
+
+**Solution**: set `demux_drop_ambiguous: true` (`L3Rseq demux --drop-ambiguous`
+for the standalone subcommand) and re-run from step 03. Tied reads go to
+`03_demux/<bc>/<bc>_unclassified_ambiguous.fastq`, counted per RPI in
+`<bc>_ambiguous_report.tsv`. `cutadapt --no-indels` also removes the ties but
+discards every read with a barcode indel (~4.4% of HiFi reads).
+
+---
+
 ## "Unknown option" errors
 
 **Symptom**: `ERROR: unknown option --foo` when running a subcommand.

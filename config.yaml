@@ -59,6 +59,12 @@ error_rate:    0.2
 # ---------------------------------------------------------------------------
 demux_error_rate: 1
 demux_min_overlap: 20
+# A read whose barcode is within the allowed errors of TWO RPIs (possible when
+# the RPIs are close: with demux_error_rate 1, pairs 2 edits apart such as
+# RPI_1/RPI_9 or RPI_8/RPI_12) goes to whichever RPI comes first in rpi_fasta.
+# true = move such reads to <barcode>_unclassified_ambiguous.fastq instead;
+# per-RPI counts in <barcode>_ambiguous_report.tsv. false = cutadapt default.
+demux_drop_ambiguous: false
 
 # ---------------------------------------------------------------------------
 # Step 04 — UMI extraction

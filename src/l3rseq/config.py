@@ -46,6 +46,7 @@ YAML_TO_BASH: dict[str, str] = {
     # Step 03 — demultiplex
     "demux_error_rate": "DEFAULT_DEMUX_ERROR_RATE",
     "demux_min_overlap": "DEFAULT_DEMUX_MIN_OVERLAP",
+    "demux_drop_ambiguous": "DEFAULT_DEMUX_DROP_AMBIGUOUS",
     # Step 04 — UMI extraction
     "umi_len": "DEFAULT_UMI_LEN",
     "umi_loc": "DEFAULT_UMI_LOC",

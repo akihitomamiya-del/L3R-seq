@@ -270,6 +270,7 @@ checkpoint demux:
         rpi_fasta=RPI_FASTA,
         er=config["demux_error_rate"],
         mo=config["demux_min_overlap"],
+        drop_ambiguous=1 if config.get("demux_drop_ambiguous", False) else 0,
     shell:
         _shell_preamble(ENVS["cutadapt"]) + r"""
         tmp_in=$(mktemp -d)
@@ -278,7 +279,7 @@ checkpoint demux:
         mkdir -p "$tmp_in/{wildcards.barcode}"
         ln -sf "$(readlink -f {input})" "$tmp_in/{wildcards.barcode}/{wildcards.barcode}_trim3.fastq.gz"
         source {SCRIPTS_DIR}/03_demultiplex.sh
-        run_step_03 "$tmp_in" "$tmp_out" "{params.rpi_fasta}" "{params.er}" "{params.mo}"
+        run_step_03 "$tmp_in" "$tmp_out" "{params.rpi_fasta}" "{params.er}" "{params.mo}" "{params.drop_ambiguous}"
         mkdir -p "{OUTPUT_DIR}/03_demux"
         rm -rf "{output}"
         mv "$tmp_out/03_demux/{wildcards.barcode}" "{output}"

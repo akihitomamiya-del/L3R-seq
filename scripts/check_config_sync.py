@@ -108,6 +108,9 @@ def parse_yaml_simple(config_yaml: Path) -> dict[str, str]:
         if (value.startswith('"') and value.endswith('"')) or \
            (value.startswith("'") and value.endswith("'")):
             value = value[1:-1]
+        elif value in ("true", "false"):
+            # YAML booleans reach bash as 1/0 (l3rseq.config._format_scalar)
+            value = "1" if value == "true" else "0"
         out[key] = value
     return out
 

@@ -21,6 +21,7 @@ import pytest
 from l3rseq.config import (
     RUN_SCOPED_KEYS,
     YAML_TO_BASH,
+    _format_scalar,
     emit_bash,
     load_yaml,
 )
@@ -179,7 +180,7 @@ class TestRealConfigYaml:
         env = _eval_bash(block)
         for yaml_key, bash_name in YAML_TO_BASH.items():
             assert bash_name in env, f"{bash_name} missing from emitted block"
-            assert env[bash_name] == str(cfg[yaml_key]), (
+            assert env[bash_name] == _format_scalar(cfg[yaml_key]), (
                 f"{bash_name}: got {env[bash_name]!r}, want {cfg[yaml_key]!r}"
             )
 
